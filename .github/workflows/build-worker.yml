@@ -26,3 +26,10 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/realtime-tts-worker:latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: worker
+          file: worker/Dockerfile.pod
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/realtime-tts-worker:pod
