@@ -37,18 +37,52 @@ instructive as the answer:
    kernels for it yet — a hardware/software version-lag problem, not a config bug this
    codebase can fix by itself.
 
-**Stopped here deliberately** rather than keep guessing — five endpoints were created and
-torn down chasing this, and further blind iteration wasn't a good use of the session.
-**Current state**: worker runs correctly and reliably on CPU via RunPod Serverless (jobs
-complete, audio is correct); GPU acceleration does not work despite Serverless billing
-GPU-tier rates. Next steps for whoever picks this up: (a) file a RunPod support ticket
-asking why `gpuTypeIds` preferences aren't honored and whether non-Blackwell capacity can
-be guaranteed; (b) try RunPod's own prebuilt PyTorch/CUDA base image instead of a
-from-scratch pip-based CUDA setup, which may bundle Blackwell-compatible kernels; (c) or
-just accept CPU-only for now — per the ElevenLabs cost comparison, this is still ~3-6x
-cheaper per character even at CPU speed, since Kokoro-82M is small enough that raw
-compute cost stays low regardless of GPU/CPU. GPU would mainly buy lower TTFB, not lower
-cost, for a model this size.
+**RunPod Serverless's HTTP job-queue model has ~7s of dispatch latency even to a warm,
+idle worker.** Direct test: `POST /run` against an endpoint reporting 1 idle/1 ready
+worker still measured `delayTime: 7290ms` before execution even began (`executionTime`
+itself was a fast 1195ms). This is RunPod's own queue/dispatch overhead, not something
+fixable by tuning the gateway's poll interval or worker count — it rules out Serverless
+entirely for a sub-second realtime latency target, independent of the GPU question above.
+
+**Tried switching to a RunPod Pod (always-on instance, direct WebSocket, no job queue)
+to fix the dispatch-latency problem — didn't get it working, reverted.** Created a Pod
+running `worker/server.py` directly (`dockerStartCmd` override) with port 8765 exposed.
+It was assigned a mature RTX 4090 (good — suggests Pods may dodge the Blackwell
+assignment issue Serverless hit), but the WS endpoint returned a persistent 404 through
+RunPod's proxy (`https://<pod-id>-8765.proxy.runpod.net`) for 90+ seconds, and a second
+pod attempt (with SSH added for debugging) showed `runtime: null` via RunPod's GraphQL
+API even after similar wait — meaning the container likely never reached a running state,
+not just a slow boot. Deleted both pods to stop the $0.74/hr billing rather than keep
+guessing blind. **Root cause not diagnosed** — candidates, untested: RunPod's HTTP-type
+port proxy may not support WebSocket upgrade at all (only plain HTTP), the `dockerStartCmd`
+override may not actually be honored for pods created without a `templateId`, or there
+may be a genuine platform-side provisioning issue independent of anything in this repo.
+
+**Stopped here deliberately** — this GPU/latency investigation is now two independent
+dead ends (Serverless: works but ~7-10s dispatch latency; Pods: didn't get a working
+connection at all) across many endpoint/pod create-test-destroy cycles in one session.
+Further blind iteration wasn't a good use of continued effort. **Current live state**:
+worker runs correctly and reliably on CPU via RunPod Serverless (jobs complete, audio is
+correct, `workersMax` reset to 1 to minimize idle billing) — this is what the gateway
+points at right now. It is NOT realtime by the ~300ms TTFB standard; it's a working,
+correct, but slow (multi-second TTFB) synthesis backend.
+
+**Recommendations for whoever picks this up, in priority order**:
+1. Before anything else: read RunPod's own docs on Pod HTTP-proxy WebSocket support
+   (don't assume, as this session did) — if Pods genuinely don't support WS through their
+   proxy, that changes the whole approach (would need a public IP + raw TCP instead, or
+   a different exposure method).
+2. If Pods do support WS, retry with a `templateId`-based Pod (not templateId-less) in
+   case that's why `dockerStartCmd` wasn't honored, and add a startup log/healthcheck
+   endpoint so a 404 vs a genuine crash can be told apart without SSH.
+3. File a RunPod support ticket about the Blackwell `gpuTypeIds` mismatch on Serverless
+   — a straight answer there might make GPU Serverless viable again.
+4. Or accept CPU-only Serverless for now: per the ElevenLabs cost comparison, this is
+   still ~3-6x cheaper per character than ElevenLabs even at CPU speed and multi-second
+   latency, since Kokoro-82M is cheap to run regardless of hardware. It's a real, working,
+   cheap backend — just not a realtime one. Whether that's good enough depends entirely
+   on the actual use case (see the open question from earlier in this conversation about
+   what this service is for).
 
 **Transport: WebSocket, not SSE/HTTP streaming.** Realtime TTS needs bidirectional
 control (client sends `stop` mid-stream for barge-in) — SSE is one-directional, and

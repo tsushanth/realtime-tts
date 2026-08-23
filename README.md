@@ -43,16 +43,23 @@ of `RUNPOD_ENDPOINT_ID`/`RUNPOD_API_KEY`.
   attached) and `InferenceSession.get_providers()` (only CPUExecutionProvider active) —
   not inferred from timing. The worker runs correctly and reliably, just on CPU, while
   RunPod bills GPU-tier rates. Live endpoint currently pointed at: `u4me5box1h735i`.
+- **NOT REALTIME as currently deployed.** RunPod Serverless's own job-dispatch queue adds
+  ~7s of latency even to an already-warm, idle worker (confirmed directly — `delayTime`
+  in a job's status response, not inferred). Tried switching to an always-on RunPod Pod
+  (direct WebSocket, no queue) to fix this — didn't get it connecting (persistent 404 on
+  the WS proxy, `runtime: null` from RunPod's own API even after 90+s), tore it down
+  rather than keep guessing. Full writeup in DECISIONS.md, including concrete next steps
+  for whoever continues this. Current live backend is correct and cheap, just slow.
 - **Harness**: real, run both locally (against `worker/server.py` on CPU) and against the
   live Fly→RunPod path.
   - Local CPU, concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x — **PASS**
   - Local CPU, concurrency=4: TTFB p50=1552ms p95=4106ms, RTF=2.40x — **FAIL** (single
     process serializes synthesis under load — see DECISIONS.md)
-  - Live Fly→RunPod, concurrency=1: TTFB ~3.4-4.0s (dominated by RunPod's HTTP job
-    polling + cold-start variance, not raw synthesis) — well outside the CPU-tuned
-    1200ms budget in `harness/run.py`. That budget needs to be re-tuned for the RunPod
-    HTTP path specifically (it has fundamentally different latency characteristics than
-    a direct WS connection) — not done yet.
+  - Live Fly→RunPod, concurrency=1: TTFB ~3.4-9.6s depending on worker warm/cold state
+  - Live Fly→RunPod, concurrency=4: TTFB p50=9.6-16s, p95=14.5-23s — scaling workers
+    doesn't fix this; RunPod's queue dispatch overhead dominates regardless of worker count
+  - None of the above meet the CPU-tuned 1200ms budget in `harness/run.py` once RunPod is
+    in the path — that budget was only ever valid for the direct-WS local path.
 
 ## Run the worker locally (direct WS, no RunPod)
 
@@ -108,7 +115,8 @@ flyctl secrets set -a realtime-tts-gateway RUNPOD_ENDPOINT_ID=<id> RUNPOD_API_KE
 
 RunPod template/endpoint were created via `rest.runpod.io/v1/templates` and
 `/v1/endpoints` (see git history for the exact calls). Current live endpoint:
-`jyegeieycq613x`, template `r7cttxeun9`, image `ghcr.io/tsushanth/realtime-tts-worker:latest`.
+`u4me5box1h735i`, template `r7cttxeun9`, image `ghcr.io/tsushanth/realtime-tts-worker:latest`.
+CPU-only (see "Current real status"), `workersMax: 1`.
 
 ## Known limitations
 
