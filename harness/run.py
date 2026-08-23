@@ -58,7 +58,7 @@ async def one_session(endpoint, text, session_id):
             await ws.send(json.dumps({"type": "synthesize", "text": text}))
             pending_meta = None
             while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                raw = await asyncio.wait_for(ws.recv(), timeout=90)
                 now = time.perf_counter()
                 if isinstance(raw, (bytes, bytearray)):
                     if first_byte_t is None:

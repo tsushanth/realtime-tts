@@ -1,7 +1,10 @@
-# RunPod Serverless GPU worker. onnxruntime-gpu 1.17+ pulls its own CUDA 12 runtime libs
-# via pip (nvidia-cublas-cu12, nvidia-cudnn-cu12, etc.) — RunPod's host already provides
-# the GPU driver, so a full CUDA base image (10+GB, blew out even GitHub Actions' runner
-# disk) isn't needed. A slim Python base is enough and keeps the image under ~1GB.
+# RunPod Serverless GPU worker. onnxruntime-gpu does NOT pull CUDA runtime libs
+# automatically via pip — that was a wrong assumption in an earlier version of this file
+# and silently made the "GPU" worker fall back to CPU (confirmed: ort.get_available_providers()
+# returned only CPUExecutionProvider, and measured RTF was *worse* than the CPU baseline).
+# The nvidia-*-cu12 wheels in requirements.txt provide the actual .so files; LD_LIBRARY_PATH
+# below is required for onnxruntime to find them. RunPod's host provides the GPU driver
+# itself — a full CUDA base image (10+GB, blew out disk twice) still isn't needed.
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl espeak-ng \
@@ -11,6 +14,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt onnxruntime-gpu
+
+ENV LD_LIBRARY_PATH="/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.11/site-packages/nvidia/cufft/lib:/usr/local/lib/python3.11/site-packages/nvidia/curand/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusparse/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 COPY synth.py handler.py .
 

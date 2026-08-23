@@ -1,5 +1,12 @@
-kokoro-onnx
+kokoro-onnx==0.6.1
 soundfile
 numpy
 websockets
 runpod
+nvidia-cuda-runtime-cu12
+nvidia-cudnn-cu12
+nvidia-cublas-cu12
+nvidia-cufft-cu12
+nvidia-curand-cu12
+nvidia-cusparse-cu12
+nvidia-cusolver-cu12
