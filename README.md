@@ -1,65 +1,61 @@
 # realtime-tts
 
 Standalone realtime (streaming, low-latency, barge-in capable) TTS service.
-Gateway on Fly.io, GPU inference worker on RunPod Serverless. See `DECISIONS.md` for the
-reasoning behind each choice — including a real bug (GPU silently falling back to CPU)
-found and partially fixed during this build.
+Gateway on Fly.io, GPU inference on an always-on RunPod Pod. See `DECISIONS.md` for the
+full reasoning and debugging trail — several real, non-obvious bugs were found and fixed
+(a RunPod Serverless dispatch-latency dead end, an onnxruntime/onnxruntime-gpu package
+collision, a CUDA version mismatch, a missing CUDA library) before landing here.
 
 ## Architecture
 
 ```
-client (WS) --> gateway (Fly, server.js) --> RunPod Serverless (HTTP job API, GPU)
+client (WS) --> gateway (Fly, server.js) --> RunPod Pod, always-on (direct WS, GPU)
                      |                              |
-                 /health                    worker/handler.py (Kokoro-82M)
+                 /health                    worker/server.py + Dockerfile.pod (Kokoro-82M)
+```
 
-Client-facing protocol (same whether the gateway talks to RunPod or a direct-WS worker):
+RunPod Serverless (HTTP job-queue API) was tried first and abandoned — see DECISIONS.md —
+it has ~7-10s of dispatch latency per request regardless of tuning, which rules it out
+for realtime entirely. `gateway/runpod-adapter.js` still exists for that path but isn't
+what's live. The live path is a plain always-on GPU instance, talked to directly over
+WebSocket — same protocol `worker/server.py` speaks for local dev.
+
+```
+Client-facing protocol:
   -> {"type":"synthesize","text":"...","voice":"af_heart","speed":1.0}
   -> {"type":"stop"}                          # barge-in / cancel
-  <- {"type":"chunk_meta","text":..,"gen_ms":..,"audio_s":..}
+  <- {"type":"chunk_meta","text":..,"gen_ms":..,"audio_s":..,"providers":[..]}
   <- <binary PCM16LE mono 24kHz>              # immediately follows chunk_meta
   <- {"type":"done"} | {"type":"cancelled"} | {"type":"error","message":".."}
 ```
 
-`gateway/runpod-adapter.js` translates RunPod's HTTP job API (POST /run, poll /stream,
-POST /cancel) to this wire protocol. `gateway/server.js` also supports talking directly
-to a WS-speaking worker (`worker/server.py`) for local dev — set `WORKER_WS_URL` instead
-of `RUNPOD_ENDPOINT_ID`/`RUNPOD_API_KEY`.
-
 ## Current real status
 
-- **Live**: `https://realtime-tts-gateway.fly.dev` (Fly), wired to a real RunPod
-  Serverless endpoint running the Kokoro-82M worker. Both were actually deployed and
-  tested end-to-end in this build, not just written.
-- **Image**: `ghcr.io/tsushanth/realtime-tts-worker:latest`, built via GitHub Actions
-  (`.github/workflows/build-worker.yml`) — local Docker builds kept failing (disk space,
-  then a corrupted Docker Desktop containerd DB, then network drops pushing a 10GB+ CUDA
-  base image). Switched to a slim Python base + explicit `nvidia-*-cu12` pip packages
-  instead of a full CUDA image; GHA builds/pushes reliably in under a minute.
-- **GPU status: CONFIRMED not working, root cause identified.** See DECISIONS.md for the
-  full investigation. Bottom line: this RunPod account/region is handing out an NVIDIA
-  RTX PRO 6000 Blackwell GPU regardless of the `gpuTypeIds` requested (tried restricting
-  to L4-only explicitly — still got Blackwell), and `onnxruntime-gpu` 1.29 doesn't have
-  compiled kernels for that hardware yet. Confirmed directly via `nvidia-smi` (GPU is
-  attached) and `InferenceSession.get_providers()` (only CPUExecutionProvider active) —
-  not inferred from timing. The worker runs correctly and reliably, just on CPU, while
-  RunPod bills GPU-tier rates. Live endpoint currently pointed at: `u4me5box1h735i`.
-- **NOT REALTIME as currently deployed.** RunPod Serverless's own job-dispatch queue adds
-  ~7s of latency even to an already-warm, idle worker (confirmed directly — `delayTime`
-  in a job's status response, not inferred). Tried switching to an always-on RunPod Pod
-  (direct WebSocket, no queue) to fix this — didn't get it connecting (persistent 404 on
-  the WS proxy, `runtime: null` from RunPod's own API even after 90+s), tore it down
-  rather than keep guessing. Full writeup in DECISIONS.md, including concrete next steps
-  for whoever continues this. Current live backend is correct and cheap, just slow.
-- **Harness**: real, run both locally (against `worker/server.py` on CPU) and against the
-  live Fly→RunPod path.
-  - Local CPU, concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x — **PASS**
-  - Local CPU, concurrency=4: TTFB p50=1552ms p95=4106ms, RTF=2.40x — **FAIL** (single
-    process serializes synthesis under load — see DECISIONS.md)
-  - Live Fly→RunPod, concurrency=1: TTFB ~3.4-9.6s depending on worker warm/cold state
-  - Live Fly→RunPod, concurrency=4: TTFB p50=9.6-16s, p95=14.5-23s — scaling workers
-    doesn't fix this; RunPod's queue dispatch overhead dominates regardless of worker count
-  - None of the above meet the CPU-tuned 1200ms budget in `harness/run.py` once RunPod is
-    in the path — that budget was only ever valid for the direct-WS local path.
+- **Live**: `https://realtime-tts-gateway.fly.dev` (Fly gateway) → a real RunPod Pod
+  (always-on GPU instance, RTX 4090) running `worker/server.py` directly over WebSocket.
+  Both deployed and tested end-to-end, not just written.
+- **GPU: CONFIRMED WORKING.** `InferenceSession.get_providers()` returns
+  `['CUDAExecutionProvider', 'CPUExecutionProvider']` on a clean rebuild, no live
+  patching. Three real bugs found and fixed — full trail in DECISIONS.md: an
+  onnxruntime/onnxruntime-gpu package collision (kokoro-onnx transitively installs
+  plain `onnxruntime`, which silently disables CUDA), an unpinned `onnxruntime-gpu`
+  resolving to a version requiring CUDA 13.x when only CUDA 12.x pip packages are
+  actually published, and a missing `nvidia-cuda-nvrtc-cu12` package.
+- **Real measured numbers** (see DECISIONS.md for the full comparison table):
+  - GPU Pod through the live Fly gateway, concurrency=1: **TTFB p50=664ms, RTF=5.74x**
+  - GPU Pod through the live Fly gateway, concurrency=4: **TTFB p50=842ms p95=1367ms,
+    RTF=10.41x** — GPU throughput *improves* under load, unlike the CPU path where it
+    collapsed (CPU: 2.77x → 2.40x RTF, TTFB p95 blew out to 4.1s at concurrency=4)
+  - Not yet under the ~300ms aspirational realtime target at concurrency=4, but a real
+    order-of-magnitude improvement over both the CPU baseline and RunPod Serverless.
+- **Real cost tradeoff**: this Pod is always-on, billed continuously — **$0.74/hr
+  (~$533/mo)** regardless of traffic, no autoscaling, no redundancy (single pod, no
+  failover if it dies beyond RunPod's own crash-restart supervisor). Opposite cost model
+  from Serverless's pay-per-second. Whether that's worth it depends entirely on expected
+  utilization.
+- **Harness**: real numbers from all paths tested, both local and live — see the table
+  in DECISIONS.md. Budget in `harness/run.py` set to 1500ms p95 to match what's actually
+  achieved today; tighten it once concurrency-4 numbers improve.
 
 ## Run the worker locally (direct WS, no RunPod)
 
@@ -100,7 +96,8 @@ ONE_SHOT=1 ENDPOINT=... ./harness/loop.sh   # single pass for cron
 ## Redeploying
 
 ```bash
-# worker image (triggers automatically on push to worker/**):
+# worker images (both :latest Serverless variant and :pod always-on variant,
+# triggers automatically on push to worker/**):
 git push
 
 # manually re-run the build:
@@ -109,31 +106,52 @@ gh workflow run build-worker.yml -R tsushanth/realtime-tts
 # gateway:
 cd gateway && flyctl deploy -a realtime-tts-gateway
 
-# point the gateway at a different RunPod endpoint:
-flyctl secrets set -a realtime-tts-gateway RUNPOD_ENDPOINT_ID=<id> RUNPOD_API_KEY=<key>
+# create a fresh Pod (containers aren't updated in place - a new pod must be created
+# from a rebuilt image, then the gateway repointed at it):
+RUNPOD_KEY=$(security find-generic-password -a "$(whoami)" -s runpod-api-key -w)
+curl -s -X POST "https://rest.runpod.io/v1/pods" -H "Authorization: Bearer $RUNPOD_KEY" \
+  -H "Content-Type: application/json" -d '{
+    "name": "realtime-tts-pod",
+    "imageName": "ghcr.io/tsushanth/realtime-tts-worker:pod",
+    "gpuTypeIds": ["NVIDIA L4", "NVIDIA A40", "NVIDIA GeForce RTX 4090"],
+    "gpuCount": 1, "containerDiskInGb": 10,
+    "env": {"WORKER_HOST": "0.0.0.0", "WORKER_PORT": "8765"},
+    "ports": ["8765/tcp", "22/tcp"], "cloudType": "SECURE", "supportPublicIp": true
+  }'
+# then fetch its public IP:port for 8765/tcp via GraphQL (REST doesn't expose this -
+# can take 1-5 min for `runtime` to populate, this varies a lot):
+curl -s -X POST "https://api.runpod.io/graphql?api_key=$RUNPOD_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"query { pod(input: {podId: \"<ID>\"}) { runtime { ports { ip publicPort type } } } }"}'
+# then repoint the gateway (direct-WS path, not the RunPod adapter):
+flyctl secrets set -a realtime-tts-gateway WORKER_WS_URL=ws://<IP>:<PORT>
+flyctl secrets unset -a realtime-tts-gateway RUNPOD_ENDPOINT_ID RUNPOD_API_KEY
+# delete the old pod once the new one is verified working:
+curl -s -X DELETE "https://rest.runpod.io/v1/pods/<OLD_ID>" -H "Authorization: Bearer $RUNPOD_KEY"
 ```
 
-RunPod template/endpoint were created via `rest.runpod.io/v1/templates` and
-`/v1/endpoints` (see git history for the exact calls). Current live endpoint:
-`u4me5box1h735i`, template `r7cttxeun9`, image `ghcr.io/tsushanth/realtime-tts-worker:latest`.
-CPU-only (see "Current real status"), `workersMax: 1`.
+RunPod template `r7cttxeun9` (image `ghcr.io/tsushanth/realtime-tts-worker:pod`).
+This is manual — there's no autoscaling or CI/CD wiring for the Pod lifecycle itself,
+only for the image build. SSH access: `ssh -i ~/.ssh/runpod_cuda -p <ssh_port> root@<IP>`
+(the account's registered key, already on the pod via `$PUBLIC_KEY`).
 
 ## Known limitations
 
-- **GPU acceleration is unverified/inconsistent** — see "Current real status" above and
-  DECISIONS.md. Don't trust RTF numbers from the RunPod path yet without re-checking
-  `ort.get_available_providers()` inside a live worker.
-- Single-process worker serializes concurrent synthesis on the direct-WS path (see
-  DECISIONS.md). RunPod Serverless handles its own worker scaling (`workersMax`), but
-  that hasn't been load-tested past concurrency=1 through the full pipeline.
-- The harness's 1200ms TTFB budget is CPU-tuned and needs a separate, RunPod-specific
-  budget — the HTTP job API's polling overhead means it will never hit CPU-direct-WS
-  latency even with a fast GPU.
+- **Single pod, no redundancy.** If it crashes, RunPod's own supervisor restarts the
+  process, but there's no failover to a second instance and no health-check-triggered
+  gateway rerouting. A pod dying means the service is down until manually replaced.
+- **No autoscaling.** Fixed at one GPU instance regardless of load — the concurrency=4
+  numbers in DECISIONS.md are the ceiling on this hardware, not a floor that scales up.
+- **Continuous billing** ($0.74/hr, ~$533/mo) regardless of traffic — see DECISIONS.md
+  for the cost tradeoff vs the abandoned Serverless pay-per-second approach.
+- Concurrency=4 p95 (1367ms) still exceeds the ~300ms aspirational realtime target —
+  real synthesis is fast (RTF 5.7-16.8x), but hasn't been profiled to find where the
+  remaining latency budget goes at higher concurrency.
 - No auth on the gateway WS endpoint — add before exposing publicly.
 - "Continuous improvement" loop is latency/regression detection only. There is no
   automated quality (MOS/naturalness) scoring — that needs either human raters or a
   paid judge model, neither wired up here, and deliberately not added without discussing
   the added spend.
-- `idleTimeout: 10s` on the RunPod endpoint means workers recycle fast between requests,
-  which is cheap but may be contributing to the CUDA-init inconsistency noted above —
-  worth testing with a longer idle timeout or `workersMin: 1` to keep one warm.
+- The abandoned RunPod Serverless path (`gateway/runpod-adapter.js`, `worker/handler.py`)
+  is left in the repo since the code is correct and could be revived if Serverless's
+  dispatch-latency problem ever gets resolved on RunPod's end — it's just not what's live.

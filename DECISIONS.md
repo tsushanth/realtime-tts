@@ -58,31 +58,74 @@ port proxy may not support WebSocket upgrade at all (only plain HTTP), the `dock
 override may not actually be honored for pods created without a `templateId`, or there
 may be a genuine platform-side provisioning issue independent of anything in this repo.
 
-**Stopped here deliberately** — this GPU/latency investigation is now two independent
-dead ends (Serverless: works but ~7-10s dispatch latency; Pods: didn't get a working
-connection at all) across many endpoint/pod create-test-destroy cycles in one session.
-Further blind iteration wasn't a good use of continued effort. **Current live state**:
-worker runs correctly and reliably on CPU via RunPod Serverless (jobs complete, audio is
-correct, `workersMax` reset to 1 to minimize idle billing) — this is what the gateway
-points at right now. It is NOT realtime by the ~300ms TTFB standard; it's a working,
-correct, but slow (multi-second TTFB) synthesis backend.
+**RESOLVED — real GPU, real always-on Pod, both root causes found via live SSH
+debugging, not guessing.**
 
-**Recommendations for whoever picks this up, in priority order**:
-1. Before anything else: read RunPod's own docs on Pod HTTP-proxy WebSocket support
-   (don't assume, as this session did) — if Pods genuinely don't support WS through their
-   proxy, that changes the whole approach (would need a public IP + raw TCP instead, or
-   a different exposure method).
-2. If Pods do support WS, retry with a `templateId`-based Pod (not templateId-less) in
-   case that's why `dockerStartCmd` wasn't honored, and add a startup log/healthcheck
-   endpoint so a 404 vs a genuine crash can be told apart without SSH.
-3. File a RunPod support ticket about the Blackwell `gpuTypeIds` mismatch on Serverless
-   — a straight answer there might make GPU Serverless viable again.
-4. Or accept CPU-only Serverless for now: per the ElevenLabs cost comparison, this is
-   still ~3-6x cheaper per character than ElevenLabs even at CPU speed and multi-second
-   latency, since Kokoro-82M is cheap to run regardless of hardware. It's a real, working,
-   cheap backend — just not a realtime one. Whether that's good enough depends entirely
-   on the actual use case (see the open question from earlier in this conversation about
-   what this service is for).
+**Pod networking (why `runtime: null` / 404 for three straight attempts):** RunPod's
+own docs confirm custom Pod images need an SSH daemon for RunPod's infra to report
+`runtime` status at all — a plain `python:3.11-slim` base has none. Built
+`worker/Dockerfile.pod` + `worker/start-pod.sh` following RunPod's documented pattern
+(installs `openssh-server`, wires the account's injected `$PUBLIC_KEY` into
+`authorized_keys`, starts `sshd`, then `exec`s the real server). Separately, RunPod's
+WSS-over-Cloudflare-proxy (`https://<pod-id>-<port>.proxy.runpod.net`) is independently
+unreliable per community reports — the real fix is TCP port exposure
+(`ports: ["8765/tcp"]`) plus connecting directly to the pod's public IP:port from
+`runtime.ports` (via RunPod's GraphQL API — the REST API doesn't expose this), not the
+proxy domain. Both fixes were needed together.
+
+**GPU (why CUDA never activated even once networking worked) — three real bugs, found
+by SSHing into a live pod and reading onnxruntime's actual C++ error messages instead
+of continuing to guess from Python-level symptoms:**
+1. `onnxruntime-gpu` and plain `onnxruntime` install to the same
+   `site-packages/onnxruntime/` path and are not safe to have coinstalled —
+   `kokoro-onnx` pulls in plain `onnxruntime` transitively, which silently wins the
+   file collision and disables CUDA. `kokoro_onnx.resolve_providers()` doesn't just
+   check `get_available_providers()`; it checks whether the `onnxruntime-gpu`
+   *pip package itself* is still installed (`importlib.metadata.distribution(...)`) —
+   so even a `pip uninstall onnxruntime` cleanup after the fact can corrupt
+   `onnxruntime-gpu`'s own metadata via the overlapping file paths and make it look
+   uninstalled. Fix: install `onnxruntime-gpu` first, then `kokoro-onnx`'s other real
+   deps (checked via `pip show kokoro-onnx`), then `kokoro-onnx` itself with `--no-deps`
+   — plain `onnxruntime` never touches disk.
+2. Unpinned `onnxruntime-gpu` resolved to 1.29.0, which onnxruntime's own runtime error
+   states requires **CUDA 13.x** — but real CUDA-13 pip packages
+   (`nvidia-cublas-cu13` etc.) are still unpublished stubs (`0.0.1` placeholder
+   releases on PyPI as of this build). Pinned to `onnxruntime-gpu==1.20.2`, the newest
+   version confirmed (via web research, then verified live) to target CUDA 12.x +
+   cuDNN 9.x, which has real, fully-published packages.
+3. `nvidia-cuda-nvrtc-cu12` (provides `libnvrtc.so.12`, needed for CUDA JIT
+   compilation) was missing from the package list entirely — onnxruntime's CUDA
+   provider load error names its missing `.so` files one at a time, so this took two
+   rounds of "install the named library, see what's missing next" to fully surface.
+
+Confirmed end to end, clean rebuild, no live patching: `InferenceSession.get_providers()`
+→ `['CUDAExecutionProvider', 'CPUExecutionProvider']` on a real RTX 4090 Pod.
+
+**Real measured numbers, GPU Pod vs CPU Serverless:**
+
+| Path | Concurrency | TTFB p50 | TTFB p95 | RTF |
+|---|---|---|---|---|
+| CPU direct-WS (local) | 1 | 502ms | 502ms | 2.77x |
+| CPU direct-WS (local) | 4 | 1552ms | 4106ms | 2.40x |
+| GPU Pod, direct (no gateway) | 1 | 594ms | 594ms | 8.28x |
+| GPU Pod, direct (no gateway) | 4 | 637ms | 1412ms | 16.82x |
+| **GPU Pod, through live Fly gateway** | 1 | **664ms** | **664ms** | **5.74x** |
+| **GPU Pod, through live Fly gateway** | 4 | **842ms** | **1367ms** | **10.41x** |
+
+GPU RTF *improves* under concurrency (8.28x → 16.82x direct) instead of collapsing like
+CPU did (2.77x → 2.40x, with TTFB p95 blowing out to 4.1s) — real evidence the GPU has
+headroom the single CPU process didn't. Still not under the ~300ms aspirational realtime
+target at concurrency=4, but a legitimate order-of-magnitude improvement over both the
+CPU baseline and RunPod Serverless (~7-10s dispatch latency, ruled out separately above).
+
+**Real operational tradeoff, stated plainly**: this Pod is **always-on and billed
+continuously** — $0.74/hr ≈ $533/mo regardless of traffic, no autoscaling, no
+redundancy (single pod, single point of failure; RunPod's own container supervisor
+restarts a crashed process but there's no failover to a second instance). This is the
+opposite cost model from Serverless's pay-per-second. Whether that tradeoff is worth it
+depends on expected utilization — cheap at high, sustained traffic; wasteful idle. Not
+addressed in this session: horizontal scaling (multiple pods behind the gateway),
+autoscaling based on load, or health-check-based failover if the pod dies.
 
 **Transport: WebSocket, not SSE/HTTP streaming.** Realtime TTS needs bidirectional
 control (client sends `stop` mid-stream for barge-in) — SSE is one-directional, and
