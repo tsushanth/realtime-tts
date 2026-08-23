@@ -1,0 +1,4 @@
+Worker: Kokoro-82M (kokoro-onnx), M-series Mac CPU, single process
+concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x, PASS
+concurrency=4: TTFB p50=1552ms p95=4106ms, RTF=2.40x, FAIL (regression + budget both trip)
+Finding: single-process CPU worker serializes synthesis under concurrent load; TTFB degrades ~8x at concurrency=4 vs concurrency=1. RunPod GPU + multi-worker scaling is the fix, not yet deployed.

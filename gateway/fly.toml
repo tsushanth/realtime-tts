@@ -1,0 +1,21 @@
+app = "realtime-tts-gateway"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8080"
+  # Set via `flyctl secrets set WORKER_WS_URL=wss://<runpod-endpoint>` once RunPod is live.
+  WORKER_WS_URL = "ws://127.0.0.1:8765"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
