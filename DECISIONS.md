@@ -4,22 +4,51 @@
 (listenai-tts-worker: ~1.75x realtime on CPU). ONNX runtime means no PyTorch/CUDA
 build headaches and it runs fine on CPU for dev.
 
-**GPU setup: `onnxruntime-gpu` does NOT pull CUDA runtime libs via pip automatically.**
-An earlier version of this file claimed it did — wrong, and it cost real debugging time.
-The worker ran on RunPod "successfully" (jobs completed, audio came back) while silently
-falling back to CPU: `ort.get_available_providers()` inside the built image returned only
-`CPUExecutionProvider`, and a real measured run showed RTF=0.64x — *worse* than the local
-CPU baseline (2.4-2.77x). A serverless GPU worker that quietly runs on CPU is a failure
-mode the harness's TTFB budget alone won't obviously flag as "GPU is broken" — it just
-looks like a slow GPU. Fix: explicit `nvidia-cudnn-cu12`/`nvidia-cublas-cu12`/etc. pip
-packages plus `LD_LIBRARY_PATH` pointed at their `.so` files (see worker/Dockerfile).
-After the fix, one direct RunPod test measured RTF~2.0x; a run through the full gateway
-pipeline measured RTF~0.52x on the same endpoint minutes later — inconsistent, likely
-because `idleTimeout: 10s` recycles workers fast and CUDA init may not succeed
-deterministically on every cold start. **Not fully resolved** — the harness's regression
-detection is exactly the mechanism that should keep catching this if it recurs; treat any
-RTF reading near or below 1x on this "GPU" endpoint as a signal to re-check
-`get_available_providers()` inside the live container, not as normal variance.
+**GPU status: CONFIRMED CPU-only on this RunPod account, root cause identified but not
+fixed.** Long investigation, documented in full because the wrong turns are as
+instructive as the answer:
+
+1. First assumption — `onnxruntime-gpu` pulls CUDA runtime libs via pip automatically —
+   was wrong. The worker ran "successfully" on RunPod (jobs completed, audio came back)
+   while silently running on CPU: `ort.get_available_providers()` inside the built image
+   returned only `CPUExecutionProvider`, and RTF measured *worse* than the local CPU
+   baseline. Timing-based RTF is not a reliable enough signal for this — a slow "GPU" and
+   a CPU fallback look the same from the outside.
+2. Added explicit `nvidia-cudnn-cu12`/`nvidia-cublas-cu12`/etc. pip packages plus
+   `LD_LIBRARY_PATH`. Timing improved on one test (RTF~2.0x) but regressed on another
+   (RTF~0.52x) minutes later on the same endpoint — inconclusive from timing alone.
+3. Stopped trusting timing. Added real diagnostics: `chunk["providers"]` now reports
+   `InferenceSession.get_providers()` directly (the actual active providers, not just
+   what's "available"), and the RunPod handler runs `nvidia-smi -L` and returns it.
+   Three separate sequential RunPod jobs, post-fix, all directly confirmed
+   `["AzureExecutionProvider", "CPUExecutionProvider"]` — **no CUDAExecutionProvider,
+   definitively, not inferred.**
+4. `nvidia-smi` confirmed a real GPU device IS attached and visible to the container:
+   an **NVIDIA RTX PRO 6000 Blackwell Server Edition** (via MIG 1g.24gb partition) — so
+   this isn't a "no GPU attached" problem.
+5. That GPU was never requested — the endpoint's `gpuTypeIds` was set to
+   `["NVIDIA L4", "NVIDIA A40", "NVIDIA GeForce RTX 4090"]`, none of which is Blackwell.
+   Tried pinning `gpuTypeIds: ["NVIDIA L4"]` explicitly on a fresh endpoint — RunPod
+   **still assigned the same Blackwell card**. `gpuTypeIds` is not being honored as a
+   hard constraint on this account/region; Blackwell may be the only capacity actually
+   available right now.
+6. Blackwell is new enough hardware (compute capability sm_120-class) that
+   `onnxruntime-gpu` 1.29 (the version in use) very likely doesn't have compiled CUDA
+   kernels for it yet — a hardware/software version-lag problem, not a config bug this
+   codebase can fix by itself.
+
+**Stopped here deliberately** rather than keep guessing — five endpoints were created and
+torn down chasing this, and further blind iteration wasn't a good use of the session.
+**Current state**: worker runs correctly and reliably on CPU via RunPod Serverless (jobs
+complete, audio is correct); GPU acceleration does not work despite Serverless billing
+GPU-tier rates. Next steps for whoever picks this up: (a) file a RunPod support ticket
+asking why `gpuTypeIds` preferences aren't honored and whether non-Blackwell capacity can
+be guaranteed; (b) try RunPod's own prebuilt PyTorch/CUDA base image instead of a
+from-scratch pip-based CUDA setup, which may bundle Blackwell-compatible kernels; (c) or
+just accept CPU-only for now — per the ElevenLabs cost comparison, this is still ~3-6x
+cheaper per character even at CPU speed, since Kokoro-82M is small enough that raw
+compute cost stays low regardless of GPU/CPU. GPU would mainly buy lower TTFB, not lower
+cost, for a model this size.
 
 **Transport: WebSocket, not SSE/HTTP streaming.** Realtime TTS needs bidirectional
 control (client sends `stop` mid-stream for barge-in) — SSE is one-directional, and

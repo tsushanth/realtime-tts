@@ -35,14 +35,14 @@ of `RUNPOD_ENDPOINT_ID`/`RUNPOD_API_KEY`.
   then a corrupted Docker Desktop containerd DB, then network drops pushing a 10GB+ CUDA
   base image). Switched to a slim Python base + explicit `nvidia-*-cu12` pip packages
   instead of a full CUDA image; GHA builds/pushes reliably in under a minute.
-- **GPU status: partially verified, not fully resolved.** See DECISIONS.md. First deploy
-  silently ran on CPU despite being a "GPU" worker (`onnxruntime-gpu` doesn't pull CUDA
-  libs via pip automatically — a wrong assumption baked into an earlier version of this
-  file). Fixed the library wiring; a direct RunPod test afterward measured RTF~2.0x, but
-  a run minutes later through the full gateway pipeline measured RTF~0.52x on the same
-  endpoint — inconsistent, likely tied to the endpoint's 10s idle timeout recycling
-  workers faster than CUDA reliably initializes on cold start. Needs more measurement
-  before trusting GPU numbers here.
+- **GPU status: CONFIRMED not working, root cause identified.** See DECISIONS.md for the
+  full investigation. Bottom line: this RunPod account/region is handing out an NVIDIA
+  RTX PRO 6000 Blackwell GPU regardless of the `gpuTypeIds` requested (tried restricting
+  to L4-only explicitly — still got Blackwell), and `onnxruntime-gpu` 1.29 doesn't have
+  compiled kernels for that hardware yet. Confirmed directly via `nvidia-smi` (GPU is
+  attached) and `InferenceSession.get_providers()` (only CPUExecutionProvider active) —
+  not inferred from timing. The worker runs correctly and reliably, just on CPU, while
+  RunPod bills GPU-tier rates. Live endpoint currently pointed at: `u4me5box1h735i`.
 - **Harness**: real, run both locally (against `worker/server.py` on CPU) and against the
   live Fly→RunPod path.
   - Local CPU, concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x — **PASS**
