@@ -1,37 +1,94 @@
 // Realtime TTS gateway: terminates client WebSockets on Fly, proxies each session 1:1 to
-// a GPU inference worker (RunPod, or the local worker/server.py during dev). Kept
-// deliberately thin — no batching, no session multiplexing — so it adds near-zero
-// latency on top of the worker's own TTFB. See ../DECISIONS.md.
+// a GPU inference worker. Three backend modes, selected by env vars:
+//   GATEWAY_MODE=auto       -> pod-manager.js auto-provisions/tears-down a RunPod Pod on
+//                              real traffic, requires a valid API key per connection
+//   RUNPOD_ENDPOINT_ID set  -> RunPod Serverless (runpod-adapter.js), CPU-only fallback,
+//                              no auth (internal/manual use only)
+//   otherwise                -> static WORKER_WS_URL (local dev against worker/server.py)
+// See ../DECISIONS.md.
 import { WebSocketServer, WebSocket } from "ws";
 import http from "node:http";
+import { URL } from "node:url";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
+import * as podManager from "./pod-manager.js";
+import * as keys from "./keys.js";
 
 const PORT = process.env.PORT || 8080;
 const WORKER_URL = process.env.WORKER_WS_URL || "ws://127.0.0.1:8765";
-const USE_RUNPOD = runpodConfigured();
+const AUTO_MODE = process.env.GATEWAY_MODE === "auto";
+const USE_RUNPOD = !AUTO_MODE && runpodConfigured();
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
-const server = http.createServer((req, res) => {
-  if (req.url === "/health") {
+function requireAdmin(req, res) {
+  const auth = req.headers["authorization"] || "";
+  if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unauthorized" }));
+    return false;
+  }
+  return true;
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => resolve(body));
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, "http://x");
+
+  if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({
-      status: "ok",
-      backend: USE_RUNPOD ? "runpod" : "direct-ws",
-      worker: USE_RUNPOD ? process.env.RUNPOD_ENDPOINT_ID : WORKER_URL,
-    }));
+    if (AUTO_MODE) {
+      res.end(JSON.stringify({ status: "ok", backend: "auto", ...podManager.getState() }));
+    } else {
+      res.end(JSON.stringify({
+        status: "ok",
+        backend: USE_RUNPOD ? "runpod" : "direct-ws",
+        worker: USE_RUNPOD ? process.env.RUNPOD_ENDPOINT_ID : WORKER_URL,
+      }));
+    }
     return;
   }
+
+  if (url.pathname === "/admin/keys" && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    const { label } = body ? JSON.parse(body) : {};
+    const key = keys.issueKey(label);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ key }));
+    return;
+  }
+
+  if (url.pathname === "/admin/keys" && req.method === "GET") {
+    if (!requireAdmin(req, res)) return;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(keys.listKeys()));
+    return;
+  }
+
+  if (url.pathname === "/admin/keys" && req.method === "DELETE") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    const { key } = body ? JSON.parse(body) : {};
+    const ok = keys.revokeKey(key);
+    res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ revoked: ok }));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
 
 const wss = new WebSocketServer({ server, path: "/tts" });
 
-wss.on("connection", (client) => {
-  if (USE_RUNPOD) {
-    handleClientOverRunpod(client);
-    return;
-  }
-  const worker = new WebSocket(WORKER_URL);
+function proxyToWorker(client, workerUrl) {
+  const worker = new WebSocket(workerUrl);
   let workerOpen = false;
   const pending = [];
 
@@ -39,36 +96,75 @@ wss.on("connection", (client) => {
     workerOpen = true;
     for (const frame of pending.splice(0)) worker.send(frame);
   });
-
   worker.on("message", (data, isBinary) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
   });
-
   worker.on("error", (err) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ type: "error", message: `worker: ${err.message}` }));
     }
   });
-
   worker.on("close", () => {
     if (client.readyState === WebSocket.OPEN) client.close();
   });
-
   client.on("message", (data, isBinary) => {
     if (workerOpen) worker.send(data, { binary: isBinary });
     else pending.push(data);
   });
-
   client.on("close", () => {
     if (worker.readyState === WebSocket.OPEN || worker.readyState === WebSocket.CONNECTING) {
       worker.close();
     }
   });
-
   client.on("error", () => worker.close());
+}
+
+wss.on("connection", async (client, req) => {
+  if (AUTO_MODE) {
+    const url = new URL(req.url, "http://x");
+    const headerKey = (req.headers["authorization"] || "").replace(/^Bearer /, "");
+    const key = headerKey || url.searchParams.get("key");
+    if (!keys.isValidKey(key)) {
+      client.send(JSON.stringify({ type: "error", message: "invalid or missing API key" }));
+      client.close();
+      return;
+    }
+
+    const status = podManager.touchAndGetStatus();
+    if (status.state === "ready") {
+      proxyToWorker(client, status.workerUrl);
+      return;
+    }
+
+    // Upfront about latency, not silent: first request after idle can take minutes
+    // while the GPU pod boots (observed 90s-280s in testing) — tell the client instead
+    // of just hanging.
+    client.send(JSON.stringify({
+      type: "status",
+      state: "provisioning",
+      message: "GPU worker is starting — this can take up to 5 minutes on the first request after idle. Please wait.",
+    }));
+    try {
+      const ready = await podManager.waitUntilReady();
+      if (ready.state !== "ready") throw new Error("pod failed to become ready");
+      client.send(JSON.stringify({ type: "status", state: "ready" }));
+      proxyToWorker(client, ready.workerUrl);
+    } catch (err) {
+      client.send(JSON.stringify({ type: "error", message: `provisioning failed: ${err.message}` }));
+      client.close();
+    }
+    return;
+  }
+
+  if (USE_RUNPOD) {
+    handleClientOverRunpod(client);
+    return;
+  }
+
+  proxyToWorker(client, WORKER_URL);
 });
 
 server.listen(PORT, () => {
-  const target = USE_RUNPOD ? `runpod:${process.env.RUNPOD_ENDPOINT_ID}` : WORKER_URL;
+  const target = AUTO_MODE ? "auto (pod-manager)" : USE_RUNPOD ? `runpod:${process.env.RUNPOD_ENDPOINT_ID}` : WORKER_URL;
   console.log(`gateway listening on :${PORT}, backend=${target}`);
 });

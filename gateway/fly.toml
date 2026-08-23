@@ -13,7 +13,14 @@ primary_region = "sjc"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  # Kept warm (was 0) so the pod-idle-teardown timer and in-memory GPU pod state
+  # actually run continuously — letting the gateway itself scale to zero would mean
+  # nothing ever notices the GPU pod has gone idle and needs tearing down.
+  min_machines_running = 1
+
+[[mounts]]
+  source = "realtime_tts_data"
+  destination = "/data"
 
 [[vm]]
   cpu_kind = "shared"
