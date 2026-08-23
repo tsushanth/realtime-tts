@@ -58,9 +58,12 @@ const server = http.createServer(async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const body = await readBody(req);
     const { label } = body ? JSON.parse(body) : {};
-    const key = keys.issueKey(label);
+    const { id, key } = keys.issueKey(label);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ key }));
+    // `key` is the raw secret, returned ONLY here — callers must persist it
+    // themselves (or discard it and let the end user see it once); `id` is safe
+    // to store long-term and is what DELETE takes for revocation.
+    res.end(JSON.stringify({ id, key }));
     return;
   }
 
@@ -74,8 +77,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/admin/keys" && req.method === "DELETE") {
     if (!requireAdmin(req, res)) return;
     const body = await readBody(req);
-    const { key } = body ? JSON.parse(body) : {};
-    const ok = keys.revokeKey(key);
+    const { id } = body ? JSON.parse(body) : {};
+    const ok = keys.revokeKeyById(id);
     res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify({ revoked: ok }));
     return;

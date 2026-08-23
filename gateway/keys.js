@@ -2,6 +2,10 @@
 // manual issuance at low volume; revisit (real DB, hashed keys, rate limits per key)
 // before this is a self-serve signup flow. Keys are stored in PLAINTEXT — acceptable
 // only because issuance is manual/trusted for now. Hash them before self-serve signup.
+//
+// Each entry has a stable `id` separate from the raw `key` so callers (e.g. the
+// ReadAloud backend) can store the id for later revocation without ever persisting
+// the raw secret themselves — the raw key is only ever returned once, at issuance.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -29,16 +33,17 @@ export function isValidKey(key) {
 }
 
 export function issueKey(label) {
+  const id = crypto.randomUUID();
   const key = `rtts_${crypto.randomBytes(24).toString("hex")}`;
   const keys = load();
-  keys.push({ key, label: label || "", created_at: new Date().toISOString(), revoked: false });
+  keys.push({ id, key, label: label || "", created_at: new Date().toISOString(), revoked: false });
   save(keys);
-  return key;
+  return { id, key };
 }
 
-export function revokeKey(key) {
+export function revokeKeyById(id) {
   const keys = load();
-  const entry = keys.find((k) => k.key === key);
+  const entry = keys.find((k) => k.id === id);
   if (!entry) return false;
   entry.revoked = true;
   save(keys);
@@ -46,5 +51,5 @@ export function revokeKey(key) {
 }
 
 export function listKeys() {
-  return load().map((k) => ({ ...k, key: k.key.slice(0, 10) + "…" }));
+  return load().map((k) => ({ id: k.id, label: k.label, created_at: k.created_at, revoked: k.revoked, key_preview: k.key.slice(0, 10) + "…" }));
 }
