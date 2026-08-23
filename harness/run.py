@@ -46,7 +46,7 @@ def init_db():
 
 async def one_session(endpoint, text, session_id):
     result = {"ttfb_ms": None, "e2e_ms": None, "rtf": None, "jitter_ms": None,
-              "success": False, "error": None}
+              "success": False, "error": None, "providers": None}
     t_start = time.perf_counter()
     first_byte_t = None
     last_frame_t = None
@@ -74,6 +74,8 @@ async def one_session(endpoint, text, session_id):
                 msg = json.loads(raw)
                 if msg["type"] == "chunk_meta":
                     pending_meta = msg
+                    if msg.get("providers"):
+                        result["providers"] = msg["providers"]
                 elif msg["type"] == "done":
                     break
                 elif msg["type"] in ("error", "cancelled"):
@@ -128,6 +130,11 @@ def summarize(results, con, endpoint):
     rtfs = [r["rtf"] for r in results if r["success"] and r["rtf"]]
     print(f"  TTFB p50={p50:.0f}ms p95={p95:.0f}ms budget_p95={TTFB_P95_BUDGET_MS}ms")
     print(f"  RTF avg={statistics.mean(rtfs):.2f}x" if rtfs else "  RTF: n/a")
+    seen_providers = {tuple(r["providers"]) for r in results if r["success"] and r["providers"]}
+    if seen_providers:
+        print(f"  providers seen: {[list(p) for p in seen_providers]}")
+        if any("CUDAExecutionProvider" not in p for p in seen_providers):
+            print("  WARNING: at least one request ran WITHOUT CUDAExecutionProvider (CPU fallback)")
 
     # regression check vs rolling baseline (prior runs on this endpoint, excluding this one)
     hist = con.execute(

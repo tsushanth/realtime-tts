@@ -69,6 +69,7 @@ async def handle_client(ws):
                     "text": chunk["text"],
                     "gen_ms": chunk["gen_ms"],
                     "audio_s": chunk["audio_s"],
+                    "providers": chunk["providers"],
                 }))
                 await ws.send(to_pcm16(chunk["samples"]))
         except Exception as e:

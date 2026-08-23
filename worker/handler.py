@@ -1,11 +1,11 @@
-"""RunPod Serverless entrypoint. NOT executed in this build (no RunPod account/API key
-provisioned yet) — this is written against the documented runpod-python streaming
-generator handler API and should be treated as untested until run against a real
-RunPod endpoint. See ../README.md for deploy steps.
+"""RunPod Serverless entrypoint.
 
 Input:  {"text": "...", "voice": "af_heart", "speed": 1.0}
-Output: a stream of {"text", "gen_ms", "audio_s", "pcm16_b64", "sample_rate"} objects,
-        one per synthesized clause, terminated by RunPod's generator completion.
+Output: a stream of {"text", "gen_ms", "audio_s", "pcm16_b64", "sample_rate", "providers"}
+        objects, one per synthesized clause, terminated by RunPod's generator completion.
+        "providers" is onnxruntime's actual active execution providers for that inference
+        call — included so GPU-vs-CPU-fallback is directly observable per request instead
+        of inferred from timing (see DECISIONS.md — timing alone was misleading).
 """
 import base64
 
@@ -33,6 +33,7 @@ def handler(job):
             "audio_s": chunk["audio_s"],
             "sample_rate": SAMPLE_RATE,
             "pcm16_b64": to_pcm16_b64(chunk["samples"]),
+            "providers": chunk["providers"],
         }
 
 

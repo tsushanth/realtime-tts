@@ -46,6 +46,13 @@ def chunk_text(text, max_chars=90):
     return chunks
 
 
+def active_providers():
+    """The providers onnxruntime is actually running the session on right now — not just
+    what's available, since a provider can be 'available' per get_available_providers()
+    but still silently fail to initialize (missing .so at runtime) and fall back."""
+    return get_engine().sess.get_providers()
+
+
 def synthesize_stream(text, voice=DEFAULT_VOICE, speed=1.0):
     """Yields (pcm_f32_bytes_as_wav_chunk, chunk_meta) incrementally, one per text chunk."""
     engine = get_engine()
@@ -60,4 +67,5 @@ def synthesize_stream(text, voice=DEFAULT_VOICE, speed=1.0):
             "sample_rate": sr,
             "gen_ms": gen_ms,
             "audio_s": audio_s,
+            "providers": active_providers(),
         }

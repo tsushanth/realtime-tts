@@ -66,6 +66,7 @@ export async function handleClientOverRunpod(client) {
             text: item.text,
             gen_ms: item.gen_ms,
             audio_s: item.audio_s,
+            providers: item.providers,
           }));
           client.send(Buffer.from(item.pcm16_b64, "base64"));
         }
