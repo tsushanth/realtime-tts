@@ -2,9 +2,24 @@
 
 **Model: Kokoro-82M (via `kokoro-onnx`).** Already proven in this stack's async TTS
 (listenai-tts-worker: ~1.75x realtime on CPU). ONNX runtime means no PyTorch/CUDA
-build headaches and it runs fine on CPU for dev, which mattered here since RunPod
-wasn't provisioned. `onnxruntime-gpu` picks up CUDA automatically on RunPod without
-code changes.
+build headaches and it runs fine on CPU for dev.
+
+**GPU setup: `onnxruntime-gpu` does NOT pull CUDA runtime libs via pip automatically.**
+An earlier version of this file claimed it did — wrong, and it cost real debugging time.
+The worker ran on RunPod "successfully" (jobs completed, audio came back) while silently
+falling back to CPU: `ort.get_available_providers()` inside the built image returned only
+`CPUExecutionProvider`, and a real measured run showed RTF=0.64x — *worse* than the local
+CPU baseline (2.4-2.77x). A serverless GPU worker that quietly runs on CPU is a failure
+mode the harness's TTFB budget alone won't obviously flag as "GPU is broken" — it just
+looks like a slow GPU. Fix: explicit `nvidia-cudnn-cu12`/`nvidia-cublas-cu12`/etc. pip
+packages plus `LD_LIBRARY_PATH` pointed at their `.so` files (see worker/Dockerfile).
+After the fix, one direct RunPod test measured RTF~2.0x; a run through the full gateway
+pipeline measured RTF~0.52x on the same endpoint minutes later — inconsistent, likely
+because `idleTimeout: 10s` recycles workers fast and CUDA init may not succeed
+deterministically on every cold start. **Not fully resolved** — the harness's regression
+detection is exactly the mechanism that should keep catching this if it recurs; treat any
+RTF reading near or below 1x on this "GPU" endpoint as a signal to re-check
+`get_available_providers()` inside the live container, not as normal variance.
 
 **Transport: WebSocket, not SSE/HTTP streaming.** Realtime TTS needs bidirectional
 control (client sends `stop` mid-stream for barge-in) — SSE is one-directional, and

@@ -1,17 +1,18 @@
 # realtime-tts
 
 Standalone realtime (streaming, low-latency, barge-in capable) TTS service.
-Gateway on Fly.io, GPU inference worker designed for RunPod. See `DECISIONS.md` for the
-reasoning behind each choice.
+Gateway on Fly.io, GPU inference worker on RunPod Serverless. See `DECISIONS.md` for the
+reasoning behind each choice — including a real bug (GPU silently falling back to CPU)
+found and partially fixed during this build.
 
 ## Architecture
 
 ```
-client (WS) --> gateway (Fly, server.js, dumb proxy) --> worker (RunPod GPU or local, Kokoro-82M)
-                     |
-                 /health
+client (WS) --> gateway (Fly, server.js) --> RunPod Serverless (HTTP job API, GPU)
+                     |                              |
+                 /health                    worker/handler.py (Kokoro-82M)
 
-Protocol (client <-> worker, proxied verbatim by the gateway):
+Client-facing protocol (same whether the gateway talks to RunPod or a direct-WS worker):
   -> {"type":"synthesize","text":"...","voice":"af_heart","speed":1.0}
   -> {"type":"stop"}                          # barge-in / cancel
   <- {"type":"chunk_meta","text":..,"gen_ms":..,"audio_s":..}
@@ -19,21 +20,41 @@ Protocol (client <-> worker, proxied verbatim by the gateway):
   <- {"type":"done"} | {"type":"cancelled"} | {"type":"error","message":".."}
 ```
 
-## Current real status (as of this build)
+`gateway/runpod-adapter.js` translates RunPod's HTTP job API (POST /run, poll /stream,
+POST /cancel) to this wire protocol. `gateway/server.js` also supports talking directly
+to a WS-speaking worker (`worker/server.py`) for local dev — set `WORKER_WS_URL` instead
+of `RUNPOD_ENDPOINT_ID`/`RUNPOD_API_KEY`.
 
-- **Worker**: implemented, tested, and RUNNING locally on CPU (Kokoro-82M via
-  `kokoro-onnx`). Not deployed to RunPod — no RunPod account/API key exists yet.
-- **Gateway**: implemented (`gateway/server.js`), NOT deployed to Fly in this session
-  (a valid `WORKER_WS_URL` needs to point at a real worker first — pointing it at
-  `localhost` from Fly's network doesn't work; deploy the worker to RunPod first, then
-  the gateway).
-- **Harness**: implemented and actually run end-to-end against the local worker. Real
-  numbers, from `harness/last_local_run.txt`:
-  - concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x — **PASS**
-  - concurrency=4: TTFB p50=1552ms p95=4106ms, RTF=2.40x — **FAIL** (single CPU process
-    serializes synthesis under load; see DECISIONS.md)
+## Current real status
 
-## Run the worker locally
+- **Live**: `https://realtime-tts-gateway.fly.dev` (Fly), wired to a real RunPod
+  Serverless endpoint running the Kokoro-82M worker. Both were actually deployed and
+  tested end-to-end in this build, not just written.
+- **Image**: `ghcr.io/tsushanth/realtime-tts-worker:latest`, built via GitHub Actions
+  (`.github/workflows/build-worker.yml`) — local Docker builds kept failing (disk space,
+  then a corrupted Docker Desktop containerd DB, then network drops pushing a 10GB+ CUDA
+  base image). Switched to a slim Python base + explicit `nvidia-*-cu12` pip packages
+  instead of a full CUDA image; GHA builds/pushes reliably in under a minute.
+- **GPU status: partially verified, not fully resolved.** See DECISIONS.md. First deploy
+  silently ran on CPU despite being a "GPU" worker (`onnxruntime-gpu` doesn't pull CUDA
+  libs via pip automatically — a wrong assumption baked into an earlier version of this
+  file). Fixed the library wiring; a direct RunPod test afterward measured RTF~2.0x, but
+  a run minutes later through the full gateway pipeline measured RTF~0.52x on the same
+  endpoint — inconsistent, likely tied to the endpoint's 10s idle timeout recycling
+  workers faster than CUDA reliably initializes on cold start. Needs more measurement
+  before trusting GPU numbers here.
+- **Harness**: real, run both locally (against `worker/server.py` on CPU) and against the
+  live Fly→RunPod path.
+  - Local CPU, concurrency=1: TTFB p50=502ms p95=502ms, RTF=2.77x — **PASS**
+  - Local CPU, concurrency=4: TTFB p50=1552ms p95=4106ms, RTF=2.40x — **FAIL** (single
+    process serializes synthesis under load — see DECISIONS.md)
+  - Live Fly→RunPod, concurrency=1: TTFB ~3.4-4.0s (dominated by RunPod's HTTP job
+    polling + cold-start variance, not raw synthesis) — well outside the CPU-tuned
+    1200ms budget in `harness/run.py`. That budget needs to be re-tuned for the RunPod
+    HTTP path specifically (it has fundamentally different latency characteristics than
+    a direct WS connection) — not done yet.
+
+## Run the worker locally (direct WS, no RunPod)
 
 ```bash
 cd worker
@@ -50,52 +71,61 @@ python server.py   # ws://0.0.0.0:8765
 ## Run the harness
 
 ```bash
-cd harness
-../worker/.venv/bin/python run.py --endpoint ws://127.0.0.1:8765 --concurrency 4
+# against local direct-WS worker:
+worker/.venv/bin/python harness/run.py --endpoint ws://127.0.0.1:8765 --concurrency 4
+
+# against the live gateway (RunPod-backed):
+worker/.venv/bin/python harness/run.py --endpoint wss://realtime-tts-gateway.fly.dev/tts --concurrency 1
 ```
 
 Results accumulate in `harness/history.sqlite3`; regression detection compares each
 run's p50 against the rolling baseline of the last 100 successful runs on that endpoint.
+The 1200ms TTFB budget in `run.py` was tuned for the CPU baseline — it will (correctly)
+fail against the RunPod path until that path's own budget is set.
 
 For continuous running (cron / a scheduled Fly Machine / GH Actions cron):
 
 ```bash
-ENDPOINT=wss://realtime-tts-gateway.fly.dev/tts CONCURRENCY=8 INTERVAL=300 ./loop.sh
-# or a single pass for cron:
-ONE_SHOT=1 ENDPOINT=... ./loop.sh
+ENDPOINT=wss://realtime-tts-gateway.fly.dev/tts CONCURRENCY=4 INTERVAL=300 ./harness/loop.sh
+ONE_SHOT=1 ENDPOINT=... ./harness/loop.sh   # single pass for cron
 ```
 
-## Deploy the gateway to Fly
+## Redeploying
 
 ```bash
-cd gateway
-flyctl launch --copy-config --name realtime-tts-gateway   # or flyctl deploy if app exists
-flyctl secrets set WORKER_WS_URL=wss://<your-runpod-endpoint>
+# worker image (triggers automatically on push to worker/**):
+git push
+
+# manually re-run the build:
+gh workflow run build-worker.yml -R tsushanth/realtime-tts
+
+# gateway:
+cd gateway && flyctl deploy -a realtime-tts-gateway
+
+# point the gateway at a different RunPod endpoint:
+flyctl secrets set -a realtime-tts-gateway RUNPOD_ENDPOINT_ID=<id> RUNPOD_API_KEY=<key>
 ```
 
-## Deploy the worker to RunPod (NOT done — needs your API key)
-
-1. Get a RunPod account + API key: https://www.runpod.io/console/user/settings
-2. `export RUNPOD_API_KEY=...` locally, install the RunPod CLI or use their web console
-3. Build and push `worker/Dockerfile` to a registry RunPod can pull from (Docker Hub, GHCR)
-4. Create a RunPod Serverless endpoint pointing at that image, GPU tier of your choice
-   (a T4 or L4 is plenty for Kokoro-82M — it's a small model)
-5. RunPod gives you an endpoint URL — put it in the gateway's `WORKER_WS_URL` Fly secret
-   (note: `handler.py` uses RunPod's request/response streaming API, not raw WebSockets —
-   the gateway's `WORKER_WS_URL` proxy assumes a WS-speaking worker like `worker/server.py`;
-   if you deploy via RunPod Serverless's HTTP job API instead, the gateway needs a small
-   adapter to translate WS <-> RunPod's HTTP polling/streaming — not built here, flagged
-   as the next real piece of work)
+RunPod template/endpoint were created via `rest.runpod.io/v1/templates` and
+`/v1/endpoints` (see git history for the exact calls). Current live endpoint:
+`jyegeieycq613x`, template `r7cttxeun9`, image `ghcr.io/tsushanth/realtime-tts-worker:latest`.
 
 ## Known limitations
 
-- Single-process worker serializes concurrent synthesis (see DECISIONS.md) — needs
-  either RunPod's own concurrency handling per-endpoint or multiple worker replicas
-  behind the gateway (not built — gateway currently proxies to one fixed WORKER_WS_URL).
-- Gateway <-> RunPod Serverless protocol mismatch noted above — needs a small adapter
-  layer before this can go live against a real RunPod endpoint.
+- **GPU acceleration is unverified/inconsistent** — see "Current real status" above and
+  DECISIONS.md. Don't trust RTF numbers from the RunPod path yet without re-checking
+  `ort.get_available_providers()` inside a live worker.
+- Single-process worker serializes concurrent synthesis on the direct-WS path (see
+  DECISIONS.md). RunPod Serverless handles its own worker scaling (`workersMax`), but
+  that hasn't been load-tested past concurrency=1 through the full pipeline.
+- The harness's 1200ms TTFB budget is CPU-tuned and needs a separate, RunPod-specific
+  budget — the HTTP job API's polling overhead means it will never hit CPU-direct-WS
+  latency even with a fast GPU.
 - No auth on the gateway WS endpoint — add before exposing publicly.
 - "Continuous improvement" loop is latency/regression detection only. There is no
   automated quality (MOS/naturalness) scoring — that needs either human raters or a
   paid judge model, neither wired up here, and deliberately not added without discussing
   the added spend.
+- `idleTimeout: 10s` on the RunPod endpoint means workers recycle fast between requests,
+  which is cheap but may be contributing to the CUDA-init inconsistency noted above —
+  worth testing with a longer idle timeout or `workersMin: 1` to keep one warm.
