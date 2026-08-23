@@ -1,10 +1,11 @@
 # realtime-tts
 
 Standalone realtime (streaming, low-latency, barge-in capable) TTS service.
-Gateway on Fly.io, GPU inference on an always-on RunPod Pod. See `DECISIONS.md` for the
-full reasoning and debugging trail — several real, non-obvious bugs were found and fixed
-(a RunPod Serverless dispatch-latency dead end, an onnxruntime/onnxruntime-gpu package
-collision, a CUDA version mismatch, a missing CUDA library) before landing here.
+Gateway on Fly.io, GPU inference on a RunPod Pod that's provisioned on demand rather
+than run continuously — see "API keys and auto-provisioning" below. See `DECISIONS.md`
+for the full reasoning and debugging trail — several real, non-obvious bugs were found
+and fixed (a RunPod Serverless dispatch-latency dead end, an onnxruntime/onnxruntime-gpu
+package collision, a CUDA version mismatch, a missing CUDA library) before landing here.
 
 ## Architecture
 
@@ -59,6 +60,56 @@ Client-facing protocol:
   in DECISIONS.md. Budget in `harness/run.py` set to 1500ms p95 to match the GPU-on
   reality; the CPU-Serverless fallback (currently live) won't meet it — that's expected
   when the harness is pointed at the cheap idle state rather than the GPU pod.
+
+## API keys and auto-provisioning
+
+The gateway supports a third mode (`GATEWAY_MODE=auto`, currently **unset in production**
+— see "Current real status") that gates GPU access behind API keys and auto-manages the
+Pod lifecycle instead of requiring the manual `scripts/gpu-pod-*.sh` calls:
+
+- Every WS connection must include a valid key: `wss://.../tts?key=<key>` (query param —
+  browsers' native WebSocket API can't set custom headers, so this is the only option
+  that works from a browser client) or `Authorization: Bearer <key>` (for server-to-server
+  callers).
+- On the **first** authenticated request after the pod is off, the gateway auto-creates
+  it (`gateway/pod-manager.js`) and immediately sends the client
+  `{"type":"status","state":"provisioning","message":"..."}` — **being upfront that this
+  can take up to 5 minutes**, rather than leaving the connection hanging silently. Once
+  ready, `{"type":"status","state":"ready"}` is sent and audio streaming proceeds
+  normally.
+- After **15 minutes** of no requests (`POD_IDLE_TIMEOUT_MS`), the pod is automatically
+  torn down to stop billing.
+- Keys are issued manually for now via an admin-only HTTP endpoint (no self-serve signup
+  flow yet — that's a separate, unbuilt piece):
+  ```bash
+  curl -X POST https://realtime-tts-gateway.fly.dev/admin/keys \
+    -H "Authorization: Bearer $ADMIN_SECRET" -d '{"label":"customer name or email"}'
+  # -> {"key":"rtts_..."}
+  curl https://realtime-tts-gateway.fly.dev/admin/keys -H "Authorization: Bearer $ADMIN_SECRET"   # list
+  curl -X DELETE https://realtime-tts-gateway.fly.dev/admin/keys \
+    -H "Authorization: Bearer $ADMIN_SECRET" -d '{"key":"rtts_..."}'                              # revoke
+  ```
+  `ADMIN_SECRET` is a Fly secret, generated during this build — it is NOT in this repo or
+  git history; retrieve it from wherever it was saved when set, or rotate it with
+  `flyctl secrets set -a realtime-tts-gateway ADMIN_SECRET=<new value>` (this invalidates
+  the old one immediately, no grace period).
+- Keys are stored in plaintext in a JSON file (`gateway/keys.js`) on a Fly volume
+  (`realtime_tts_data`, mounted at `/data`) — acceptable only because issuance is manual/
+  trusted right now. **Hash them before any self-serve signup flow exists.**
+
+**To actually turn this on**: `flyctl secrets set -a realtime-tts-gateway GATEWAY_MODE=auto`.
+This changes live behavior immediately — the gateway will stop accepting unauthenticated
+connections and start auto-provisioning on the first valid-keyed request. Don't flip this
+until there's an actual reason to (a real customer, a real key to issue) — until then the
+service should stay on the CPU Serverless fallback, per explicit direction from this
+build's requester ("turn it on when there is traffic not before").
+
+**Not built yet, and worth being explicit about the gap**: a self-serve signup page (was
+going to be readaloudai.org — verify that's actually where this product's marketing site
+should live before building on it, since `readaloud.org` — note the different TLD — is
+an unrelated third-party literacy nonprofit, confirmed by fetching it during this build),
+billing/plan tiers, and Stripe integration. Those are separate, sizable pieces of work
+not started here.
 
 ## Run the worker locally (direct WS, no RunPod)
 
