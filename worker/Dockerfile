@@ -1,6 +1,11 @@
-# RunPod Serverless GPU worker. Base image provides CUDA + Python; onnxruntime-gpu picks
-# up the GPU automatically when available (falls back to CPU otherwise).
-FROM runpod/base:0.6.2-cuda12.1.0
+# RunPod Serverless GPU worker. onnxruntime-gpu 1.17+ pulls its own CUDA 12 runtime libs
+# via pip (nvidia-cublas-cu12, nvidia-cudnn-cu12, etc.) — RunPod's host already provides
+# the GPU driver, so a full CUDA base image (10+GB, blew out even GitHub Actions' runner
+# disk) isn't needed. A slim Python base is enough and keeps the image under ~1GB.
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl espeak-ng \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
