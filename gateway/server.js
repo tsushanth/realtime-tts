@@ -90,10 +90,15 @@ const server = http.createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server, path: "/tts" });
 
-function proxyToWorker(client, workerUrl) {
+function proxyToWorker(client, workerUrl, bufferedFrames = []) {
   const worker = new WebSocket(workerUrl);
   let workerOpen = false;
-  const pending = [];
+  // Frames the client already sent while we were waiting on the pod (see the
+  // bufferListener below) — replayed here so the caller's very first message
+  // (typically sent immediately on open, before any "ready" handshake) isn't
+  // silently lost. No `message` listener was attached to `client` until now,
+  // so anything sent earlier had nowhere to go.
+  const pending = bufferedFrames.map((f) => f.data);
 
   worker.on("open", () => {
     workerOpen = true;
@@ -147,12 +152,22 @@ wss.on("connection", async (client, req) => {
       state: "provisioning",
       message: "GPU worker is starting — this can take up to 5 minutes on the first request after idle. Please wait.",
     }));
+    // A client that sends its synthesize request immediately on open (the
+    // documented, expected pattern — e.g. call-loop-poc never waits for a
+    // handshake) would otherwise have that message dropped: nothing is
+    // listening for it until proxyToWorker() attaches its own listener after
+    // the pod is ready. Buffer here, replay there.
+    const bufferedFrames = [];
+    const bufferListener = (data, isBinary) => bufferedFrames.push({ data, isBinary });
+    client.on("message", bufferListener);
     try {
       const ready = await podManager.waitUntilReady();
       if (ready.state !== "ready") throw new Error("pod failed to become ready");
+      client.removeListener("message", bufferListener);
       client.send(JSON.stringify({ type: "status", state: "ready" }));
-      proxyToWorker(client, ready.workerUrl);
+      proxyToWorker(client, ready.workerUrl, bufferedFrames);
     } catch (err) {
+      client.removeListener("message", bufferListener);
       client.send(JSON.stringify({ type: "error", message: `provisioning failed: ${err.message}` }));
       client.close();
     }
