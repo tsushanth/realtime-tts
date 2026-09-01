@@ -77,6 +77,55 @@ async function deletePod(id) {
   }).catch(() => {}); // best-effort — don't let a delete failure wedge state
 }
 
+async function listOurPods() {
+  const pods = await runpodFetch("https://rest.runpod.io/v1/pods");
+  return pods.filter((p) => p.name === "realtime-tts-pod" && p.desiredStatus === "RUNNING");
+}
+
+// Runs once at process startup. In-process state (podId/workerUrl/idle watchdog) does
+// NOT survive a gateway restart, but a real RunPod Pod we created before the restart
+// absolutely does — and keeps billing. Without this, every deploy/crash/Fly restart
+// orphans any pod that was running at the time: nothing tracks it, nothing tears it
+// down, it bills forever. Confirmed live 2026-09-01: a `flyctl deploy` orphaned a pod
+// mid-test, left running and billing until manually found and deleted via RunPod's own
+// API. On boot, adopt exactly one existing pod (starting its idle watchdog immediately,
+// so if nothing actually uses it it's torn down within IDLE_TIMEOUT_MS same as normal)
+// and delete any extras as a safety net.
+export async function reconcileOnStartup() {
+  if (!RUNPOD_KEY) return;
+  let existing;
+  try {
+    existing = await listOurPods();
+  } catch (err) {
+    console.error("pod reconciliation: failed to list pods, skipping:", err.message);
+    return;
+  }
+  if (existing.length === 0) return;
+
+  const [adopt, ...extras] = existing;
+  for (const p of extras) {
+    console.log(`pod reconciliation: deleting extra orphaned pod ${p.id}`);
+    await deletePod(p.id);
+  }
+
+  try {
+    console.log(`pod reconciliation: adopting existing pod ${adopt.id}`);
+    podId = adopt.id;
+    workerUrl = await pollForWorkerUrl(adopt.id);
+    state = STATE.READY;
+    // Treat it as freshly idle rather than assuming recent traffic — if nothing
+    // claims it within IDLE_TIMEOUT_MS, the watchdog tears it down as normal.
+    lastRequestAt = Date.now();
+    startIdleWatchdog();
+  } catch (err) {
+    console.error(`pod reconciliation: adopted pod ${adopt.id} unreachable, deleting:`, err.message);
+    await deletePod(adopt.id);
+    podId = null;
+    workerUrl = null;
+    state = STATE.OFF;
+  }
+}
+
 // Called on every authenticated request. Returns the current status immediately;
 // if OFF, kicks off provisioning in the background (idempotent — concurrent callers
 // share the same in-flight promise) and the caller is expected to poll/wait.

@@ -182,7 +182,10 @@ wss.on("connection", async (client, req) => {
   proxyToWorker(client, WORKER_URL);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   const target = AUTO_MODE ? "auto (pod-manager)" : USE_RUNPOD ? `runpod:${process.env.RUNPOD_ENDPOINT_ID}` : WORKER_URL;
   console.log(`gateway listening on :${PORT}, backend=${target}`);
+  if (AUTO_MODE) {
+    await podManager.reconcileOnStartup();
+  }
 });
