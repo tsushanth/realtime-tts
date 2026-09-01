@@ -25,7 +25,7 @@ async function rpFetch(path, opts = {}) {
 // Handles one client WS connection end-to-end against a RunPod Serverless endpoint,
 // translating streamed handler outputs into the same {type:"chunk_meta"} + binary-frame
 // pairs worker/server.py sends, so client.js/harness code paths are identical either way.
-export async function handleClientOverRunpod(client) {
+export async function handleClientOverRunpod(client, onUsage = () => {}) {
   let cancelled = false;
   let jobId = null;
 
@@ -46,6 +46,7 @@ export async function handleClientOverRunpod(client) {
 
     if (msg.type !== "synthesize") return;
     cancelled = false;
+    if (typeof msg.text === "string") onUsage(msg.text.length);
 
     try {
       const started = await rpFetch("/run", {

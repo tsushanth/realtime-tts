@@ -3,7 +3,8 @@
 //   GATEWAY_MODE=auto       -> pod-manager.js auto-provisions/tears-down a RunPod Pod on
 //                              real traffic, requires a valid API key per connection
 //   RUNPOD_ENDPOINT_ID set  -> RunPod Serverless (runpod-adapter.js), CPU-only fallback,
-//                              no auth (internal/manual use only)
+//                              requires a valid, billing-enabled API key per connection
+//                              (same key store as AUTO_MODE)
 //   otherwise                -> static WORKER_WS_URL (local dev against worker/server.py)
 // See ../DECISIONS.md.
 import { WebSocketServer, WebSocket } from "ws";
@@ -84,13 +85,47 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/admin/keys/billing" && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    const { id, enabled } = body ? JSON.parse(body) : {};
+    const ok = keys.setBillingEnabledById(id, enabled);
+    res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ billingEnabled: ok ? !!enabled : undefined }));
+    return;
+  }
+
+  // Called by the backend's usage-reporting job. Returns accumulated character usage
+  // per key since the last call and resets the counters — the backend is responsible
+  // for translating this into Stripe usage records, so a failed report on the backend
+  // side would lose that batch. Acceptable for now at this volume; revisit with a
+  // durable outbox if usage volume/reliability requirements grow.
+  if (url.pathname === "/admin/usage/drain" && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(keys.drainUsage()));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
 
 const wss = new WebSocketServer({ server, path: "/tts" });
 
-function proxyToWorker(client, workerUrl, bufferedFrames = []) {
+function recordUsageFromFrame(key, data, isBinary) {
+  if (!key || isBinary) return;
+  try {
+    const msg = JSON.parse(data.toString());
+    if (msg.type === "synthesize" && typeof msg.text === "string") {
+      keys.recordUsage(key, msg.text.length);
+    }
+  } catch {
+    // not JSON / not a synthesize frame — nothing to meter
+  }
+}
+
+function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null) {
   const worker = new WebSocket(workerUrl);
   let workerOpen = false;
   // Frames the client already sent while we were waiting on the pod (see the
@@ -99,6 +134,7 @@ function proxyToWorker(client, workerUrl, bufferedFrames = []) {
   // silently lost. No `message` listener was attached to `client` until now,
   // so anything sent earlier had nowhere to go.
   const pending = bufferedFrames.map((f) => f.data);
+  for (const f of bufferedFrames) recordUsageFromFrame(key, f.data, f.isBinary);
 
   worker.on("open", () => {
     workerOpen = true;
@@ -116,6 +152,7 @@ function proxyToWorker(client, workerUrl, bufferedFrames = []) {
     if (client.readyState === WebSocket.OPEN) client.close();
   });
   client.on("message", (data, isBinary) => {
+    recordUsageFromFrame(key, data, isBinary);
     if (workerOpen) worker.send(data, { binary: isBinary });
     else pending.push(data);
   });
@@ -138,9 +175,18 @@ wss.on("connection", async (client, req) => {
       return;
     }
 
+    if (!keys.isBillingEnabled(key)) {
+      client.send(JSON.stringify({
+        type: "error",
+        message: "This key has no payment method on file. Add one in your dashboard to use the API.",
+      }));
+      client.close();
+      return;
+    }
+
     const status = podManager.touchAndGetStatus();
     if (status.state === "ready") {
-      proxyToWorker(client, status.workerUrl);
+      proxyToWorker(client, status.workerUrl, [], key);
       return;
     }
 
@@ -165,7 +211,7 @@ wss.on("connection", async (client, req) => {
       if (ready.state !== "ready") throw new Error("pod failed to become ready");
       client.removeListener("message", bufferListener);
       client.send(JSON.stringify({ type: "status", state: "ready" }));
-      proxyToWorker(client, ready.workerUrl, bufferedFrames);
+      proxyToWorker(client, ready.workerUrl, bufferedFrames, key);
     } catch (err) {
       client.removeListener("message", bufferListener);
       client.send(JSON.stringify({ type: "error", message: `provisioning failed: ${err.message}` }));
@@ -175,7 +221,23 @@ wss.on("connection", async (client, req) => {
   }
 
   if (USE_RUNPOD) {
-    handleClientOverRunpod(client);
+    const url = new URL(req.url, "http://x");
+    const headerKey = (req.headers["authorization"] || "").replace(/^Bearer /, "");
+    const key = headerKey || url.searchParams.get("key");
+    if (!keys.isValidKey(key)) {
+      client.send(JSON.stringify({ type: "error", message: "invalid or missing API key" }));
+      client.close();
+      return;
+    }
+    if (!keys.isBillingEnabled(key)) {
+      client.send(JSON.stringify({
+        type: "error",
+        message: "This key has no payment method on file. Add one in your dashboard to use the API.",
+      }));
+      client.close();
+      return;
+    }
+    handleClientOverRunpod(client, (chars) => keys.recordUsage(key, chars));
     return;
   }
 
