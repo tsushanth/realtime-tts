@@ -8,7 +8,13 @@ const TEMPLATE_ID = process.env.RUNPOD_POD_TEMPLATE_ID || "r7cttxeun9";
 const POD_IMAGE = "ghcr.io/tsushanth/realtime-tts-worker:pod";
 const IDLE_TIMEOUT_MS = parseInt(process.env.POD_IDLE_TIMEOUT_MS || "900000", 10); // 15 min
 const BOOT_POLL_INTERVAL_MS = 8000;
-const BOOT_TIMEOUT_MS = 6 * 60 * 1000; // observed boot times ranged ~90s-280s
+// Was 6 min ("observed boot times ranged ~90s-280s") — too tight. Confirmed
+// live 2026-09-01: a cold RunPod host with no cached layers for this image
+// took ~5.5 min just to pull+boot before the container ever came up, so the
+// gateway gave up and deleted the pod right as it was finishing — a false
+// "provisioning failed", not an actual failure. The 90-280s figure was
+// evidently measured on hosts that already had the image cached.
+const BOOT_TIMEOUT_MS = 10 * 60 * 1000;
 
 const STATE = { OFF: "off", PROVISIONING: "provisioning", READY: "ready", ERROR: "error" };
 
