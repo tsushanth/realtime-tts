@@ -1,0 +1,23 @@
+app = "call-loop-poc"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8090"
+  TTS_GATEWAY_WS_URL = "wss://realtime-tts-gateway.fly.dev/tts"
+
+[http_service]
+  internal_port = 8090
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # A phone call is live traffic on a WebSocket — scaling to zero mid-call
+  # would drop it, and a cold start on a fresh inbound call risks missing
+  # Twilio's own webhook-response timeout. Always keep one warm.
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

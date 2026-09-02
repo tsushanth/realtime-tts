@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Call Loop POC</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  button { font-size: 16px; padding: 10px 20px; margin-right: 8px; }
+  #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px; height: 300px; overflow-y: auto; margin-top: 16px; font-size: 13px; font-family: ui-monospace, monospace; }
+  #log .ts { color: #6a6; }
+  .user { color: #6cf; }
+  .assistant { color: #fc6; }
+</style>
+</head>
+<body>
+<h2>Realtime call loop POC</h2>
+<p>Mic → Deepgram STT → Claude (streaming) → your realtime-tts gateway → audio back. Talk over the assistant to test barge-in.</p>
+<button id="start">Start call</button>
+<button id="stop" disabled>Hang up</button>
+<button id="clear">Clear log</button>
+<div id="log"></div>
+
+<script>
+let lastLogAt = null;
+const log = (msg, cls) => {
+  const now = performance.now();
+  const clock = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+    '.' + String(new Date().getMilliseconds()).padStart(3, '0');
+  const delta = lastLogAt === null ? '+0ms' : `+${Math.round(now - lastLogAt)}ms`;
+  lastLogAt = now;
+
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  const ts = document.createElement('span');
+  ts.className = 'ts';
+  ts.textContent = `[${clock} ${delta}] `;
+  line.appendChild(ts);
+  line.appendChild(document.createTextNode(msg));
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+};
+
+let ws, audioCtx, micStream, micNode, playHead = 0;
+const startBtn = document.getElementById('start');
+const stopBtn = document.getElementById('stop');
+
+function downsampleTo16k(input, inputRate) {
+  if (inputRate === 16000) return input;
+  const ratio = inputRate / 16000;
+  const outLen = Math.floor(input.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) out[i] = input[Math.floor(i * ratio)];
+  return out;
+}
+
+function floatToPCM16(float32) {
+  const out = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out;
+}
+
+async function playPCM16(arrayBuffer, sampleRate) {
+  const int16 = new Int16Array(arrayBuffer);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
+  const buf = audioCtx.createBuffer(1, float32.length, sampleRate);
+  buf.copyToChannel(float32, 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  const startAt = Math.max(audioCtx.currentTime, playHead);
+  src.start(startAt);
+  playHead = startAt + buf.duration;
+  return src;
+}
+
+let activeSources = [];
+function stopPlayback() {
+  activeSources.forEach((s) => { try { s.stop(); } catch {} });
+  activeSources = [];
+  playHead = audioCtx.currentTime;
+}
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  playHead = audioCtx.currentTime;
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/call`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = async () => {
+    log('connected — say something');
+    try {
+      // Browsers can leave a freshly-created AudioContext "suspended" even
+      // after a click gesture — if it's suspended, the mic graph below never
+      // pulls audio and onaudioprocess silently never fires.
+      await audioCtx.resume();
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+    } catch (err) {
+      log(`[mic error] ${err.name}: ${err.message} — check browser mic permission / that no other tab has the mic`);
+      return;
+    }
+    log(`mic live (audioCtx: ${audioCtx.state}, sampleRate: ${audioCtx.sampleRate}Hz)`);
+
+    let framesSent = 0;
+    const src = audioCtx.createMediaStreamSource(micStream);
+    micNode = audioCtx.createScriptProcessor(4096, 1, 1);
+    micNode.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0);
+      const down = downsampleTo16k(input, audioCtx.sampleRate);
+      const pcm16 = floatToPCM16(down);
+      if (ws.readyState === WebSocket.OPEN) ws.send(pcm16.buffer);
+      framesSent++;
+      if (framesSent === 1) log('first mic frame sent to server');
+    };
+    src.connect(micNode);
+    // ScriptProcessorNode only fires onaudioprocess if it's connected through
+    // to the destination — route through a zero-gain node so the mic graph
+    // actually pulls audio without an audible self-loopback.
+    const silentSink = audioCtx.createGain();
+    silentSink.gain.value = 0;
+    micNode.connect(silentSink);
+    silentSink.connect(audioCtx.destination);
+  };
+
+  ws.onmessage = async (evt) => {
+    if (evt.data instanceof ArrayBuffer) {
+      const src = await playPCM16(evt.data, 24000);
+      activeSources.push(src);
+      return;
+    }
+    const msg = JSON.parse(evt.data);
+    if (msg.type === 'user_turn') log(`you: ${msg.text}`, 'user');
+    else if (msg.type === 'tts_event' && msg.event?.type === 'chunk_meta') log(`assistant: ${msg.event.text}`, 'assistant');
+    else if (msg.type === 'barge_in') { log('[barge-in — stopping playback]'); stopPlayback(); }
+    else if (msg.type === 'error') log(`[error] ${msg.message}`);
+  };
+
+  ws.onclose = () => log('disconnected');
+};
+
+document.getElementById('clear').onclick = () => {
+  document.getElementById('log').innerHTML = '';
+  lastLogAt = null;
+};
+
+stopBtn.onclick = () => {
+  ws?.send(JSON.stringify({ type: 'hangup' }));
+  ws?.close();
+  micStream?.getTracks().forEach((t) => t.stop());
+  micNode?.disconnect();
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+};
+</script>
+</body>
+</html>
