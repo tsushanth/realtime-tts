@@ -102,7 +102,13 @@ setInterval(() => {
 // this process's static single-tenant config exactly as before.
 app.post('/twilio/voice', async (req, res) => {
   const callSid = req.body.CallSid;
-  const toNumber = req.body.To;
+  // Routing normally keys off the dialed number (req.body.To) — correct for
+  // a real inbound call, but wrong for an outbound call WE place to a real
+  // phone (e.g. a live demo call): there, To is the callee's own number, not
+  // any tenant's routed number. ?routeAs=<number> lets an outbound call
+  // explicitly say which tenant's flow it should run, without touching the
+  // real inbound-routing path at all.
+  const toNumber = req.query.routeAs || req.body.To;
   if (callSid) {
     const resolved = await resolveInboundCall(toNumber).catch((err) => {
       console.error('[call-loop] tenant lookup failed', err);
