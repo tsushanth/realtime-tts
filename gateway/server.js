@@ -120,16 +120,29 @@ const server = http.createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server, path: "/tts" });
 
-function recordUsageFromFrame(key, data, isBinary) {
-  if (!key || isBinary) return;
+// Checks a free-tier key's remaining budget BEFORE forwarding a synthesize
+// request (not after, and not by truncating mid-stream) — a billing-enabled
+// key is always allowed through untouched. Returns { allow, deny } where
+// `deny`, if present, is the error message to send the client instead of
+// proxying the frame. Non-synthesize frames (e.g. "stop") and unparseable
+// frames are always allowed through — there's nothing to meter or gate there.
+function checkFrame(key, data, isBinary) {
+  if (!key || isBinary) return { allow: true };
+  let msg;
   try {
-    const msg = JSON.parse(data.toString());
-    if (msg.type === "synthesize" && typeof msg.text === "string") {
-      keys.recordUsage(key, msg.text.length);
-    }
+    msg = JSON.parse(data.toString());
   } catch {
-    // not JSON / not a synthesize frame — nothing to meter
+    return { allow: true };
   }
+  if (msg.type !== "synthesize" || typeof msg.text !== "string") return { allow: true };
+  if (!keys.canAffordRequest(key, msg.text.length)) {
+    return {
+      allow: false,
+      deny: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+    };
+  }
+  keys.recordUsage(key, msg.text.length);
+  return { allow: true };
 }
 
 function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null, headers = undefined) {
@@ -147,8 +160,17 @@ function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null, heade
   // json.loads() tolerates that (it accepts bytes), which is why this went unnoticed
   // against the RunPod worker — but Modal's FastAPI worker calls ws.receive_text(),
   // which strictly rejects a binary frame. Found live via the Modal migration.
-  const pending = bufferedFrames.map((f) => ({ data: f.data, isBinary: f.isBinary }));
-  for (const f of bufferedFrames) recordUsageFromFrame(key, f.data, f.isBinary);
+  const pending = [];
+  for (const f of bufferedFrames) {
+    const result = checkFrame(key, f.data, f.isBinary);
+    if (!result.allow) {
+      client.send(JSON.stringify({ type: "error", message: result.deny }));
+      client.close();
+      worker.close();
+      return;
+    }
+    pending.push({ data: f.data, isBinary: f.isBinary });
+  }
 
   worker.on("open", () => {
     workerOpen = true;
@@ -166,7 +188,11 @@ function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null, heade
     if (client.readyState === WebSocket.OPEN) client.close();
   });
   client.on("message", (data, isBinary) => {
-    recordUsageFromFrame(key, data, isBinary);
+    const result = checkFrame(key, data, isBinary);
+    if (!result.allow) {
+      client.send(JSON.stringify({ type: "error", message: result.deny }));
+      return;
+    }
     if (workerOpen) worker.send(data, { binary: isBinary });
     else pending.push({ data, isBinary });
   });
@@ -189,10 +215,11 @@ wss.on("connection", async (client, req) => {
       return;
     }
 
-    if (!keys.isBillingEnabled(key)) {
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
       client.send(JSON.stringify({
         type: "error",
-        message: "This key has no payment method on file. Add one in your dashboard to use the API.",
+        message: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
       }));
       client.close();
       return;
@@ -215,10 +242,11 @@ wss.on("connection", async (client, req) => {
       client.close();
       return;
     }
-    if (!keys.isBillingEnabled(key)) {
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
       client.send(JSON.stringify({
         type: "error",
-        message: "This key has no payment method on file. Add one in your dashboard to use the API.",
+        message: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
       }));
       client.close();
       return;

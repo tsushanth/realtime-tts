@@ -14,6 +14,16 @@ import crypto from "node:crypto";
 
 const KEYS_PATH = process.env.KEYS_PATH || "/data/keys.json";
 
+// The /developers marketing page advertises "no credit card required to try" —
+// until this existed, that was false: a non-billing-enabled key was simply
+// inert, rejected on every request. This is a real (if modest) free allowance,
+// per-key, that works with zero payment method on file. Note this is
+// enforceable per-KEY, not per-user — the gateway has no concept of a user,
+// only individual key records, so a user creating multiple keys (backend caps
+// this at 5 per user) could stack multiple free allowances. Acceptable at
+// today's volume; revisit if abuse is observed.
+const FREE_TIER_CHARS = parseInt(process.env.FREE_TIER_CHARS || "10000", 10);
+
 function hash(key) {
   return crypto.createHash("sha256").update(key).digest("hex");
 }
@@ -36,6 +46,7 @@ function migrateLegacyEntry(k) {
     // so migrating it must not silently lock out whatever's using it.
     billingEnabled: true,
     usageCharsSinceLastReport: 0,
+    freeCharsUsed: 0,
   };
 }
 
@@ -66,12 +77,12 @@ export function isValidKey(key) {
   return !!entry;
 }
 
-// Only billing-enabled keys may consume paid GPU compute — see server.js. A
-// key exists in one of two states: freshly issued and not yet enabled (the
-// caller must explicitly opt it in — see setBillingEnabledById), or enabled.
-// ReadAloud's issuance route enables its own keys immediately on creation;
-// there's no per-key payment-method concept in this product today, so
-// "billing enabled" means "this key is allowed to run," not "a card is on
+// Only billing-enabled keys may consume UNLIMITED paid GPU compute — see
+// server.js. A key exists in one of two states: freshly issued and not yet
+// enabled (the caller must explicitly opt it in — see setBillingEnabledById),
+// or enabled. ReadAloud's issuance route enables its own keys immediately on
+// creation; there's no per-key payment-method concept in this product today,
+// so "billing enabled" means "this key is allowed to run," not "a card is on
 // file" — the stronger version of this gate is future work, not implied by
 // this flag's current callers.
 export function isBillingEnabled(key) {
@@ -79,6 +90,35 @@ export function isBillingEnabled(key) {
   const keys = load();
   const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
   return !!entry?.billingEnabled;
+}
+
+// Connection-level gate: can this key be used AT ALL right now? True if
+// billing-enabled (unlimited, paid), or if it still has free-tier characters
+// remaining (see FREE_TIER_CHARS). A key with zero free chars left and no
+// billing enabled must be rejected before ever reaching the worker.
+export function checkAccess(key) {
+  if (!key) return { valid: false };
+  const keys = load();
+  const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
+  if (!entry) return { valid: false };
+  if (entry.billingEnabled) return { valid: true, allowed: true, billingEnabled: true };
+  const freeCharsRemaining = Math.max(0, FREE_TIER_CHARS - (entry.freeCharsUsed || 0));
+  return { valid: true, allowed: freeCharsRemaining > 0, billingEnabled: false, freeCharsRemaining };
+}
+
+// Per-request check, used right before forwarding a synthesize request to the
+// worker — a key with SOME free chars left but fewer than this request needs
+// must be rejected here (not mid-stream, and not by silently truncating the
+// text), so the client gets a clear error instead of a surprise cutoff or
+// unbilled overage.
+export function canAffordRequest(key, chars) {
+  if (!key) return false;
+  const keys = load();
+  const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
+  if (!entry) return false;
+  if (entry.billingEnabled) return true;
+  const freeCharsRemaining = Math.max(0, FREE_TIER_CHARS - (entry.freeCharsUsed || 0));
+  return chars <= freeCharsRemaining;
 }
 
 export function setBillingEnabledById(id, enabled) {
@@ -103,6 +143,7 @@ export function issueKey(label) {
     revoked: false,
     billingEnabled: false,
     usageCharsSinceLastReport: 0,
+    freeCharsUsed: 0,
   });
   save(keys);
   return { id, key };
@@ -125,6 +166,7 @@ export function listKeys() {
     revoked: k.revoked,
     billingEnabled: !!k.billingEnabled,
     key_preview: k.keyPreview,
+    freeCharsRemaining: k.billingEnabled ? null : Math.max(0, FREE_TIER_CHARS - (k.freeCharsUsed || 0)),
   }));
 }
 
@@ -133,7 +175,13 @@ export function recordUsage(key, chars) {
   const keys = load();
   const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
   if (!entry) return;
-  entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
+  if (entry.billingEnabled) {
+    entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
+  } else {
+    // Free-tier usage isn't billed and never reported to Stripe — tracked
+    // separately so drainUsage()'s output stays exactly "what to invoice."
+    entry.freeCharsUsed = (entry.freeCharsUsed || 0) + chars;
+  }
   save(keys);
 }
 
