@@ -65,6 +65,7 @@ export async function resolveInboundCall(toNumber) {
   const nodes = await attachKnowledgeBaseIds(flowRow.nodes, version.agent_id);
 
   return {
+    tenantId: numberRow.tenant_id,
     flow: {
       nodes,
       startNodeId: flowRow.global_settings?.startNodeId || nodes[0].id,

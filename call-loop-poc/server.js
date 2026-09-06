@@ -14,6 +14,7 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { randomUUID } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
@@ -57,6 +58,10 @@ const LLM_MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
 // browser calls (there's nothing to redirect) or flows with no transfer node.
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+// Shared secret guarding the GET /active-calls admin endpoint (see below).
+// Same shape as the gateway's ADMIN_SECRET (Bearer token, 401 when unset or
+// mismatched) — this only exposes read-only live-call state, no control.
+const ACTIVE_CALLS_SECRET = process.env.ACTIVE_CALLS_SECRET;
 const SYSTEM_PROMPT =
   'You are a concise, friendly voice assistant on a phone call. Keep replies to 1-2 short ' +
   'sentences unless asked for more detail. Never use markdown, bullet points, or emoji — ' +
@@ -86,6 +91,16 @@ app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded f
 // Swept on a timer so a call that gets a TwiML response but never actually
 // opens the stream (e.g. caller hangs up mid-ring) doesn't leak forever.
 const pendingCallContext = new Map();
+
+// Registry of calls currently in progress — one entry per live CallSession,
+// keyed by the session's own id. This is *live call state* (who's on a call
+// right now, on what flow node), NOT an audio stream: the flow position it
+// exposes is the same currentNodeId/nodeType the session already pushes to its
+// own client via 'flow_state' events (collectedData is deliberately left out —
+// see activeCallSnapshot), just also readable out-of-band by the dashboard
+// through GET /active-calls. Entries are added in the CallSession constructor
+// and removed in close(), so it always reflects open sessions.
+const activeSessions = new Map();
 setInterval(() => {
   const cutoff = Date.now() - 60_000;
   for (const [callSid, entry] of pendingCallContext) {
@@ -114,12 +129,32 @@ app.post('/twilio/voice', async (req, res) => {
       console.error('[call-loop] tenant lookup failed', err);
       return null;
     });
-    if (resolved) pendingCallContext.set(callSid, { ...resolved, createdAt: Date.now() });
+    // Caller's number (From), carried through for the live-call registry's
+    // display — the dialed tenant number (To) is the same for every call, the
+    // caller's isn't.
+    if (resolved) pendingCallContext.set(callSid, { ...resolved, fromNumber: req.body.From || null, createdAt: Date.now() });
   }
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response><Connect><Stream url="wss://${req.headers.host}/twilio-stream" /></Connect></Response>`;
   res.type('text/xml').send(twiml);
+});
+
+// Read-only view of calls in progress right now, for the dashboard's live
+// call state view. Guarded by a shared secret, mirroring the gateway's
+// requireAdmin (Bearer token; 401 when the secret is unset or doesn't match)
+// — see gateway/server.js. This returns presence + current flow node only,
+// NOT audio or transcripts. Optional ?tenantId= filters to one tenant so a
+// per-tenant caller never sees other tenants' calls.
+app.get('/active-calls', (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!ACTIVE_CALLS_SECRET || auth !== `Bearer ${ACTIVE_CALLS_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : null;
+  let calls = [...activeSessions.values()].map((s) => s.activeCallSnapshot());
+  if (tenantId) calls = calls.filter((c) => c.tenantId === tenantId);
+  res.json({ calls, count: calls.length, serverTime: Date.now() });
 });
 
 const server = http.createServer(app);
@@ -172,6 +207,8 @@ twilioWss.on('connection', (twilioWs) => {
       flow: resolved.flow,
       ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
       ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
+      ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
+      ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
     }), false);
   });
 });
@@ -210,9 +247,36 @@ class CallSession {
     // demo calls and flow-MCP test calls have none, and simply don't get
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
+    // Live-monitoring metadata — which tenant owns this call and the phone
+    // number involved, both set from the {"type":"context"} message (see
+    // onClientMessage). Null for anonymous browser demo calls, which carry no
+    // tenant; a real Twilio call gets both from the routing lookup. Only used
+    // to populate the /active-calls registry — nothing in the call path reads
+    // them.
+    this.tenantId = null;
+    this.phoneNumber = null;
     this.cost = new CallCostTracker({ ttsBackend: TTS_BACKEND, voiceEngine: 'cascaded' });
     this._callStartedAt = Date.now();
+    // Stable id for the active-calls registry (also handy in logs). Registered
+    // here so the call shows up the instant the session opens, even before any
+    // context/flow arrives; close() removes it.
+    this.id = randomUUID();
+    activeSessions.set(this.id, this);
     this._connectDeepgram();
+  }
+
+  // Read-only snapshot for the /active-calls endpoint. Deliberately excludes
+  // conversation content — this is presence + current flow position, not a
+  // transcript or audio feed.
+  activeCallSnapshot() {
+    return {
+      id: this.id,
+      tenantId: this.tenantId,
+      phoneNumber: this.phoneNumber,
+      startedAt: this._callStartedAt,
+      currentNodeId: this.currentNodeId,
+      nodeType: this.currentNodeId ? this.flowNodesById?.get(this.currentNodeId)?.type ?? null : null,
+    };
   }
 
   send(obj) {
@@ -287,6 +351,14 @@ class CallSession {
       }
       if (typeof msg.stripeCustomerId === 'string' && msg.stripeCustomerId.trim()) {
         this.stripeCustomerId = msg.stripeCustomerId.trim();
+      }
+      // Live-monitoring metadata (see the registry / GET /active-calls) — a
+      // real routed call passes both; anonymous browser demos pass neither.
+      if (typeof msg.tenantId === 'string' && msg.tenantId.trim()) {
+        this.tenantId = msg.tenantId.trim();
+      }
+      if (typeof msg.phoneNumber === 'string' && msg.phoneNumber.trim()) {
+        this.phoneNumber = msg.phoneNumber.trim();
       }
       if (msg.ttsBackend === 'elevenlabs' || msg.ttsBackend === 'kokoro') {
         if (msg.ttsBackend === 'elevenlabs' && !ELEVENLABS_API_KEY) {
@@ -840,6 +912,7 @@ class CallSession {
   close() {
     if (this._closed) return;
     this._closed = true;
+    activeSessions.delete(this.id);
     console.log('[call-loop] client disconnected');
     this.dgConnection?.close();
     this.ttsWs?.close();

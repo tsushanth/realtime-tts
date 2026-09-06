@@ -45,6 +45,32 @@ real interruptible turn (barge-in works on it same as any other response). Sendi
 `context` after the first turn still updates the prompt/voice going forward, but won't
 retroactively change anything already said.
 
+Two optional fields feed the live-call registry (below) and nothing else: `tenantId`
+(which tenant this call belongs to) and `phoneNumber` (the caller's number, for display).
+Real routed Twilio calls set both automatically from the tenant lookup; anonymous browser
+demo calls omit them.
+
+## Active calls (live call state, not audio)
+
+`GET /active-calls` returns the calls in progress **right now** — one entry per open
+session, with the tenant, phone number, start time, and current flow node. This is
+presence + flow position, reused from the same `flow_state` data each session already
+pushes to its own client — **not** an audio stream or a transcript. There is no
+live-listen leg here.
+
+Guarded by a shared secret, same shape as the gateway's `ADMIN_SECRET`
+(`Authorization: Bearer $ACTIVE_CALLS_SECRET`; returns 401 when the env var is unset or
+the header doesn't match). Optional `?tenantId=<id>` filters to a single tenant.
+
+```
+curl -H "Authorization: Bearer $ACTIVE_CALLS_SECRET" \
+  "https://call-loop-poc.fly.dev/active-calls?tenantId=<id>"
+# { "calls": [ { "id", "tenantId", "phoneNumber", "startedAt", "currentNodeId", "nodeType" } ],
+#   "count": 1, "serverTime": 1725600000000 }
+```
+
+Set the secret on the deploy with `fly secrets set ACTIVE_CALLS_SECRET=...`.
+
 ## What's measured
 
 Server console logs two latency numbers per turn:
