@@ -13,11 +13,21 @@ shared, because:
   - independent scaling knobs: these two consumers may want different
     max_containers/GPU-tier tuning as traffic patterns diverge
 
-Auth: unlike ../worker-modal (one internal caller, one shared token), this one
-is fronted by gateway/server.js, which already does per-end-user API key
-validation, billing-gate checks, and usage metering via keys.js BEFORE ever
-proxying here. So this worker only needs one shared secret to trust the
-gateway itself — end-user keys never reach Modal directly.
+Auth: two accepted methods, checked in this order:
+  1. A short-lived, HMAC-signed session token (see gateway/keys.js's
+     createSessionToken/verifySessionToken) issued by gateway/server.js's
+     POST /tts/authorize after it validates the end-user's API key and
+     billing/free-tier status. The CLIENT connects directly here with this
+     token — the gateway is out of the data path entirely, which is the
+     whole point (avoids the ~350-400ms of relay handshake overhead the old
+     gateway-proxied path had, see DECISIONS.md). Since usage is no longer
+     metered inline by the gateway inspecting every frame, THIS worker
+     reports back what it actually synthesized via POST /admin/usage/report
+     after each call — see report_usage() below.
+  2. The original static shared bearer token (TTS_WS_AUTH_TOKEN), kept for
+     backward compatibility with gateway/server.js's existing relay path
+     (AUTO_MODE's proxyToWorker) — unchanged, still metered inline by the
+     gateway as before. Nothing using this path needs to change.
 
 Protocol (identical to worker/server.py and ../worker-modal/app.py, so
 gateway/server.js's proxy logic doesn't need protocol-aware branching):
@@ -109,14 +119,22 @@ def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
     # billing problem the RunPod Pod's 90s/15min timer had.
     scaledown_window=120,
     max_containers=10,
-    secrets=[modal.Secret.from_name("readaloud-tts-ws-auth-token")],
+    secrets=[
+        modal.Secret.from_name("readaloud-tts-ws-auth-token"),
+        modal.Secret.from_name("readaloud-tts-session-secret"),
+        modal.Secret.from_name("readaloud-tts-usage-report-secret"),
+    ],
 )
 @modal.concurrent(max_inputs=8)
 @modal.asgi_app()
 def web():
+    import base64
+    import hashlib
+    import hmac
     import json
     import os
     import time
+    import urllib.request
 
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
     from kokoro import KPipeline
@@ -124,6 +142,61 @@ def web():
     web_app = FastAPI()
     pipeline = KPipeline(lang_code="a")
     AUTH_TOKEN = os.environ["TTS_WS_AUTH_TOKEN"]
+    SESSION_SECRET = os.environ["MODAL_SESSION_SECRET"]
+    USAGE_REPORT_SECRET = os.environ["MODAL_USAGE_REPORT_SECRET"]
+    USAGE_REPORT_URL = os.environ.get(
+        "USAGE_REPORT_URL", "https://realtime-tts-gateway.fly.dev/admin/usage/report"
+    )
+
+    def b64url_decode(s: str) -> bytes:
+        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+    def verify_session_token(token: str):
+        """Mirrors gateway/keys.js's createSessionToken/verifySessionToken exactly —
+        same HMAC-SHA256-over-the-base64url-payload-string construction, same
+        base64url (unpadded) encoding. Returns the key id, or None if invalid/expired."""
+        try:
+            payload_b64, sig_b64 = token.split(".")
+        except ValueError:
+            return None
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+        if not hmac.compare_digest(sig_b64, expected_sig):
+            return None
+        try:
+            payload = json.loads(b64url_decode(payload_b64))
+        except Exception:
+            return None
+        if "id" not in payload or "exp" not in payload:
+            return None
+        if time.time() * 1000 > payload["exp"]:
+            return None
+        return payload["id"]
+
+    def report_usage(key_id: str, chars: int):
+        """Fire-and-forget call back to the gateway with what was actually
+        synthesized — the authoritative usage number for billing, since it
+        reflects real work done, not anything the client declared upfront.
+        Called AFTER the client already has its audio, so a slow or failed
+        report never adds to the client's perceived latency. Best-effort:
+        logged on failure, not retried — acceptable at this volume, revisit
+        with a durable queue if reports start being lost at real scale."""
+        if not key_id or not chars:
+            return
+        try:
+            req = urllib.request.Request(
+                USAGE_REPORT_URL,
+                data=json.dumps({"id": key_id, "chars": chars}).encode(),
+                headers={
+                    "Authorization": f"Bearer {USAGE_REPORT_SECRET}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception as e:  # noqa: BLE001 — never let a reporting failure affect the session
+            print(f"usage report failed for key {key_id}: {e}")
 
     @web_app.get("/health")
     async def health():
@@ -133,7 +206,10 @@ def web():
     async def tts(ws: WebSocket, token: str = Query(default="")):
         auth_header = ws.headers.get("authorization", "")
         bearer = auth_header.removeprefix("Bearer ") if auth_header.startswith("Bearer ") else ""
-        if not (token == AUTH_TOKEN or bearer == AUTH_TOKEN):
+        presented = token or bearer
+
+        session_key_id = verify_session_token(presented)
+        if session_key_id is None and presented != AUTH_TOKEN:
             await ws.close(code=4401)
             return
 
@@ -182,6 +258,11 @@ def web():
                         await ws.send_bytes(to_pcm16(audio))
                     else:
                         await ws.send_json({"type": "done"})
+                        # Only session-token clients get metered this way — the
+                        # legacy shared-secret path is still metered inline by
+                        # the gateway itself, unchanged, per the module docstring.
+                        if session_key_id:
+                            report_usage(session_key_id, len(text))
                 except Exception as e:  # noqa: BLE001 — report to client, don't crash container
                     await ws.send_json({"type": "error", "message": str(e)})
         except WebSocketDisconnect:

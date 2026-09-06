@@ -24,6 +24,13 @@ const KEYS_PATH = process.env.KEYS_PATH || "/data/keys.json";
 // today's volume; revisit if abuse is observed.
 const FREE_TIER_CHARS = parseInt(process.env.FREE_TIER_CHARS || "10000", 10);
 
+// Signs/verifies short-lived session tokens for the direct-to-Modal fast path
+// (see server.js's /tts/authorize and worker-modal-readaloud/app.py). Separate
+// from ADMIN_SECRET deliberately — Modal only needs the narrow ability to
+// verify a token and report usage, not full admin key-management power.
+const SESSION_TOKEN_SECRET = process.env.MODAL_SESSION_SECRET;
+const SESSION_TOKEN_TTL_MS = 60 * 1000; // just long enough to open the WS connection
+
 function hash(key) {
   return crypto.createHash("sha256").update(key).digest("hex");
 }
@@ -47,6 +54,7 @@ function migrateLegacyEntry(k) {
     billingEnabled: true,
     usageCharsSinceLastReport: 0,
     freeCharsUsed: 0,
+    freeTierExhausted: false,
   };
 }
 
@@ -77,6 +85,13 @@ export function isValidKey(key) {
   return !!entry;
 }
 
+export function getIdForKey(key) {
+  if (!key) return null;
+  const keys = load();
+  const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
+  return entry?.id || null;
+}
+
 // Only billing-enabled keys may consume UNLIMITED paid GPU compute — see
 // server.js. A key exists in one of two states: freshly issued and not yet
 // enabled (the caller must explicitly opt it in — see setBillingEnabledById),
@@ -96,12 +111,24 @@ export function isBillingEnabled(key) {
 // billing-enabled (unlimited, paid), or if it still has free-tier characters
 // remaining (see FREE_TIER_CHARS). A key with zero free chars left and no
 // billing enabled must be rejected before ever reaching the worker.
+//
+// Checks the `freeTierExhausted` flag FIRST, as a fast/cheap boolean instead
+// of recomputing remaining budget — this matters for the direct-to-Modal path
+// (see /tts/authorize in server.js), where usage is reported back
+// asynchronously AFTER synthesis completes rather than metered inline as
+// bytes flow through. Without a flag that flips the instant the threshold is
+// crossed, several large requests could race past a "recompute remaining"
+// check before any of their usage reports land. The flag bounds that: once
+// set, every subsequent authorize call is rejected immediately, so the only
+// exposure is whatever was already in flight at the moment it flipped, not
+// an ongoing drain. See recordUsage() for where it gets set.
 export function checkAccess(key) {
   if (!key) return { valid: false };
   const keys = load();
   const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
   if (!entry) return { valid: false };
   if (entry.billingEnabled) return { valid: true, allowed: true, billingEnabled: true };
+  if (entry.freeTierExhausted) return { valid: true, allowed: false, billingEnabled: false, freeCharsRemaining: 0 };
   const freeCharsRemaining = Math.max(0, FREE_TIER_CHARS - (entry.freeCharsUsed || 0));
   return { valid: true, allowed: freeCharsRemaining > 0, billingEnabled: false, freeCharsRemaining };
 }
@@ -144,6 +171,7 @@ export function issueKey(label) {
     billingEnabled: false,
     usageCharsSinceLastReport: 0,
     freeCharsUsed: 0,
+    freeTierExhausted: false,
   });
   save(keys);
   return { id, key };
@@ -170,19 +198,76 @@ export function listKeys() {
   }));
 }
 
+function applyUsage(entry, chars) {
+  if (entry.billingEnabled) {
+    entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
+    return;
+  }
+  // Free-tier usage isn't billed and never reported to Stripe — tracked
+  // separately so drainUsage()'s output stays exactly "what to invoice."
+  entry.freeCharsUsed = (entry.freeCharsUsed || 0) + chars;
+  if (entry.freeCharsUsed >= FREE_TIER_CHARS) entry.freeTierExhausted = true;
+}
+
 export function recordUsage(key, chars) {
   if (!key || !chars) return;
   const keys = load();
   const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
   if (!entry) return;
-  if (entry.billingEnabled) {
-    entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
-  } else {
-    // Free-tier usage isn't billed and never reported to Stripe — tracked
-    // separately so drainUsage()'s output stays exactly "what to invoice."
-    entry.freeCharsUsed = (entry.freeCharsUsed || 0) + chars;
-  }
+  applyUsage(entry, chars);
   save(keys);
+}
+
+// Same as recordUsage, but looked up by key ID rather than the raw key —
+// used by the /admin/usage/report callback from Modal (see
+// worker-modal-readaloud/app.py), which only ever sees the ID embedded in a
+// session token, never the raw key itself.
+export function recordUsageById(id, chars) {
+  if (!id || !chars) return false;
+  const keys = load();
+  const entry = keys.find((k) => k.id === id && !k.revoked);
+  if (!entry) return false;
+  applyUsage(entry, chars);
+  save(keys);
+  return true;
+}
+
+// --- Session tokens for the direct-to-Modal fast path ---
+// Deliberately NOT bound to a specific text/character count — the free-tier
+// check at issuance time is a coarse "is this key currently allowed to
+// connect at all" boolean (see checkAccess's freeTierExhausted fast path),
+// and the actual billing-relevant number comes from Modal's own async report
+// of what it really synthesized, not anything the client declares upfront.
+// A short expiry is the only thing bounding how long a token is usable for.
+export function createSessionToken(id) {
+  if (!SESSION_TOKEN_SECRET) throw new Error("MODAL_SESSION_SECRET is not configured");
+  const exp = Date.now() + SESSION_TOKEN_TTL_MS;
+  const payload = Buffer.from(JSON.stringify({ id, exp })).toString("base64url");
+  const sig = crypto.createHmac("sha256", SESSION_TOKEN_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+// Returns the key id if the token is validly signed and unexpired, else null.
+// Verification only — deliberately does not also check billing/free-tier
+// status again, since that was already checked at issuance a few seconds
+// earlier; re-checking here would just be the same TOCTOU race in a
+// different spot, not a real improvement over the issuance-time flag.
+export function verifySessionToken(token) {
+  if (!SESSION_TOKEN_SECRET || !token) return null;
+  const [payload, sig] = String(token).split(".");
+  if (!payload || !sig) return null;
+  const expectedSig = crypto.createHmac("sha256", SESSION_TOKEN_SECRET).update(payload).digest("base64url");
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.from(payload, "base64url").toString());
+  } catch {
+    return null;
+  }
+  if (!parsed.id || typeof parsed.exp !== "number" || Date.now() > parsed.exp) return null;
+  return parsed.id;
 }
 
 // Returns accumulated usage per key since the last drain and resets the

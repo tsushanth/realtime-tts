@@ -26,10 +26,23 @@ const USE_RUNPOD = !AUTO_MODE && runpodConfigured();
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
 const MODAL_WORKER_URL = process.env.MODAL_READALOUD_WS_URL;
 const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
+// Separate from ADMIN_SECRET on purpose — this only lets the holder report
+// usage numbers for a key it already has the ID for, not manage keys at all.
+const MODAL_USAGE_REPORT_SECRET = process.env.MODAL_USAGE_REPORT_SECRET;
 
 function requireAdmin(req, res) {
   const auth = req.headers["authorization"] || "";
   if (!ADMIN_SECRET || auth !== `Bearer ${ADMIN_SECRET}`) {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unauthorized" }));
+    return false;
+  }
+  return true;
+}
+
+function requireUsageReportSecret(req, res) {
+  const auth = req.headers["authorization"] || "";
+  if (!MODAL_USAGE_REPORT_SECRET || auth !== `Bearer ${MODAL_USAGE_REPORT_SECRET}`) {
     res.writeHead(401, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "unauthorized" }));
     return false;
@@ -99,6 +112,48 @@ const server = http.createServer(async (req, res) => {
     const ok = keys.setBillingEnabledById(id, enabled);
     res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify({ billingEnabled: ok ? !!enabled : undefined }));
+    return;
+  }
+
+  // Fast path: authorize a key for a direct client<->Modal connection instead of
+  // proxying bytes through this gateway (see DECISIONS.md — the relay adds
+  // ~350-400ms of pure handshake overhead per session on top of Modal's own
+  // latency). Only does the cheap checks (valid key, not revoked, free-tier
+  // flag / billing enabled) — actual usage is metered by Modal reporting back
+  // to /admin/usage/report after synthesis, not by this endpoint.
+  if (url.pathname === "/tts/authorize" && req.method === "POST") {
+    const body = await readBody(req);
+    const { key } = body ? JSON.parse(body) : {};
+    if (!keys.isValidKey(key)) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+      }));
+      return;
+    }
+    const id = keys.getIdForKey(key);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ token: keys.createSessionToken(id), url: MODAL_WORKER_URL }));
+    return;
+  }
+
+  // Called by worker-modal-readaloud/app.py after a synthesize call completes —
+  // fire-and-forget from Modal's side, doesn't block the client's response.
+  // This is the authoritative usage number (what Modal actually generated),
+  // not anything a client declared upfront.
+  if (url.pathname === "/admin/usage/report" && req.method === "POST") {
+    if (!requireUsageReportSecret(req, res)) return;
+    const body = await readBody(req);
+    const { id, chars } = body ? JSON.parse(body) : {};
+    const ok = keys.recordUsageById(id, chars);
+    res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ recorded: ok }));
     return;
   }
 
