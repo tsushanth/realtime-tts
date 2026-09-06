@@ -1,7 +1,13 @@
 // Realtime TTS gateway: terminates client WebSockets on Fly, proxies each session 1:1 to
-// a GPU inference worker. Three backend modes, selected by env vars:
-//   GATEWAY_MODE=auto       -> pod-manager.js auto-provisions/tears-down a RunPod Pod on
-//                              real traffic, requires a valid API key per connection
+// a GPU inference worker. Backend modes, selected by env vars:
+//   GATEWAY_MODE=auto       -> proxies to the ReadAloud Modal deployment
+//                              (worker-modal-readaloud/), requires a valid,
+//                              billing-enabled API key per connection. Was RunPod
+//                              Pod + pod-manager.js until 2026-09-06 — moved off it
+//                              because a Pod's idle-teardown timer always loses money
+//                              on sporadic traffic (see DECISIONS.md); Modal bills per
+//                              actual connection duration instead, with no timer to
+//                              tune or orphan-pod risk to reconcile.
 //   RUNPOD_ENDPOINT_ID set  -> RunPod Serverless (runpod-adapter.js), CPU-only fallback,
 //                              requires a valid, billing-enabled API key per connection
 //                              (same key store as AUTO_MODE)
@@ -11,7 +17,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import http from "node:http";
 import { URL } from "node:url";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
-import * as podManager from "./pod-manager.js";
 import * as keys from "./keys.js";
 
 const PORT = process.env.PORT || 8080;
@@ -19,6 +24,8 @@ const WORKER_URL = process.env.WORKER_WS_URL || "ws://127.0.0.1:8765";
 const AUTO_MODE = process.env.GATEWAY_MODE === "auto";
 const USE_RUNPOD = !AUTO_MODE && runpodConfigured();
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
+const MODAL_WORKER_URL = process.env.MODAL_READALOUD_WS_URL;
+const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
 
 function requireAdmin(req, res) {
   const auth = req.headers["authorization"] || "";
@@ -44,7 +51,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     if (AUTO_MODE) {
-      res.end(JSON.stringify({ status: "ok", backend: "auto", ...podManager.getState() }));
+      res.end(JSON.stringify({ status: "ok", backend: "modal" }));
     } else {
       res.end(JSON.stringify({
         status: "ok",
@@ -125,20 +132,27 @@ function recordUsageFromFrame(key, data, isBinary) {
   }
 }
 
-function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null) {
-  const worker = new WebSocket(workerUrl);
+function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null, headers = undefined) {
+  const worker = new WebSocket(workerUrl, headers ? { headers } : undefined);
   let workerOpen = false;
   // Frames the client already sent while we were waiting on the pod (see the
   // bufferListener below) — replayed here so the caller's very first message
   // (typically sent immediately on open, before any "ready" handshake) isn't
   // silently lost. No `message` listener was attached to `client` until now,
   // so anything sent earlier had nowhere to go.
-  const pending = bufferedFrames.map((f) => f.data);
+  // Preserve isBinary through the buffer — ws.send() defaults an unmarked Buffer to a
+  // BINARY frame, which silently broke this exact path: a JSON control message queued
+  // here (because it arrived before the outbound worker connection finished its
+  // handshake) would get relayed as binary instead of text. worker/server.py's Python
+  // json.loads() tolerates that (it accepts bytes), which is why this went unnoticed
+  // against the RunPod worker — but Modal's FastAPI worker calls ws.receive_text(),
+  // which strictly rejects a binary frame. Found live via the Modal migration.
+  const pending = bufferedFrames.map((f) => ({ data: f.data, isBinary: f.isBinary }));
   for (const f of bufferedFrames) recordUsageFromFrame(key, f.data, f.isBinary);
 
   worker.on("open", () => {
     workerOpen = true;
-    for (const frame of pending.splice(0)) worker.send(frame);
+    for (const frame of pending.splice(0)) worker.send(frame.data, { binary: frame.isBinary });
   });
   worker.on("message", (data, isBinary) => {
     if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
@@ -154,7 +168,7 @@ function proxyToWorker(client, workerUrl, bufferedFrames = [], key = null) {
   client.on("message", (data, isBinary) => {
     recordUsageFromFrame(key, data, isBinary);
     if (workerOpen) worker.send(data, { binary: isBinary });
-    else pending.push(data);
+    else pending.push({ data, isBinary });
   });
   client.on("close", () => {
     if (worker.readyState === WebSocket.OPEN || worker.readyState === WebSocket.CONNECTING) {
@@ -184,39 +198,11 @@ wss.on("connection", async (client, req) => {
       return;
     }
 
-    const status = podManager.touchAndGetStatus();
-    if (status.state === "ready") {
-      proxyToWorker(client, status.workerUrl, [], key);
-      return;
-    }
-
-    // Upfront about latency, not silent: first request after idle can take minutes
-    // while the GPU pod boots (observed 90s-280s in testing) — tell the client instead
-    // of just hanging.
-    client.send(JSON.stringify({
-      type: "status",
-      state: "provisioning",
-      message: "GPU worker is starting — this can take up to 5 minutes on the first request after idle. Please wait.",
-    }));
-    // A client that sends its synthesize request immediately on open (the
-    // documented, expected pattern — e.g. call-loop-poc never waits for a
-    // handshake) would otherwise have that message dropped: nothing is
-    // listening for it until proxyToWorker() attaches its own listener after
-    // the pod is ready. Buffer here, replay there.
-    const bufferedFrames = [];
-    const bufferListener = (data, isBinary) => bufferedFrames.push({ data, isBinary });
-    client.on("message", bufferListener);
-    try {
-      const ready = await podManager.waitUntilReady();
-      if (ready.state !== "ready") throw new Error("pod failed to become ready");
-      client.removeListener("message", bufferListener);
-      client.send(JSON.stringify({ type: "status", state: "ready" }));
-      proxyToWorker(client, ready.workerUrl, bufferedFrames, key);
-    } catch (err) {
-      client.removeListener("message", bufferListener);
-      client.send(JSON.stringify({ type: "error", message: `provisioning failed: ${err.message}` }));
-      client.close();
-    }
+    // No provisioning wait needed — Modal is always available; a cold container
+    // just makes the first chunk of THIS request slower (measured ~4s for a cold
+    // model load vs ~100-200ms warm), not a separate multi-minute wait before the
+    // connection is even usable the way a RunPod Pod boot was.
+    proxyToWorker(client, MODAL_WORKER_URL, [], key, { Authorization: `Bearer ${MODAL_AUTH_TOKEN}` });
     return;
   }
 
@@ -244,10 +230,7 @@ wss.on("connection", async (client, req) => {
   proxyToWorker(client, WORKER_URL);
 });
 
-server.listen(PORT, async () => {
-  const target = AUTO_MODE ? "auto (pod-manager)" : USE_RUNPOD ? `runpod:${process.env.RUNPOD_ENDPOINT_ID}` : WORKER_URL;
+server.listen(PORT, () => {
+  const target = AUTO_MODE ? `modal:${MODAL_WORKER_URL}` : USE_RUNPOD ? `runpod:${process.env.RUNPOD_ENDPOINT_ID}` : WORKER_URL;
   console.log(`gateway listening on :${PORT}, backend=${target}`);
-  if (AUTO_MODE) {
-    await podManager.reconcileOnStartup();
-  }
 });
