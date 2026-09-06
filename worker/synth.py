@@ -23,10 +23,19 @@ def get_engine():
 
 
 _SPLIT_RE = re.compile(r"(?<=[.!?;:])\s+")
+_SUBSPLIT_RE = re.compile(r"(?<=[,])\s+")
 
 
-def chunk_text(text, max_chars=90):
-    """Split into clause-ish chunks so synthesis can start before the whole utterance arrives."""
+def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
+    """Split into clause-ish chunks so synthesis can start before the whole utterance
+    arrives. max_chars=90 is the empirically-tuned steady-state size (see DECISIONS.md —
+    below ~60 chars, per-chunk model-call overhead dominates and hurts throughput).
+    That tuning is about total throughput, not perceived latency, though: only the FIRST
+    chunk's size affects time-to-first-audio, since later chunks generate while the
+    client is already playing earlier ones. So the first chunk alone gets a tighter cap,
+    further split on a comma (a natural phrase boundary, not an arbitrary cutoff) —
+    later chunks keep the full 90-char budget untouched.
+    """
     text = text.strip()
     if not text:
         return []
@@ -43,6 +52,12 @@ def chunk_text(text, max_chars=90):
             buf = f"{buf} {p}".strip()
     if buf:
         chunks.append(buf)
+
+    if chunks and len(chunks[0]) > first_chunk_max_chars:
+        sub_parts = [p.strip() for p in _SUBSPLIT_RE.split(chunks[0]) if p.strip()]
+        if len(sub_parts) > 1:
+            chunks = [sub_parts[0], " ".join(sub_parts[1:])] + chunks[1:]
+
     return chunks
 
 

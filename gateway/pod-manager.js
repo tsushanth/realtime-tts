@@ -6,7 +6,12 @@
 const RUNPOD_KEY = process.env.RUNPOD_API_KEY;
 const TEMPLATE_ID = process.env.RUNPOD_POD_TEMPLATE_ID || "r7cttxeun9";
 const POD_IMAGE = "ghcr.io/tsushanth/realtime-tts-worker:pod";
-const IDLE_TIMEOUT_MS = parseInt(process.env.POD_IDLE_TIMEOUT_MS || "900000", 10); // 15 min
+// 15 min was the original default but is a real money problem: at $0.74/hr, one
+// sporadic request bills ~15 min of idle GPU time for a few cents of usage revenue —
+// a ~100x loss per request below sustained high-volume traffic. Shrunk to 90s as a
+// stopgap while the real fix (move this gateway onto Modal's per-connection billing,
+// like worker-modal/ already does for call-loop-poc) is built separately.
+const IDLE_TIMEOUT_MS = parseInt(process.env.POD_IDLE_TIMEOUT_MS || "90000", 10); // 90s
 const BOOT_POLL_INTERVAL_MS = 8000;
 // Was 6 min ("observed boot times ranged ~90s-280s") — too tight. Confirmed
 // live 2026-09-01: a cold RunPod host with no cached layers for this image
@@ -177,7 +182,7 @@ function startIdleWatchdog() {
       idleCheckTimer = null;
       await deletePod(id);
     }
-  }, 60000);
+  }, 15000);
 }
 
 export function getState() {
