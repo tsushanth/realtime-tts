@@ -560,12 +560,27 @@ class CallSession {
       if (msg.type !== 'TurnInfo') return;
 
       if (msg.event === 'StartOfTurn') {
-        // Semantic + acoustic turn-start — caller began speaking, cut the
-        // assistant off now rather than waiting for a full transcript.
-        this._bargeIn();
+        // Real complaint from a real call: the assistant kept getting cut
+        // off — including right near the end of a response — by things
+        // that were never actual interruptions (a breath, a stray "mm",
+        // background noise). StartOfTurn is Deepgram's raw acoustic
+        // voice-onset signal, no transcript yet, and firing _bargeIn()
+        // straight off it means ANY detected sound while the assistant is
+        // talking kills its audio. Don't commit to a barge-in yet — wait
+        // for Deepgram to actually transcribe real words for this turn
+        // (below) before cutting the assistant off. A sound that never
+        // produces a transcript (because it wasn't real speech) now never
+        // barges in at all, instead of always eventually doing so.
+        this._pendingBargeIn = true;
       } else if (msg.event === 'Update') {
         const text = msg.transcript?.trim();
-        if (text) this.send({ type: 'transcript', text, isFinal: false });
+        if (text) {
+          this.send({ type: 'transcript', text, isFinal: false });
+          if (this._pendingBargeIn) {
+            this._pendingBargeIn = false;
+            this._bargeIn();
+          }
+        }
       } else if (msg.event === 'EndOfTurn') {
         // High-confidence, semantically-aware turn end (eot_threshold) — this
         // is what nova-2 + acoustic VAD couldn't do: it waits for a complete
@@ -736,7 +751,7 @@ class CallSession {
       await this._executeKnowledgeBaseNode(node);
     }
 
-    const systemPrompt = node ? this._buildNodeSystemPrompt(node) : this.systemPrompt;
+    const systemPrompt = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -886,12 +901,34 @@ class CallSession {
   // the model only ever has to reason about "what am I doing right now,"
   // with collected-so-far data and the node's real edges (via the
   // transition_flow tool) as its only additional context.
-  _buildNodeSystemPrompt(node) {
+  // `isNodeEntry` is true only for the single turn that actually arrives at
+  // this node (see _runNodeTurn) — every later turn spent still in the same
+  // node (the caller said something that didn't trigger a transition yet)
+  // passes false. This distinction matters: reproduced on a real call, a
+  // node's own instructions (e.g. the greeting node's "Greet the caller")
+  // read as a standing per-turn instruction rather than a one-time opening
+  // action, so a caller saying something ambiguous ("Hello?") while still
+  // in that node got a SECOND greeting-flavored reply right on top of the
+  // first — not corrupted audio, just the model doing exactly what its
+  // system prompt said to do, again. Once isNodeEntry is false, the prompt
+  // explicitly says the opening line has already been given and not to
+  // repeat it, leaning on conversation history (which already has it)
+  // instead of restating the step instructions as if they were still owed.
+  _buildNodeSystemPrompt(node, isNodeEntry) {
     const gs = this.flow?.globalSettings || {};
     let prompt =
       `You are a concise, friendly voice assistant on a phone call, currently in the ` +
-      `"${node.id}" step of a structured conversation flow.\n\n` +
-      `Step instructions: ${node.prompt}\n`;
+      `"${node.id}" step of a structured conversation flow.\n\n`;
+    if (isNodeEntry) {
+      prompt += `Step instructions: ${node.prompt}\n`;
+    } else {
+      prompt +=
+        `Step instructions (for context — you already acted on these; don't repeat your ` +
+        `opening line for this step): ${node.prompt}\n` +
+        `You've already given this step's opening line earlier in the conversation. Respond ` +
+        `naturally to what the caller just said — don't greet them again or restate your ` +
+        `opening line.\n`;
+    }
     if (node.extract) {
       prompt += `Collect these fields before moving on, asking for whichever are still missing: ${Object.keys(node.extract).join(', ')}.\n`;
     }
