@@ -220,6 +220,10 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 // Same shape as the gateway's ADMIN_SECRET (Bearer token, 401 when unset or
 // mismatched) — this only exposes read-only live-call state, no control.
 const ACTIVE_CALLS_SECRET = process.env.ACTIVE_CALLS_SECRET;
+// Guards POST /place-test-call — see that route for why it's a distinct
+// secret from ACTIVE_CALLS_SECRET rather than reusing it: that one only
+// ever reads state, this one places real, billable outbound calls.
+const TEST_CALL_SECRET = process.env.TEST_CALL_SECRET;
 const SYSTEM_PROMPT =
   'You are a concise, friendly voice assistant on a phone call. Keep replies to 1-2 short ' +
   'sentences unless asked for more detail. Never use markdown, bullet points, or emoji — ' +
@@ -313,6 +317,62 @@ app.get('/active-calls', (req, res) => {
   let calls = [...activeSessions.values()].map((s) => s.activeCallSnapshot());
   if (tenantId) calls = calls.filter((c) => c.tenantId === tenantId);
   res.json({ calls, count: calls.length, serverTime: Date.now() });
+});
+
+// Places a real outbound PSTN call from this app's own Twilio number to an
+// arbitrary destination, routed through a specific tenant's flow via
+// ?routeAs= on the /twilio/voice webhook (see that route's own comment for
+// why routeAs exists — To on a real outbound call is the callee's number,
+// not any tenant's routed number). This is the in-house engine's equivalent
+// of calldesktech's Retell-based demo-call trigger; nothing wired it up
+// before now because every prior end-to-end test drove the browser/text-
+// debug WS path directly rather than a real phone call. Same admin-secret
+// guard as /active-calls (Bearer token; 401 when unset or mismatched) —
+// this places real, billable calls, not just reads state.
+app.post('/place-test-call', express.json(), async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const { toNumber, routeAs } = req.body || {};
+  if (!toNumber || !routeAs) {
+    return res.status(400).json({ error: 'toNumber and routeAs are required' });
+  }
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    return res.status(500).json({ error: 'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured' });
+  }
+
+  try {
+    const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    // No FROM number configured explicitly — ask Twilio which number(s) this
+    // account actually owns and use the first, rather than guessing one.
+    const numbersRes = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json?PageSize=1`,
+      { headers: { Authorization: `Basic ${auth64}` } }
+    );
+    const numbersBody = await numbersRes.json();
+    const fromNumber = numbersBody.incoming_phone_numbers?.[0]?.phone_number;
+    if (!fromNumber) {
+      return res.status(500).json({ error: 'No Twilio phone number found on this account', detail: numbersBody });
+    }
+
+    const voiceUrl = `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}`;
+    const params = new URLSearchParams({ To: toNumber, From: fromNumber, Url: voiceUrl });
+    const callRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth64}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    });
+    const callBody = await callRes.json();
+    if (!callRes.ok) {
+      return res.status(callRes.status).json({ error: 'Twilio call creation failed', detail: callBody });
+    }
+    console.log(`[call-loop] test call placed: ${fromNumber} -> ${toNumber} (routeAs=${routeAs}), sid=${callBody.sid}`);
+    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status });
+  } catch (err) {
+    console.error('[call-loop] place-test-call failed', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const server = http.createServer(app);
