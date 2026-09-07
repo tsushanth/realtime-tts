@@ -485,6 +485,18 @@ class CallSession {
     this.id = randomUUID();
     activeSessions.set(this.id, this);
     this._connectDeepgram();
+    // Real bug, reproduced twice: _ensureTtsSocket() used to open the Modal-
+    // hosted TTS gateway lazily, on the FIRST _speak() call. Modal cold
+    // starts can take 10+ seconds, and if that exceeds how long until the
+    // next turn arrives, the superseded-turn check in _speak's dispatch()
+    // silently drops the first turn's audio entirely — genuine dead air,
+    // not just slow. Opening the socket here instead means the cold start
+    // happens concurrently with STT setup and the caller's first utterance,
+    // so by the time there's actually something to say, the socket is
+    // already warm (or at least much further along). Cheap to do
+    // unconditionally even for non-kokoro calls — an unused idle WS gets
+    // closed normally in close(), same as today.
+    this._ensureTtsSocket();
   }
 
   // Read-only snapshot for the /active-calls endpoint. Deliberately excludes
