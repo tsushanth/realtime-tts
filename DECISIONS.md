@@ -169,3 +169,43 @@ concurrency=1 vs p50 1552ms / p95 4106ms at concurrency=4 — an ~8x degradation
 modest one. This is the load pattern a single RunPod GPU replica will also hit past some
 concurrency ceiling; the harness's regression check is what will catch it in prod, and
 the fix is horizontal worker scaling, not micro-optimizing one process.
+
+**LLM connection reuse & prompt caching: investigated, NOT worth changing (call-loop-poc).**
+LLM TTFB in real calls sits at 550-900ms, and the question was whether per-turn
+TCP+TLS handshake overhead to `api.anthropic.com` was part of that, and whether
+Anthropic prompt caching (`cache_control`) could help turns 2+. Both were measured, both
+came back "leave it alone."
+
+1. *Connection reuse already works.* `@anthropic-ai/sdk` 0.32.1 runs on `node-fetch`
+   v2 with a module-level `agentkeepalive` HttpsAgent (`keepAlive: true`) — see
+   `node_modules/@anthropic-ai/sdk/_shims/node-runtime.js:54`. `server.js` constructs the
+   client with no `httpAgent`/`fetch` override and always drains the stream via
+   `stream.finalMessage()`, so nothing defeats pooling. A local mock-TLS test (the exact
+   SDK version, no key) fired 6 sequential `messages.stream()` calls and observed exactly
+   ONE TCP socket — turn 1 handshakes, turns 2..N reuse. Confirmed for the SDK's *default*
+   agent too (no `httpAgent` passed).
+2. *The handshake is negligible anyway.* Instrumented the deployed Fly app (sjc) with a
+   temporary agent that logged NEW-socket vs REUSE plus TCP/TLS timing, then drove
+   mixed-gap turns through the `user_text` WS path. Full TCP+TLS handshake to Anthropic
+   from Fly measured **~7-14ms**. NEW-socket turns and REUSE turns had statistically
+   indistinguishable TTFB (630-935ms across both). So the 550-900ms is essentially all
+   Anthropic's own response time — matching the earlier isolated laptop test (530-1009ms)
+   — not connection overhead. (Instrumentation was deployed to test, then reverted; prod
+   is back on clean HEAD.)
+3. *One real-but-tiny nuance:* the SDK sets the socket `timeout` to 5min but leaves
+   `freeSocketTimeout` at agentkeepalive's 4000ms default, so a pooled socket idle >4s
+   (common between real phone-call turns) is dropped and the next turn re-handshakes.
+   Confirmed live (turns fired 7s apart got fresh sockets; back-to-back reused). Bumping
+   `freeSocketTimeout` to ~60s via a custom `httpAgent` would keep the socket warm across
+   turns — but it only saves that ~10ms handshake, well under the "few tens of ms" bar,
+   so it wasn't worth adding a config override for. Documented here in case handshake
+   cost ever grows (e.g. a region move putting Anthropic further away network-wise).
+4. *Prompt caching doesn't apply.* The model is Claude Haiku 4.5, whose minimum cacheable
+   prefix is **4096 tokens** (the highest of any current model). The flat system prompt is
+   ~45 tokens; per-node flow prompts ~200-270 tokens; plus a small tool schema and short
+   phone-call history — total input per turn is a few hundred tokens, an order of
+   magnitude below the minimum, so `cache_control` would silently not cache
+   (`cache_creation_input_tokens: 0`) with zero TTFB benefit. Worse, the cacheable prefix
+   here isn't even stable: the per-node system prompt is rebuilt every turn with
+   interpolated `collectedData`, and KB content is injected mid-`history`, not as a frozen
+   prefix. Revisit only if a flow ever front-loads a large (>4k-token) *stable* prefix.
