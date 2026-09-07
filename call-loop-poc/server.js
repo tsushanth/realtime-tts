@@ -706,12 +706,31 @@ class CallSession {
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
     this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
-    // Anthropic's API requires at least one message — an auto-advance turn
-    // (the flow's opening line, or a node the flow enters without the caller
-    // saying anything) has nothing real to put there yet on a brand-new call.
+    // The model needs a fresh `user` turn at the end of history to actually
+    // have something to respond to. The call's very opening has nothing at
+    // all yet (isCallOpening). A LATER auto-advance — the flow moved to
+    // this node as a side effect of the previous turn's transition_flow
+    // call, with no new caller utterance since — has the exact same gap:
+    // history still ends on the model's OWN prior assistant reply. This
+    // was the real root cause of a bug reproduced on every real call that
+    // reached the goodbye node: Haiku consistently produced empty text for
+    // it (nothing fresh to react to), silently caught by the fallback
+    // below — which had its own bug, speaking the node's raw instruction
+    // text ("Thank the caller for calling and say a warm goodbye.")
+    // verbatim to the actual caller instead of a real goodbye. Both are
+    // fixed now: this bridges the gap so the model has something to
+    // respond to (fixing the empty-text root cause for auto-advanced
+    // nodes generally, not just goodbye), and the fallback text below no
+    // longer vocalizes developer instructions either way.
     const isCallOpening = this.history.length === 0;
+    const lastMsg = this.history[this.history.length - 1];
     if (isCallOpening) {
       this.history.push({ role: 'user', content: '[Call connected — begin the flow.]' });
+    } else if (!lastMsg || lastMsg.role !== 'user') {
+      this.history.push({
+        role: 'user',
+        content: `[System note: the flow has moved to the "${nodeId}" step. Give your opening line for this step now.]`,
+      });
     }
     await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening });
   }
@@ -813,17 +832,23 @@ class CallSession {
       const final = await stream.finalMessage();
       if (final.usage) this.cost.addLlmUsage(LLM_MODEL, final.usage.input_tokens, final.usage.output_tokens);
       if (this.activeTurn === turnId) {
-        // Safety net for a terminal node (goodbye/transfer): there's no
-        // transition tool to distract the model there, but Haiku
-        // occasionally still returns empty text for a short instruction like
-        // "thank them and say goodbye." Dead air is a much worse failure
-        // there than anywhere else in the flow — it's the caller's very last
-        // impression, or happens right as they're being handed off — so fall
-        // back to speaking the node's own instruction text verbatim rather
-        // than silently hanging up/transferring with nothing said.
+        // Safety net for a terminal node (goodbye/transfer): dead air there
+        // is a much worse failure than anywhere else in the flow — it's the
+        // caller's very last impression, or happens right as they're being
+        // handed off. This used to fall back to node.prompt — the node's
+        // own DEVELOPER-FACING instruction text (e.g. "Thank the caller for
+        // calling and say a warm goodbye.") — spoken to the actual caller
+        // verbatim, read literally as dialogue, immediately before hanging
+        // up on them. Real bug, caught on a live call. node.prompt is an
+        // instruction *for the model*, never customer-facing copy; a
+        // generic but real spoken line is always safe here, unlike
+        // vocalizing whatever a flow author happened to write as the
+        // node's prompt.
         if (!assistantText && (node?.type === 'goodbye' || node?.type === 'transfer')) {
-          console.warn(`[call-loop] node "${node.id}" (${node.type}) produced no speech — falling back to its prompt text`);
-          assistantText = node.prompt;
+          console.warn(`[call-loop] node "${node.id}" (${node.type}) produced no speech — falling back to a generic line`);
+          assistantText = node.type === 'goodbye'
+            ? 'Thank you so much for calling. Have a great day!'
+            : "I'm connecting you now — one moment please.";
           this._speak(assistantText, turnId, turnStartedAt);
         }
         chunker.flush();
