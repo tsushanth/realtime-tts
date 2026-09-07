@@ -119,11 +119,33 @@ export class TwilioCallAdapter extends EventEmitter {
   // browser WebSocket.
   send(data, opts) {
     if (opts && opts.binary) {
-      // PCM16LE @ 24kHz from our cascaded TTS leg -> mulaw @ 8kHz for Twilio.
-      // The TTS gateway socket is opened with binaryType='arraybuffer'
-      // (see server.js), so `data` here is a raw ArrayBuffer, not a Node
-      // Buffer — they don't share a shape (ArrayBuffer has no .length/
-      // .buffer/.byteOffset), so handle both rather than assume one.
+      if (opts.format === 'mulaw8k') {
+        // Already mu-law @ 8kHz — the HTTP TTS backends (elevenlabs/
+        // cartesia/minimax) can be asked to synthesize directly in
+        // Twilio's native wire format (see _speakElevenLabs etc. in
+        // server.js), so there's nothing to decode/resample/encode here,
+        // just frame and pace it. This is the real fix for audio that
+        // came out "glitchy"/aliased: our own resampleInt16 below is a
+        // naive nearest-neighbor decimation with no anti-aliasing filter,
+        // which is fine for upsampling (mic input, 8k->16k) but audibly
+        // corrupts a 24k->8k *down*sample of real speech — letting the
+        // provider's own (properly filtered) resampler produce 8kHz
+        // mu-law directly sidesteps the whole problem instead of trying
+        // to fix naive decimation. Data may be a Buffer or ArrayBuffer,
+        // same as the PCM16 branch below.
+        const buf = data instanceof ArrayBuffer ? Buffer.from(data) : data;
+        this._sendMediaFrames(buf);
+        return;
+      }
+      // PCM16LE @ 24kHz (kokoro gateway, or a browser-only filler clip) ->
+      // mulaw @ 8kHz for Twilio via our own naive resample. Known to
+      // introduce audible aliasing artifacts on real phone audio — kept
+      // only for paths that don't yet request native mu-law output (see
+      // above for why that's the real fix, not this). The TTS gateway
+      // socket is opened with binaryType='arraybuffer' (see server.js),
+      // so `data` here is a raw ArrayBuffer, not a Node Buffer — they
+      // don't share a shape (ArrayBuffer has no .length/.buffer/
+      // .byteOffset), so handle both rather than assume one.
       const int16 = data instanceof ArrayBuffer
         ? new Int16Array(data)
         : new Int16Array(data.buffer, data.byteOffset, data.length / 2);

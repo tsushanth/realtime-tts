@@ -1150,48 +1150,44 @@ class CallSession {
   // `fetchPcm` does the provider-specific request and calls `onChunk(buf)`
   // for each piece of audio as it arrives (checking `turnId` against
   // `this.activeTurn` itself wherever it can bail out early on barge-in).
-  async _speakHttpTts(label, fetchPcm, text, turnId, turnStartedAt) {
+  // `format` is 'pcm16' (default — PCM16LE @ 24kHz, what the browser client
+  // and the kokoro gateway both speak) or 'mulaw8k' (mu-law @ 8kHz,
+  // requested directly from the provider for a real Twilio call — see
+  // _speakElevenLabs/_speakCartesia/_speakMinimax). mu-law is 1 byte per
+  // sample, so unlike pcm16 there's no multi-byte alignment to preserve
+  // across chunk boundaries — every byte is independently valid, and
+  // TwilioCallAdapter forwards it straight through with no resampling at
+  // all (see its send()). pcm16 still needs the 6-byte (3-sample) carry
+  // alignment: a chunk boundary landing mid-decimation-group would shift
+  // twilioAdapter's naive resampleInt16 phase for everything after it.
+  async _speakHttpTts(label, fetchPcm, text, turnId, turnStartedAt, format = 'pcm16') {
     if (!this._httpTtsAborts) this._httpTtsAborts = new Set();
     const controller = new AbortController();
     this._httpTtsAborts.add(controller);
 
-    // Leftover bytes between chunks — rounded to a whole number of 3-sample
-    // groups (6 bytes), not just a whole sample (2 bytes). This matters
-    // because of what happens downstream for a real phone call:
-    // twilioAdapter.js's resampleInt16 does 24kHz->8kHz by taking every 3rd
-    // sample (input[i*3]) — correct only when it restarts at i=0 on a
-    // sample index that's an exact multiple of 3 relative to the start of
-    // the whole utterance. Each call to .send() triggers an independent
-    // resampleInt16 call that restarts its local index at 0, so a chunk
-    // boundary landing mid-group (2 or 4 bytes past the last 6-byte
-    // boundary) silently shifts the decimation phase for every sample after
-    // it — not a click at the boundary, but ongoing pitch-shifted/garbled
-    // audio for the rest of the call. (2-byte/sample alignment alone,
-    // which this used to do, isn't enough — it prevents corrupting
-    // individual samples but not this cross-chunk phase drift.) Carrying
-    // 0-5 leftover bytes forward keeps every chunk handed to onChunk
-    // aligned to a real 3-sample decimation boundary, making chunked
-    // resampling equivalent to resampling the whole buffer at once.
     let carry = Buffer.alloc(0);
     let firstByteAt = null;
 
     const onChunk = (chunk) => {
       if (this.activeTurn !== turnId) return; // barge-in — stop forwarding
       if (this.clientWs.readyState !== WebSocket.OPEN) return;
-      let buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk;
-      const remainder = buf.length % 6;
-      if (remainder !== 0) {
-        carry = Buffer.from(buf.subarray(buf.length - remainder));
-        buf = buf.subarray(0, buf.length - remainder);
-      } else {
-        carry = Buffer.alloc(0);
+      let buf = chunk;
+      if (format === 'pcm16') {
+        buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk;
+        const remainder = buf.length % 6;
+        if (remainder !== 0) {
+          carry = Buffer.from(buf.subarray(buf.length - remainder));
+          buf = buf.subarray(0, buf.length - remainder);
+        } else {
+          carry = Buffer.alloc(0);
+        }
       }
       if (buf.length === 0) return;
       if (firstByteAt === null) {
         firstByteAt = Date.now();
         console.log(`[call-loop] TTS TTFB: ${firstByteAt - turnStartedAt}ms (turn latency end-to-end, ${label})`);
       }
-      this.clientWs.send(buf, { binary: true });
+      this.clientWs.send(buf, { binary: true, format: format === 'mulaw8k' ? 'mulaw8k' : undefined });
     };
 
     try {
@@ -1207,13 +1203,20 @@ class CallSession {
     }
   }
 
-  // ElevenLabs streaming, requested as pcm_24000. Forwards each chunk to
-  // onChunk as it arrives instead of buffering the full response — see
-  // _speakHttpTts for why that's safe now.
+  // ElevenLabs streaming. Requests ulaw_8000 directly for a real Twilio
+  // call instead of our own pcm_24000 + naive resample — see
+  // TwilioCallAdapter.send()'s 'mulaw8k' branch for why: nearest-neighbor
+  // decimation with no anti-aliasing filter audibly corrupts real speech,
+  // and this sidesteps it entirely by letting ElevenLabs's own (properly
+  // filtered) resampler produce 8kHz mu-law directly. Forwards each chunk
+  // to onChunk as it arrives instead of buffering the full response.
   _speakElevenLabs(text, turnId, turnStartedAt) {
+    const isTwilio = this.clientWs instanceof TwilioCallAdapter;
+    const format = isTwilio ? 'mulaw8k' : 'pcm16';
+    const outputFormat = isTwilio ? 'ulaw_8000' : 'pcm_24000';
     this._speakHttpTts('elevenlabs', async (text, signal, turnId, onChunk) => {
       const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=${outputFormat}`,
         {
           method: 'POST',
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
@@ -1229,13 +1232,20 @@ class CallSession {
         if (this.activeTurn !== turnId) break; // barge-in mid-stream
         onChunk(Buffer.from(chunk));
       }
-    }, text, turnId, turnStartedAt);
+    }, text, turnId, turnStartedAt, format);
   }
 
   // Cartesia's TTS-bytes endpoint — same shape as ElevenLabs's stream
   // endpoint (single POST, raw audio bytes back), just a different body
-  // schema. See docs.cartesia.ai/api-reference/tts/bytes.
+  // schema. See docs.cartesia.ai/api-reference/tts/bytes. Requests
+  // pcm_mulaw @ 8000 directly for a real Twilio call — same reasoning as
+  // ElevenLabs above.
   _speakCartesia(text, turnId, turnStartedAt) {
+    const isTwilio = this.clientWs instanceof TwilioCallAdapter;
+    const format = isTwilio ? 'mulaw8k' : 'pcm16';
+    const outputFormat = isTwilio
+      ? { container: 'raw', encoding: 'pcm_mulaw', sample_rate: 8000 }
+      : { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 };
     this._speakHttpTts('cartesia', async (text, signal, turnId, onChunk) => {
       const res = await fetch('https://api.cartesia.ai/tts/bytes', {
         method: 'POST',
@@ -1248,7 +1258,7 @@ class CallSession {
           model_id: CARTESIA_MODEL,
           transcript: text,
           voice: { id: CARTESIA_VOICE_ID },
-          output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
+          output_format: outputFormat,
         }),
         signal,
       });
@@ -1260,7 +1270,7 @@ class CallSession {
         if (this.activeTurn !== turnId) break; // barge-in mid-stream
         onChunk(Buffer.from(chunk));
       }
-    }, text, turnId, turnStartedAt);
+    }, text, turnId, turnStartedAt, format);
   }
 
   // MiniMax's T2A v2 endpoint — non-streaming (stream: false): it returns
@@ -1268,8 +1278,14 @@ class CallSession {
   // data.audio, not a raw byte stream, so there's no per-chunk barge-in
   // check to make (nothing to check partway through — the request either
   // completes or it doesn't). See platform.minimax.io/docs/api-reference/
-  // speech-t2a-http.
+  // speech-t2a-http. Requests pcmu_raw (G.711 mu-law, fixed 8kHz) directly
+  // for a real Twilio call — same reasoning as ElevenLabs/Cartesia above.
   _speakMinimax(text, turnId, turnStartedAt) {
+    const isTwilio = this.clientWs instanceof TwilioCallAdapter;
+    const format = isTwilio ? 'mulaw8k' : 'pcm16';
+    const audioSetting = isTwilio
+      ? { sample_rate: 8000, format: 'pcmu_raw', channel: 1 }
+      : { sample_rate: 24000, format: 'pcm', channel: 1 };
     this._speakHttpTts('minimax', async (text, signal, turnId, onChunk) => {
       const res = await fetch(`https://api-uw.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(MINIMAX_GROUP_ID)}`, {
         method: 'POST',
@@ -1280,7 +1296,7 @@ class CallSession {
           stream: false,
           output_format: 'hex',
           voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0 },
-          audio_setting: { sample_rate: 24000, format: 'pcm', channel: 1 },
+          audio_setting: audioSetting,
         }),
         signal,
       });
@@ -1294,7 +1310,7 @@ class CallSession {
         return;
       }
       onChunk(Buffer.from(body.data.audio, 'hex'));
-    }, text, turnId, turnStartedAt);
+    }, text, turnId, turnStartedAt, format);
   }
 
   _onTtsMessage(data, isBinary) {
