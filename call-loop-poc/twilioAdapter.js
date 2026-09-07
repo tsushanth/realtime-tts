@@ -30,22 +30,6 @@ function linearToMuLaw(sample) {
   return ~(sign | (exponent << 4) | mantissa) & 0xff;
 }
 
-function muLawToLinear(muLawByte) {
-  const b = ~muLawByte & 0xff;
-  const sign = b & 0x80;
-  const exponent = (b >> 4) & 0x07;
-  const mantissa = b & 0x0f;
-  let sample = ((mantissa << 3) + BIAS) << exponent;
-  sample -= BIAS;
-  return sign ? -sample : sample;
-}
-
-function decodeMuLawBuffer(buf) {
-  const out = new Int16Array(buf.length);
-  for (let i = 0; i < buf.length; i++) out[i] = muLawToLinear(buf[i]);
-  return out;
-}
-
 function encodeMuLawBuffer(int16) {
   const out = Buffer.alloc(int16.length);
   for (let i = 0; i < int16.length; i++) out[i] = linearToMuLaw(int16[i]);
@@ -103,10 +87,14 @@ export class TwilioCallAdapter extends EventEmitter {
       this._flushQueue();
       this.emit('start', this.callSid);
     } else if (msg.event === 'media') {
+      // Forward raw mu-law@8kHz straight through — Deepgram Flux accepts it
+      // natively (see DEEPGRAM_WS_URL_TWILIO in server.js). Decoding to PCM16
+      // and upsampling to 16kHz here, like we used to, only throws away
+      // information a nearest-neighbor resample can't add back; letting
+      // Deepgram handle real phone audio it's actually built for avoids that
+      // entirely instead of trying to compensate for our own resample.
       const mulaw = Buffer.from(msg.media.payload, 'base64');
-      const pcm8k = decodeMuLawBuffer(mulaw);
-      const pcm16k = resampleInt16(pcm8k, 8000, 16000);
-      this.emit('message', Buffer.from(pcm16k.buffer), true);
+      this.emit('message', mulaw, true);
     } else if (msg.event === 'stop') {
       console.log('[twilio] stream stopped');
       this.emit('close');

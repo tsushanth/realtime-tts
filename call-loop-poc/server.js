@@ -275,9 +275,21 @@ const SYSTEM_PROMPT =
 // silence — eot_threshold is the confidence bar for a real EndOfTurn, higher
 // = waits for more certainty before handing off to the LLM. StartOfTurn
 // (below) is what drives barge-in and fires independently of eot_threshold.
-const DEEPGRAM_WS_URL =
+// Two variants, not one: a browser call sends PCM16@16kHz mic audio, but a
+// real Twilio call's native wire format is mu-law@8kHz. Flux accepts mulaw
+// directly (encoding=mulaw&sample_rate=8000) — sending that straight through
+// avoids exactly the same naive nearest-neighbor upsample-then-hope problem
+// already fixed on the TTS output side (see twilioAdapter.js/_speakElevenLabs
+// etc.): decoding real phone audio to PCM16 and resampling it before Deepgram
+// even sees it can only lose information, never add it back. `numerals=true`
+// converts spoken numbers to digits, which matters for a booking flow parsing
+// dates/times out of the transcript.
+const DEEPGRAM_WS_URL_BROWSER =
   'wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000' +
-  '&eot_threshold=0.7&eot_timeout_ms=5000';
+  '&eot_threshold=0.7&eot_timeout_ms=5000&numerals=true';
+const DEEPGRAM_WS_URL_TWILIO =
+  'wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=mulaw&sample_rate=8000' +
+  '&eot_threshold=0.7&eot_timeout_ms=5000&numerals=true';
 
 if (!DEEPGRAM_API_KEY) console.warn('[call-loop] DEEPGRAM_API_KEY not set — STT will fail');
 if (!ANTHROPIC_API_KEY) console.warn('[call-loop] ANTHROPIC_API_KEY not set — LLM will fail');
@@ -561,7 +573,9 @@ class CallSession {
 
   _connectDeepgram() {
     if (!DEEPGRAM_API_KEY) return;
-    const dg = new WebSocket(DEEPGRAM_WS_URL, { headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` } });
+    const isTwilio = this.clientWs instanceof TwilioCallAdapter;
+    const url = isTwilio ? DEEPGRAM_WS_URL_TWILIO : DEEPGRAM_WS_URL_BROWSER;
+    const dg = new WebSocket(url, { headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` } });
     this.dgConnection = dg;
 
     dg.on('open', () => console.log('[call-loop] deepgram (flux) connected'));
@@ -981,6 +995,18 @@ class CallSession {
     }
     if (node.extract) {
       prompt += `Collect these fields before moving on, asking for whichever are still missing: ${Object.keys(node.extract).join(', ')}.\n`;
+      // Real bug found via a live call: Deepgram mistranscribed the caller's
+      // name ("Sushant" -> "Ashant") and the bot repeated the wrong name back
+      // for the rest of the call with no chance to correct it. Speech-to-text
+      // will never be 100% on proper nouns and phone-mic audio — the fix that
+      // actually works regardless of which STT model/vendor we use is to have
+      // the LLM read back what it captured as a confirmation, the same way a
+      // human call-taker would, rather than silently trusting the transcript.
+      prompt +=
+        `Names and numbers (dates, times, phone numbers) are easy to mishear over the phone. ` +
+        `Once you think you've captured one, briefly read it back as part of your next reply ` +
+        `(e.g. "Got it, Alex, for 3pm tomorrow — did I get that right?") before relying on it or ` +
+        `transitioning. If the caller corrects you, use their correction, not your first guess.\n`;
     }
     if (Object.keys(this.collectedData).length > 0) {
       prompt += `Already collected this call: ${JSON.stringify(this.collectedData)}\n`;
