@@ -1155,11 +1155,23 @@ class CallSession {
     const controller = new AbortController();
     this._httpTtsAborts.add(controller);
 
-    // Leftover odd byte between chunks — PCM16 samples are 2 bytes, but an
-    // HTTP chunk boundary from the provider isn't guaranteed to land on a
-    // sample boundary. Carrying a single stray byte forward (prepended to
-    // the next chunk) keeps every frame we actually send sample-aligned
-    // without dropping any audio.
+    // Leftover bytes between chunks — rounded to a whole number of 3-sample
+    // groups (6 bytes), not just a whole sample (2 bytes). This matters
+    // because of what happens downstream for a real phone call:
+    // twilioAdapter.js's resampleInt16 does 24kHz->8kHz by taking every 3rd
+    // sample (input[i*3]) — correct only when it restarts at i=0 on a
+    // sample index that's an exact multiple of 3 relative to the start of
+    // the whole utterance. Each call to .send() triggers an independent
+    // resampleInt16 call that restarts its local index at 0, so a chunk
+    // boundary landing mid-group (2 or 4 bytes past the last 6-byte
+    // boundary) silently shifts the decimation phase for every sample after
+    // it — not a click at the boundary, but ongoing pitch-shifted/garbled
+    // audio for the rest of the call. (2-byte/sample alignment alone,
+    // which this used to do, isn't enough — it prevents corrupting
+    // individual samples but not this cross-chunk phase drift.) Carrying
+    // 0-5 leftover bytes forward keeps every chunk handed to onChunk
+    // aligned to a real 3-sample decimation boundary, making chunked
+    // resampling equivalent to resampling the whole buffer at once.
     let carry = Buffer.alloc(0);
     let firstByteAt = null;
 
@@ -1167,9 +1179,10 @@ class CallSession {
       if (this.activeTurn !== turnId) return; // barge-in — stop forwarding
       if (this.clientWs.readyState !== WebSocket.OPEN) return;
       let buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk;
-      if (buf.length % 2 !== 0) {
-        carry = Buffer.from(buf.subarray(buf.length - 1));
-        buf = buf.subarray(0, buf.length - 1);
+      const remainder = buf.length % 6;
+      if (remainder !== 0) {
+        carry = Buffer.from(buf.subarray(buf.length - remainder));
+        buf = buf.subarray(0, buf.length - remainder);
       } else {
         carry = Buffer.alloc(0);
       }
