@@ -191,6 +191,10 @@ export class TwilioCallAdapter extends EventEmitter {
       if (!frame) {
         clearInterval(this._paceTimer);
         this._paceTimer = null;
+        // A close() that arrived while frames were still queued (see
+        // close() below) couldn't act on it yet — do it now that the
+        // queue has actually drained.
+        if (this._closeRequested) this._doClose();
         return;
       }
       this.twilioWs.send(JSON.stringify({ event: 'media', streamSid: this.streamSid, media: { payload: frame.toString('base64') } }));
@@ -205,11 +209,36 @@ export class TwilioCallAdapter extends EventEmitter {
     this._outQueue = [];
   }
 
+  // Real bug, caught on a live call: the caller's actual last sentence (a
+  // goodbye line) got cut off mid-playback. Cause: CallSession considers a
+  // turn "done" (and, for a goodbye node, hangs up) the moment every chunk
+  // has been handed to send() — but for a real phone call that only means
+  // the audio was pushed into _pacedQueue, not that Twilio has actually
+  // played it out yet (the whole point of pacing is to drip-feed it over
+  // real time, tens to hundreds of ms after being queued). Closing the
+  // Twilio stream immediately tore down the connection out from under
+  // whatever was still queued. Now: if there's still audio queued/pacing,
+  // defer the actual close until _startPacing's interval drains it (above),
+  // plus a small buffer for Twilio's own playout lag on the last frame —
+  // closing immediately when the queue is empty and nothing is pacing.
   close() {
-    try {
-      this.twilioWs.close();
-    } catch {
-      // already closed
+    if (this._paceTimer || this._pacedQueue.length > 0) {
+      this._closeRequested = true;
+      return;
     }
+    this._doClose();
+  }
+
+  _doClose() {
+    // Twilio needs a moment to actually play out the last frame or two
+    // after we've sent them — closing the instant our local queue empties
+    // can still clip the very tail of the audio.
+    setTimeout(() => {
+      try {
+        this.twilioWs.close();
+      } catch {
+        // already closed
+      }
+    }, 300);
   }
 }
