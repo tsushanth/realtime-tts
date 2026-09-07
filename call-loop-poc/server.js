@@ -35,18 +35,52 @@ const TTS_GATEWAY_WS_URL = process.env.TTS_GATEWAY_WS_URL || 'ws://127.0.0.1:808
 const TTS_GATEWAY_API_KEY = process.env.TTS_GATEWAY_API_KEY;
 const TTS_VOICE = process.env.TTS_VOICE || 'af_heart';
 // 'kokoro' (default) is our own realtime-tts gateway (CPU or GPU backend,
-// unaffected by this flag). 'elevenlabs' is a third backend for the cascaded
-// engine's TTS leg only — higher quality voice, real per-character cost,
-// see Stage 1 of the rollout plan. This is only the process-wide default —
-// a per-session {"type":"context"} message with a `ttsBackend` field
-// overrides it per call (see CallSession.onClientMessage), so a multi-tenant
-// caller can pick elevenlabs for one tenant and kokoro for another without a
+// unaffected by this flag). 'elevenlabs', 'cartesia', and 'minimax' are
+// alternate backends for the cascaded engine's TTS leg — each calls that
+// provider's HTTP API directly with its own key (real per-character/per-
+// request cost) and buffers the full response before handing it to the
+// resample pipeline (see _speakElevenLabs for why: resampling is a stateful
+// decimation that can't restart per-chunk). This is only the process-wide
+// default — a per-session {"type":"context"} message with a `ttsBackend`
+// field overrides it per call (see CallSession.onClientMessage), so a
+// multi-tenant caller can pick a different backend per tenant without a
 // restart.
-const TTS_BACKEND = process.env.TTS_BACKEND === 'elevenlabs' ? 'elevenlabs' : 'kokoro';
+const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax'];
+const TTS_BACKEND = VALID_TTS_BACKENDS.includes(process.env.TTS_BACKEND) ? process.env.TTS_BACKEND : 'kokoro';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
 if (TTS_BACKEND === 'elevenlabs' && !ELEVENLABS_API_KEY) {
   console.warn('[call-loop] TTS_BACKEND=elevenlabs but ELEVENLABS_API_KEY not set — TTS will fail');
+}
+// Cartesia's TTS-bytes endpoint (see docs.cartesia.ai/api-reference/tts/bytes)
+// — a single POST returning raw audio bytes, same shape as ElevenLabs's
+// stream endpoint. voice.id is a UUID from Cartesia's voice library, not a
+// memorable name, so there's no baked-in default — it must be set.
+const CARTESIA_API_KEY = process.env.CARTESIA_API_KEY;
+const CARTESIA_VOICE_ID = process.env.CARTESIA_VOICE_ID;
+const CARTESIA_MODEL = process.env.CARTESIA_MODEL || 'sonic-3.6';
+if (TTS_BACKEND === 'cartesia' && (!CARTESIA_API_KEY || !CARTESIA_VOICE_ID)) {
+  console.warn('[call-loop] TTS_BACKEND=cartesia but CARTESIA_API_KEY/CARTESIA_VOICE_ID not set — TTS will fail');
+}
+// MiniMax's T2A v2 endpoint (see platform.minimax.io/docs/api-reference/
+// speech-t2a-http) — needs both an API key and a GroupId (account/org id,
+// distinct from the key itself) passed as a query param.
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
+const MINIMAX_GROUP_ID = process.env.MINIMAX_GROUP_ID;
+const MINIMAX_VOICE_ID = process.env.MINIMAX_VOICE_ID || 'English_Graceful_Lady';
+const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'speech-2.8-hd';
+if (TTS_BACKEND === 'minimax' && (!MINIMAX_API_KEY || !MINIMAX_GROUP_ID)) {
+  console.warn('[call-loop] TTS_BACKEND=minimax but MINIMAX_API_KEY/MINIMAX_GROUP_ID not set — TTS will fail');
+}
+// Shared readiness check — used both at process startup (above) and when a
+// per-session context message requests a backend (CallSession.onClientMessage),
+// so a tenant can't silently end up with dead TTS just because a key was
+// never configured on this Fly app.
+function ttsBackendMissingKey(backend) {
+  if (backend === 'elevenlabs') return !ELEVENLABS_API_KEY;
+  if (backend === 'cartesia') return !CARTESIA_API_KEY || !CARTESIA_VOICE_ID;
+  if (backend === 'minimax') return !MINIMAX_API_KEY || !MINIMAX_GROUP_ID;
+  return false; // kokoro needs no key
 }
 // Haiku over Sonnet for the voice path specifically — a phone reply doesn't
 // need Sonnet's depth of reasoning, and LLM TTFB was the single biggest
@@ -360,9 +394,9 @@ class CallSession {
       if (typeof msg.phoneNumber === 'string' && msg.phoneNumber.trim()) {
         this.phoneNumber = msg.phoneNumber.trim();
       }
-      if (msg.ttsBackend === 'elevenlabs' || msg.ttsBackend === 'kokoro') {
-        if (msg.ttsBackend === 'elevenlabs' && !ELEVENLABS_API_KEY) {
-          console.warn('[call-loop] context requested ttsBackend=elevenlabs but ELEVENLABS_API_KEY not set — falling back to kokoro');
+      if (VALID_TTS_BACKENDS.includes(msg.ttsBackend)) {
+        if (msg.ttsBackend !== 'kokoro' && ttsBackendMissingKey(msg.ttsBackend)) {
+          console.warn(`[call-loop] context requested ttsBackend=${msg.ttsBackend} but its API key/config isn't set — falling back to kokoro`);
         } else {
           this.ttsBackend = msg.ttsBackend;
           this.cost.ttsBackend = msg.ttsBackend;
@@ -790,6 +824,14 @@ class CallSession {
       this._speakElevenLabs(text, turnId, turnStartedAt);
       return;
     }
+    if (this.ttsBackend === 'cartesia') {
+      this._speakCartesia(text, turnId, turnStartedAt);
+      return;
+    }
+    if (this.ttsBackend === 'minimax') {
+      this._speakMinimax(text, turnId, turnStartedAt);
+      return;
+    }
 
     const ws = this._ensureTtsSocket();
     const dispatch = () => {
@@ -805,64 +847,134 @@ class CallSession {
     else ws.once('open', dispatch);
   }
 
-  // ElevenLabs streaming, requested as pcm_24000 — the exact same wire
-  // format our own TTS gateway already emits, so it drops straight into the
-  // same downstream forwarding path (_onTtsMessage's binary branch does the
-  // same job for the gateway; this does its own forwarding since there's no
-  // gateway WS in this path, just an HTTP stream).
-  async _speakElevenLabs(text, turnId, turnStartedAt) {
-    if (!this._elevenAborts) this._elevenAborts = new Set();
+  // Shared plumbing for every HTTP-based TTS backend (elevenlabs, cartesia,
+  // minimax): manage this turn's AbortController, buffer the provider's full
+  // response (resampling downstream is a *stateful* decimation — take every
+  // Nth sample — so running it per arbitrarily-sized HTTP chunk would reset
+  // that state at every chunk boundary instead of continuing the same phase
+  // across the whole utterance; costs a little TTFB in exchange for correct
+  // audio), and forward it as one binary frame down the same wire format our
+  // own TTS gateway emits (PCM16LE mono 24kHz — see _onTtsMessage's binary
+  // branch, which does the same forwarding job for the gateway). `fetchPcm`
+  // does the provider-specific request and returns a Buffer (or null on a
+  // request failure it's already logged), checking `turnId` against
+  // `this.activeTurn` itself wherever it can bail out early on barge-in.
+  async _speakHttpTts(label, fetchPcm, text, turnId, turnStartedAt) {
+    if (!this._httpTtsAborts) this._httpTtsAborts = new Set();
     const controller = new AbortController();
-    this._elevenAborts.add(controller);
-    let loggedTtfb = false;
+    this._httpTtsAborts.add(controller);
 
     try {
-      const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
-        {
-          method: 'POST',
-          headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
-          signal: controller.signal,
-        }
-      );
-      if (!res.ok || !res.body) {
-        console.error(`[call-loop] ElevenLabs request failed: ${res.status}`);
-        return;
-      }
-      // Buffer the full response before handing it to the resample/mulaw
-      // pipeline downstream — resampling is a *stateful* decimation
-      // (take every Nth sample), and running it separately on each small,
-      // arbitrarily-sized HTTP chunk resets that state at every chunk
-      // boundary instead of continuing the same phase across the whole
-      // utterance. That's a structural mismatch, not a framing bug, and no
-      // per-chunk fix (like the earlier odd-byte-alignment attempt) can
-      // patch around it — it corrupts the underlying sample sequence, not
-      // just the edges. Costs a little TTFB (no longer forwarding the very
-      // first bytes immediately) in exchange for actually correct audio.
-      const parts = [];
-      for await (const chunk of res.body) {
-        if (this.activeTurn !== turnId) break; // barge-in mid-stream
-        parts.push(Buffer.from(chunk));
-      }
-      if (this.activeTurn === turnId && parts.length > 0) {
-        loggedTtfb = true;
-        console.log(`[call-loop] TTS TTFB: ${Date.now() - turnStartedAt}ms (turn latency end-to-end, elevenlabs)`);
-        let full = Buffer.concat(parts);
+      const pcm = await fetchPcm(text, controller.signal, turnId);
+      if (pcm && this.activeTurn === turnId && pcm.length > 0) {
+        console.log(`[call-loop] TTS TTFB: ${Date.now() - turnStartedAt}ms (turn latency end-to-end, ${label})`);
+        let full = pcm;
         if (full.length % 2 !== 0) full = full.subarray(0, full.length - 1); // drop any trailing odd byte
         if (this.clientWs.readyState === WebSocket.OPEN) {
           this.clientWs.send(full, { binary: true });
         }
       }
     } catch (err) {
-      if (err.name !== 'AbortError') console.error('[call-loop] ElevenLabs stream error', err);
+      if (err.name !== 'AbortError') console.error(`[call-loop] ${label} stream error`, err);
     } finally {
-      this._elevenAborts.delete(controller);
+      this._httpTtsAborts.delete(controller);
       if (this.turnState?.id === turnId) {
         this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
         this._maybeRetireTurn(turnId);
       }
     }
+  }
+
+  // ElevenLabs streaming, requested as pcm_24000.
+  _speakElevenLabs(text, turnId, turnStartedAt) {
+    this._speakHttpTts('elevenlabs', async (text, signal, turnId) => {
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
+        {
+          method: 'POST',
+          headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+          signal,
+        }
+      );
+      if (!res.ok || !res.body) {
+        console.error(`[call-loop] ElevenLabs request failed: ${res.status}`);
+        return null;
+      }
+      const parts = [];
+      for await (const chunk of res.body) {
+        if (this.activeTurn !== turnId) break; // barge-in mid-stream
+        parts.push(Buffer.from(chunk));
+      }
+      return Buffer.concat(parts);
+    }, text, turnId, turnStartedAt);
+  }
+
+  // Cartesia's TTS-bytes endpoint — same shape as ElevenLabs's stream
+  // endpoint (single POST, raw audio bytes back), just a different body
+  // schema. See docs.cartesia.ai/api-reference/tts/bytes.
+  _speakCartesia(text, turnId, turnStartedAt) {
+    this._speakHttpTts('cartesia', async (text, signal, turnId) => {
+      const res = await fetch('https://api.cartesia.ai/tts/bytes', {
+        method: 'POST',
+        headers: {
+          'Cartesia-Version': '2026-08-14',
+          Authorization: `Bearer ${CARTESIA_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_id: CARTESIA_MODEL,
+          transcript: text,
+          voice: { id: CARTESIA_VOICE_ID },
+          output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
+        }),
+        signal,
+      });
+      if (!res.ok || !res.body) {
+        console.error(`[call-loop] Cartesia request failed: ${res.status}`);
+        return null;
+      }
+      const parts = [];
+      for await (const chunk of res.body) {
+        if (this.activeTurn !== turnId) break; // barge-in mid-stream
+        parts.push(Buffer.from(chunk));
+      }
+      return Buffer.concat(parts);
+    }, text, turnId, turnStartedAt);
+  }
+
+  // MiniMax's T2A v2 endpoint — non-streaming (stream: false): it returns
+  // one JSON object with the full utterance's audio hex-encoded in
+  // data.audio, not a raw byte stream, so there's no per-chunk barge-in
+  // check to make (nothing to check partway through — the request either
+  // completes or it doesn't). See platform.minimax.io/docs/api-reference/
+  // speech-t2a-http.
+  _speakMinimax(text, turnId, turnStartedAt) {
+    this._speakHttpTts('minimax', async (text, signal) => {
+      const res = await fetch(`https://api-uw.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(MINIMAX_GROUP_ID)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${MINIMAX_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MINIMAX_MODEL,
+          text,
+          stream: false,
+          output_format: 'hex',
+          voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0 },
+          audio_setting: { sample_rate: 24000, format: 'pcm', channel: 1 },
+        }),
+        signal,
+      });
+      if (!res.ok) {
+        console.error(`[call-loop] MiniMax request failed: ${res.status}`);
+        return null;
+      }
+      const body = await res.json();
+      if (body.base_resp?.status_code !== 0 || !body.data?.audio) {
+        console.error(`[call-loop] MiniMax synthesis error: ${body.base_resp?.status_msg || 'no audio in response'}`);
+        return null;
+      }
+      return Buffer.from(body.data.audio, 'hex');
+    }, text, turnId, turnStartedAt);
   }
 
   _onTtsMessage(data, isBinary) {
@@ -898,9 +1010,9 @@ class CallSession {
     if (this.activeTurn === 0) return;
     console.log(`[call-loop] barge-in — cancelling turn ${this.activeTurn}`);
     this.activeTurn = 0; // no active turn is allowed to speak until the next final transcript
-    if (this._elevenAborts) {
-      for (const controller of this._elevenAborts) controller.abort();
-      this._elevenAborts.clear();
+    if (this._httpTtsAborts) {
+      for (const controller of this._httpTtsAborts) controller.abort();
+      this._httpTtsAborts.clear();
     }
     if (this.ttsWs?.readyState === WebSocket.OPEN) {
       this.ttsWs.send(JSON.stringify({ type: 'stop' }));

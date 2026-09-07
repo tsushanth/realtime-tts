@@ -10,6 +10,12 @@ export const RATES = {
   },
   elevenlabsPerChar: 0.05 / 1000, // eleven_flash_v2_5
   kokoroPerChar: 0, // self-hosted — marginal cost ~0; GPU rental (if on) is billed separately by the hour, not per-call
+  // cartesia/minimax added as TTS backends without a confirmed billing tier
+  // (no account exists yet) — 0 here means "not priced," not "free," so the
+  // cost breakdown doesn't silently claim a wrong number. ttsChars is still
+  // counted for these calls; correct the rate once there's a real plan.
+  cartesiaPerChar: 0,
+  minimaxPerChar: 0,
   openaiRealtimeMini: {
     // 1 token per 100ms of user speech, 1 token per 50ms of assistant speech
     inputTokPerSec: 10,
@@ -75,7 +81,13 @@ export class CallCostTracker {
       if (!rate) continue; // unknown model — skip rather than guess a wrong rate
       llmCost += inputTokens * rate.input + outputTokens * rate.output;
     }
-    const ttsRate = this.ttsBackend === 'elevenlabs' ? RATES.elevenlabsPerChar : RATES.kokoroPerChar;
+    const TTS_RATE_BY_BACKEND = {
+      elevenlabs: RATES.elevenlabsPerChar,
+      cartesia: RATES.cartesiaPerChar,
+      minimax: RATES.minimaxPerChar,
+      kokoro: RATES.kokoroPerChar,
+    };
+    const ttsRate = TTS_RATE_BY_BACKEND[this.ttsBackend] ?? RATES.kokoroPerChar;
     const ttsCost = this.ttsChars * ttsRate;
 
     return {
