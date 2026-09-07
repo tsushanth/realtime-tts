@@ -209,3 +209,20 @@ came back "leave it alone."
    here isn't even stable: the per-node system prompt is rebuilt every turn with
    interpolated `collectedData`, and KB content is injected mid-`history`, not as a frozen
    prefix. Revisit only if a flow ever front-loads a large (>4k-token) *stable* prefix.
+
+**Fly region: ruled out as a latency factor (call-loop-poc, no code/infra change).**
+Same 550-900ms real LLM TTFB question as above, from the network/geography angle instead
+of the app-request angle. Ran isolated, timed `POST /v1/messages` requests (Claude Haiku
+4.5, streamed, same short prompt) against Anthropic from temporary throwaway machines in
+sjc (call-loop-poc's actual region) plus 2-3 other US regions, several trials each, then
+tore the throwaway infra down. All four regions clustered within ~40-50ms of each other;
+the best case (east-coast iad/ord, ~520ms) beat sjc (~560ms) by only ~40ms — under the
+~100ms bar for "worth migrating a live phone-call app over," and well inside per-trial
+noise (individual trials ranged 468-1001ms with heavy overlap across regions). There's a
+faint, directionally-consistent east-coast edge across both test rounds (mild signal that
+Anthropic's serving infra leans US-east), but nowhere near large enough to act on.
+Cross-checks cleanly with the connection-reuse finding above: the isolated raw sjc TTFB
+(~560ms) sits at the *bottom* of production's measured 550-900ms range, meaning neither
+region nor connection overhead explains the range's upper end — whatever pushes a real
+turn toward 900ms is Anthropic's own per-request response-time variance, not something
+on our side of the wire.
