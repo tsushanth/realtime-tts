@@ -868,7 +868,16 @@ class CallSession {
           this._speak(assistantText, turnId, turnStartedAt);
         }
         chunker.flush();
-        if (assistantText) this.history.push({ role: 'assistant', content: assistantText });
+        if (assistantText) {
+          this.history.push({ role: 'assistant', content: assistantText });
+          // Only the CALLER's side was ever logged server-side (see "turn N
+          // user:" below in _onUserTurnComplete) — meaning there was no way
+          // to pull a full transcript for a past call to compare against
+          // anything, e.g. Retell's own stored transcripts. Log our own
+          // side too, same format, so `flyctl logs` has both halves of the
+          // conversation.
+          console.log(`[call-loop] turn ${turnId} assistant: "${assistantText}"`);
+        }
         // TTS-backend-independent observability — chunk_meta only exists on
         // the kokoro path, so a client (browser UI, or a headless test
         // harness like the flow MCP server) that wants "what did the
