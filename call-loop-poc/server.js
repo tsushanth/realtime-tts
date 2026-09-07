@@ -49,6 +49,18 @@ const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax'];
 const TTS_BACKEND = VALID_TTS_BACKENDS.includes(process.env.TTS_BACKEND) ? process.env.TTS_BACKEND : 'kokoro';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
+// eleven_flash_v2_5 (the previous hardcoded default) is ElevenLabs' fastest
+// AND lowest-quality tier — ~75ms model latency, explicitly traded against
+// naturalness. Real complaint on a live call, side-by-side against Retell's
+// own ElevenLabs integration: "night and day" worse. Retell almost
+// certainly isn't using the bargain tier. eleven_multilingual_v2 is
+// ElevenLabs' stable, established high-quality model (their newer eleven_v3
+// is not used here — it's newer/experimental and may need a different API
+// shape than this streaming endpoint, not worth the risk in the same
+// change as fixing an active quality complaint). The latency cost is real
+// but small relative to our actual per-turn budget, which is dominated by
+// the LLM leg (700-900ms) — worth it for a direct quality complaint.
+const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
 if (TTS_BACKEND === 'elevenlabs' && !ELEVENLABS_API_KEY) {
   console.warn('[call-loop] TTS_BACKEND=elevenlabs but ELEVENLABS_API_KEY not set — TTS will fail');
 }
@@ -141,7 +153,11 @@ async function fetchElevenLabsPcmOnce(text) {
     {
       method: 'POST',
       headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+      body: JSON.stringify({
+        text,
+        model_id: ELEVENLABS_MODEL,
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      }),
     }
   );
   if (!res.ok || !res.body) throw new Error(`ElevenLabs prewarm failed: ${res.status}`);
@@ -1321,7 +1337,11 @@ class CallSession {
         {
           method: 'POST',
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+          body: JSON.stringify({
+            text,
+            model_id: ELEVENLABS_MODEL,
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          }),
           signal,
         }
       );
