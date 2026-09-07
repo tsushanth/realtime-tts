@@ -10,12 +10,15 @@ export const RATES = {
   },
   elevenlabsPerChar: 0.05 / 1000, // eleven_flash_v2_5
   kokoroPerChar: 0, // self-hosted — marginal cost ~0; GPU rental (if on) is billed separately by the hour, not per-call
-  // cartesia/minimax added as TTS backends without a confirmed billing tier
-  // (no account exists yet) — 0 here means "not priced," not "free," so the
-  // cost breakdown doesn't silently claim a wrong number. ttsChars is still
-  // counted for these calls; correct the rate once there's a real plan.
-  cartesiaPerChar: 0,
-  minimaxPerChar: 0,
+  // Cartesia's Sonic pay-as-you-go rate ($50/M chars, docs.cartesia.ai/pricing)
+  // — same as ElevenLabs Flash. No account exists yet to confirm an actual
+  // committed-tier rate; this is the public pay-as-you-go price.
+  cartesiaPerChar: 0.05 / 1000,
+  // MiniMax speech-2.8-hd pay-as-you-go rate ($100/M chars,
+  // platform.minimax.io/docs/guides/pricing-paygo) — 2x Cartesia/ElevenLabs.
+  // Matches the model server.js defaults to (MINIMAX_MODEL); the cheaper
+  // speech-2.8-turbo tier is $60/M chars if that's used instead.
+  minimaxPerChar: 0.1 / 1000,
   openaiRealtimeMini: {
     // 1 token per 100ms of user speech, 1 token per 50ms of assistant speech
     inputTokPerSec: 10,
