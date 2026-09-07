@@ -111,6 +111,20 @@ const BACKCHANNEL_WORDS_DEFAULT = (process.env.BACKCHANNEL_WORDS || 'Mm-hmm.,Got
   .map((w) => w.trim())
   .filter(Boolean);
 
+// Kokoro-specific cold-start mask. Reproduced twice on real calls: the
+// Modal-hosted TTS gateway can take longer to cold-start than the time
+// until the flow's opening line needs to speak, even with the eager
+// _ensureTtsSocket() call in the constructor — that reduces the window but
+// doesn't guarantee it closes before the greeting is ready. Real fix:
+// speak a short warmup line through a backend with no cold-start problem
+// (elevenlabs — an HTTP call, not a persistent gateway connection) the
+// moment a kokoro session needs to speak before its own socket is open, so
+// the caller hears *something* instead of dead air while it finishes
+// connecting. This is deliberately not the same mechanism as
+// backchanneling above (which masks per-turn LLM latency mid-conversation)
+// — this masks a one-time connection-setup delay at the start of a call.
+const KOKORO_WARMUP_PHRASE = process.env.KOKORO_WARMUP_PHRASE || 'One moment while I get set up.';
+
 // backend::voice::text -> Buffer (PCM16LE mono 24kHz). Populated at startup
 // for the HTTP TTS backends that have a single, global, env-configured voice
 // (elevenlabs/cartesia/minimax) so playing a filler costs zero network
@@ -202,6 +216,18 @@ async function prewarmFillerCache() {
           .catch((err) => console.warn(`[call-loop] filler prewarm (minimax, "${text}") failed:`, err.message))
       );
     }
+  }
+  // Kokoro cold-start warmup line — always via elevenlabs regardless of
+  // which backend the session ends up using, since the whole point is to
+  // speak while kokoro's own gateway is still connecting. Keyed under a
+  // 'warmup::' namespace, distinct from the 'elevenlabs::' backchannel
+  // entries above, even though both happen to use the same provider here.
+  if (ELEVENLABS_API_KEY) {
+    jobs.push(
+      fetchElevenLabsPcmOnce(KOKORO_WARMUP_PHRASE)
+        .then((buf) => fillerCache.set(`warmup::elevenlabs::${ELEVENLABS_VOICE_ID}::${KOKORO_WARMUP_PHRASE}`, buf))
+        .catch((err) => console.warn('[call-loop] kokoro warmup line prewarm failed:', err.message))
+    );
   }
   await Promise.all(jobs);
   console.log(`[call-loop] filler cache warmed: ${fillerCache.size} clip(s)`);
@@ -1111,6 +1137,19 @@ class CallSession {
     }
 
     const ws = this._ensureTtsSocket();
+    // Cold-start mask — see KOKORO_WARMUP_PHRASE's comment above. Only
+    // fires once per session (_warmupPlayed), and only if the gateway
+    // genuinely isn't ready yet — a warm gateway (the common case once
+    // Modal's instance has been serving traffic for a while) never
+    // triggers this at all.
+    if (!this._warmupPlayed && ws.readyState !== WebSocket.OPEN) {
+      this._warmupPlayed = true;
+      const warmupBuf = fillerCache.get(`warmup::elevenlabs::${ELEVENLABS_VOICE_ID}::${KOKORO_WARMUP_PHRASE}`);
+      if (warmupBuf) {
+        console.log(`[call-loop] turn ${turnId}: kokoro gateway not ready yet, playing warmup line`);
+        this._speakCached(warmupBuf, turnId);
+      }
+    }
     const dispatch = () => {
       if (this.activeTurn !== turnId) {
         console.log(`[call-loop] turn ${turnId} dropped before dispatch — activeTurn is now ${this.activeTurn} (superseded while waiting for TTS socket)`);
