@@ -848,32 +848,64 @@ class CallSession {
   }
 
   // Shared plumbing for every HTTP-based TTS backend (elevenlabs, cartesia,
-  // minimax): manage this turn's AbortController, buffer the provider's full
-  // response (resampling downstream is a *stateful* decimation — take every
-  // Nth sample — so running it per arbitrarily-sized HTTP chunk would reset
-  // that state at every chunk boundary instead of continuing the same phase
-  // across the whole utterance; costs a little TTFB in exchange for correct
-  // audio), and forward it as one binary frame down the same wire format our
-  // own TTS gateway emits (PCM16LE mono 24kHz — see _onTtsMessage's binary
-  // branch, which does the same forwarding job for the gateway). `fetchPcm`
-  // does the provider-specific request and returns a Buffer (or null on a
-  // request failure it's already logged), checking `turnId` against
-  // `this.activeTurn` itself wherever it can bail out early on barge-in.
+  // minimax): manage this turn's AbortController and forward audio down the
+  // same wire format our own TTS gateway emits (PCM16LE mono 24kHz — see
+  // _onTtsMessage's binary branch, which does the same forwarding job for
+  // the gateway) AS IT ARRIVES rather than buffering the whole response
+  // first.
+  //
+  // This used to buffer everything before sending a single frame, on the
+  // theory that downstream resampling (twilioAdapter.js's resampleInt16,
+  // 24kHz -> 8kHz for real phone calls) is a stateful decimation that can't
+  // restart per chunk. That reasoning doesn't hold for this specific ratio:
+  // 24000/8000 is an exact integer (3), so "take every 3rd sample" has no
+  // fractional phase to carry between chunks — each chunk resamples
+  // correctly on its own as long as it's trimmed to a whole number of
+  // 16-bit samples (handled below via `carry`), which twilioAdapter's own
+  // frame-pacing queue already supports being fed incrementally (see
+  // _sendMediaFrames/_startPacing there). Measured cost of the old
+  // buffer-everything approach: 150-950ms of pure added latency per turn
+  // (see the [timing] log breakdown this file's git history has — the
+  // provider's own connect+TTFB was consistently ~100-400ms, matching
+  // Retell's own reported ElevenLabs TTS-leg latency of ~150-170ms; the
+  // rest was us waiting to finish downloading the full response).
+  //
+  // `fetchPcm` does the provider-specific request and calls `onChunk(buf)`
+  // for each piece of audio as it arrives (checking `turnId` against
+  // `this.activeTurn` itself wherever it can bail out early on barge-in).
   async _speakHttpTts(label, fetchPcm, text, turnId, turnStartedAt) {
     if (!this._httpTtsAborts) this._httpTtsAborts = new Set();
     const controller = new AbortController();
     this._httpTtsAborts.add(controller);
 
-    try {
-      const pcm = await fetchPcm(text, controller.signal, turnId);
-      if (pcm && this.activeTurn === turnId && pcm.length > 0) {
-        console.log(`[call-loop] TTS TTFB: ${Date.now() - turnStartedAt}ms (turn latency end-to-end, ${label})`);
-        let full = pcm;
-        if (full.length % 2 !== 0) full = full.subarray(0, full.length - 1); // drop any trailing odd byte
-        if (this.clientWs.readyState === WebSocket.OPEN) {
-          this.clientWs.send(full, { binary: true });
-        }
+    // Leftover odd byte between chunks — PCM16 samples are 2 bytes, but an
+    // HTTP chunk boundary from the provider isn't guaranteed to land on a
+    // sample boundary. Carrying a single stray byte forward (prepended to
+    // the next chunk) keeps every frame we actually send sample-aligned
+    // without dropping any audio.
+    let carry = Buffer.alloc(0);
+    let firstByteAt = null;
+
+    const onChunk = (chunk) => {
+      if (this.activeTurn !== turnId) return; // barge-in — stop forwarding
+      if (this.clientWs.readyState !== WebSocket.OPEN) return;
+      let buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk;
+      if (buf.length % 2 !== 0) {
+        carry = Buffer.from(buf.subarray(buf.length - 1));
+        buf = buf.subarray(0, buf.length - 1);
+      } else {
+        carry = Buffer.alloc(0);
       }
+      if (buf.length === 0) return;
+      if (firstByteAt === null) {
+        firstByteAt = Date.now();
+        console.log(`[call-loop] TTS TTFB: ${firstByteAt - turnStartedAt}ms (turn latency end-to-end, ${label})`);
+      }
+      this.clientWs.send(buf, { binary: true });
+    };
+
+    try {
+      await fetchPcm(text, controller.signal, turnId, onChunk);
     } catch (err) {
       if (err.name !== 'AbortError') console.error(`[call-loop] ${label} stream error`, err);
     } finally {
@@ -885,9 +917,11 @@ class CallSession {
     }
   }
 
-  // ElevenLabs streaming, requested as pcm_24000.
+  // ElevenLabs streaming, requested as pcm_24000. Forwards each chunk to
+  // onChunk as it arrives instead of buffering the full response — see
+  // _speakHttpTts for why that's safe now.
   _speakElevenLabs(text, turnId, turnStartedAt) {
-    this._speakHttpTts('elevenlabs', async (text, signal, turnId) => {
+    this._speakHttpTts('elevenlabs', async (text, signal, turnId, onChunk) => {
       const res = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
         {
@@ -899,14 +933,12 @@ class CallSession {
       );
       if (!res.ok || !res.body) {
         console.error(`[call-loop] ElevenLabs request failed: ${res.status}`);
-        return null;
+        return;
       }
-      const parts = [];
       for await (const chunk of res.body) {
         if (this.activeTurn !== turnId) break; // barge-in mid-stream
-        parts.push(Buffer.from(chunk));
+        onChunk(Buffer.from(chunk));
       }
-      return Buffer.concat(parts);
     }, text, turnId, turnStartedAt);
   }
 
@@ -914,7 +946,7 @@ class CallSession {
   // endpoint (single POST, raw audio bytes back), just a different body
   // schema. See docs.cartesia.ai/api-reference/tts/bytes.
   _speakCartesia(text, turnId, turnStartedAt) {
-    this._speakHttpTts('cartesia', async (text, signal, turnId) => {
+    this._speakHttpTts('cartesia', async (text, signal, turnId, onChunk) => {
       const res = await fetch('https://api.cartesia.ai/tts/bytes', {
         method: 'POST',
         headers: {
@@ -932,14 +964,12 @@ class CallSession {
       });
       if (!res.ok || !res.body) {
         console.error(`[call-loop] Cartesia request failed: ${res.status}`);
-        return null;
+        return;
       }
-      const parts = [];
       for await (const chunk of res.body) {
         if (this.activeTurn !== turnId) break; // barge-in mid-stream
-        parts.push(Buffer.from(chunk));
+        onChunk(Buffer.from(chunk));
       }
-      return Buffer.concat(parts);
     }, text, turnId, turnStartedAt);
   }
 
@@ -950,7 +980,7 @@ class CallSession {
   // completes or it doesn't). See platform.minimax.io/docs/api-reference/
   // speech-t2a-http.
   _speakMinimax(text, turnId, turnStartedAt) {
-    this._speakHttpTts('minimax', async (text, signal) => {
+    this._speakHttpTts('minimax', async (text, signal, turnId, onChunk) => {
       const res = await fetch(`https://api-uw.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(MINIMAX_GROUP_ID)}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${MINIMAX_API_KEY}`, 'Content-Type': 'application/json' },
@@ -966,14 +996,14 @@ class CallSession {
       });
       if (!res.ok) {
         console.error(`[call-loop] MiniMax request failed: ${res.status}`);
-        return null;
+        return;
       }
       const body = await res.json();
       if (body.base_resp?.status_code !== 0 || !body.data?.audio) {
         console.error(`[call-loop] MiniMax synthesis error: ${body.base_resp?.status_msg || 'no audio in response'}`);
-        return null;
+        return;
       }
-      return Buffer.from(body.data.audio, 'hex');
+      onChunk(Buffer.from(body.data.audio, 'hex'));
     }, text, turnId, turnStartedAt);
   }
 
