@@ -82,6 +82,130 @@ function ttsBackendMissingKey(backend) {
   if (backend === 'minimax') return !MINIMAX_API_KEY || !MINIMAX_GROUP_ID;
   return false; // kokoro needs no key
 }
+
+// Backchanneling — the same technique Retell exposes as enable_backchannel /
+// backchannel_frequency / backchannel_words: the moment the caller finishes
+// talking, if the LLM hasn't produced its first token within
+// BACKCHANNEL_DELAY_MS, speak a short filler ("Mm-hmm.", "Got it.", ...) so
+// the call never sits in genuine dead air while Claude is still thinking.
+// This doesn't reduce real LLM/TTS latency at all (see DECISIONS.md — that
+// was investigated separately and the remaining gap isn't fixable on our
+// side) — it masks the *perceived* latency, same as Retell does.
+//
+// Configurable process-wide via env vars, and per-session via the same
+// {"type":"context"} message ttsBackend/voice already use (see
+// CallSession.onClientMessage) — mirrors Retell's three knobs exactly:
+//   BACKCHANNEL_ENABLED    -> enable_backchannel
+//   BACKCHANNEL_FREQUENCY  -> backchannel_frequency (0-1: chance a slow
+//                             turn actually gets a filler, so it doesn't
+//                             fire mechanically on every single slow turn)
+//   BACKCHANNEL_WORDS      -> backchannel_words (comma-separated)
+// BACKCHANNEL_DELAY_MS isn't one of Retell's named params (their docs don't
+// expose the threshold) but needs to be tunable too, so it gets the same
+// env-var + per-session treatment.
+const BACKCHANNEL_ENABLED_DEFAULT = process.env.BACKCHANNEL_ENABLED !== 'false'; // opt-out, defaults on
+const BACKCHANNEL_FREQUENCY_DEFAULT = Number(process.env.BACKCHANNEL_FREQUENCY ?? 0.8);
+const BACKCHANNEL_DELAY_MS_DEFAULT = Number(process.env.BACKCHANNEL_DELAY_MS ?? 400);
+const BACKCHANNEL_WORDS_DEFAULT = (process.env.BACKCHANNEL_WORDS || 'Mm-hmm.,Got it.,One sec.,Sure thing.')
+  .split(',')
+  .map((w) => w.trim())
+  .filter(Boolean);
+
+// backend::voice::text -> Buffer (PCM16LE mono 24kHz). Populated at startup
+// for the HTTP TTS backends that have a single, global, env-configured voice
+// (elevenlabs/cartesia/minimax) so playing a filler costs zero network
+// latency — synthesizing one live would be just as slow as the real
+// response it's meant to hide. Not pre-warmed for kokoro, whose voice
+// varies per session/tenant rather than being one fixed value; a kokoro
+// session with no cached filler for its voice just skips backchanneling
+// (see CallSession._maybeSpeakBackchannel) rather than synthesizing live.
+const fillerCache = new Map();
+
+async function fetchElevenLabsPcmOnce(text) {
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
+    {
+      method: 'POST',
+      headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+    }
+  );
+  if (!res.ok || !res.body) throw new Error(`ElevenLabs prewarm failed: ${res.status}`);
+  const parts = [];
+  for await (const chunk of res.body) parts.push(Buffer.from(chunk));
+  return Buffer.concat(parts);
+}
+
+async function fetchCartesiaPcmOnce(text) {
+  const res = await fetch('https://api.cartesia.ai/tts/bytes', {
+    method: 'POST',
+    headers: {
+      'Cartesia-Version': '2026-08-14',
+      Authorization: `Bearer ${CARTESIA_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model_id: CARTESIA_MODEL,
+      transcript: text,
+      voice: { id: CARTESIA_VOICE_ID },
+      output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
+    }),
+  });
+  if (!res.ok || !res.body) throw new Error(`Cartesia prewarm failed: ${res.status}`);
+  const parts = [];
+  for await (const chunk of res.body) parts.push(Buffer.from(chunk));
+  return Buffer.concat(parts);
+}
+
+async function fetchMinimaxPcmOnce(text) {
+  const res = await fetch(`https://api-uw.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(MINIMAX_GROUP_ID)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${MINIMAX_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: MINIMAX_MODEL,
+      text,
+      stream: false,
+      output_format: 'hex',
+      voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0 },
+      audio_setting: { sample_rate: 24000, format: 'pcm', channel: 1 },
+    }),
+  });
+  if (!res.ok) throw new Error(`MiniMax prewarm failed: ${res.status}`);
+  const body = await res.json();
+  if (body.base_resp?.status_code !== 0 || !body.data?.audio) {
+    throw new Error(`MiniMax prewarm synthesis error: ${body.base_resp?.status_msg || 'no audio'}`);
+  }
+  return Buffer.from(body.data.audio, 'hex');
+}
+
+async function prewarmFillerCache() {
+  const jobs = [];
+  for (const text of BACKCHANNEL_WORDS_DEFAULT) {
+    if (ELEVENLABS_API_KEY) {
+      jobs.push(
+        fetchElevenLabsPcmOnce(text)
+          .then((buf) => fillerCache.set(`elevenlabs::${ELEVENLABS_VOICE_ID}::${text}`, buf))
+          .catch((err) => console.warn(`[call-loop] filler prewarm (elevenlabs, "${text}") failed:`, err.message))
+      );
+    }
+    if (CARTESIA_API_KEY && CARTESIA_VOICE_ID) {
+      jobs.push(
+        fetchCartesiaPcmOnce(text)
+          .then((buf) => fillerCache.set(`cartesia::${CARTESIA_VOICE_ID}::${text}`, buf))
+          .catch((err) => console.warn(`[call-loop] filler prewarm (cartesia, "${text}") failed:`, err.message))
+      );
+    }
+    if (MINIMAX_API_KEY && MINIMAX_GROUP_ID) {
+      jobs.push(
+        fetchMinimaxPcmOnce(text)
+          .then((buf) => fillerCache.set(`minimax::${MINIMAX_VOICE_ID}::${text}`, buf))
+          .catch((err) => console.warn(`[call-loop] filler prewarm (minimax, "${text}") failed:`, err.message))
+      );
+    }
+  }
+  await Promise.all(jobs);
+  console.log(`[call-loop] filler cache warmed: ${fillerCache.size} clip(s)`);
+}
 // Haiku over Sonnet for the voice path specifically — a phone reply doesn't
 // need Sonnet's depth of reasoning, and LLM TTFB was the single biggest
 // latency line item measured in real calls (1.3-1.8s), bigger than
@@ -265,6 +389,10 @@ class CallSession {
     this.voice = TTS_VOICE;
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
+    this.backchannelEnabled = BACKCHANNEL_ENABLED_DEFAULT;
+    this.backchannelFrequency = BACKCHANNEL_FREQUENCY_DEFAULT;
+    this.backchannelDelayMs = BACKCHANNEL_DELAY_MS_DEFAULT;
+    this.backchannelWords = BACKCHANNEL_WORDS_DEFAULT;
     // Conversation flow (optional) — a real node-based state machine, set via
     // the {"type":"context"} message's `flow` field. When absent, the session
     // behaves exactly as before (this.systemPrompt used verbatim every turn).
@@ -402,6 +530,21 @@ class CallSession {
           this.cost.ttsBackend = msg.ttsBackend;
         }
       }
+      // Same three knobs Retell exposes as enable_backchannel/
+      // backchannel_frequency/backchannel_words, plus our own tunable delay
+      // threshold — see BACKCHANNEL_*_DEFAULT above for what each controls.
+      if (typeof msg.backchannelEnabled === 'boolean') {
+        this.backchannelEnabled = msg.backchannelEnabled;
+      }
+      if (typeof msg.backchannelFrequency === 'number' && msg.backchannelFrequency >= 0 && msg.backchannelFrequency <= 1) {
+        this.backchannelFrequency = msg.backchannelFrequency;
+      }
+      if (typeof msg.backchannelDelayMs === 'number' && msg.backchannelDelayMs > 0) {
+        this.backchannelDelayMs = msg.backchannelDelayMs;
+      }
+      if (Array.isArray(msg.backchannelWords) && msg.backchannelWords.every((w) => typeof w === 'string' && w.trim())) {
+        this.backchannelWords = msg.backchannelWords.map((w) => w.trim());
+      }
       if (Array.isArray(msg.flow?.nodes) && msg.flow.nodes.length > 0) {
         this.flow = msg.flow;
         this.flowNodesById = new Map(this.flow.nodes.map((n) => [n.id, n]));
@@ -518,6 +661,19 @@ class CallSession {
       this._speak(sentence, turnId, turnStartedAt);
     });
 
+    // Backchanneling — only for a real reply to something the caller just
+    // said, not a flow auto-advance turn (isNodeEntry) where there's no
+    // caller utterance to be acknowledging. Cleared the moment the LLM's
+    // first token actually arrives (below) or the turn ends (finally,
+    // below) so a stray filler never fires after the real response.
+    let backchannelTimer = null;
+    if (!isNodeEntry && this.backchannelEnabled) {
+      backchannelTimer = setTimeout(() => {
+        backchannelTimer = null;
+        if (Math.random() < this.backchannelFrequency) this._maybeSpeakBackchannel(turnId);
+      }, this.backchannelDelayMs);
+    }
+
     try {
       const stream = anthropic.messages.stream({
         model: LLM_MODEL,
@@ -531,6 +687,10 @@ class CallSession {
         if (this.activeTurn !== turnId) return;
         if (!firstTokenAt) {
           firstTokenAt = Date.now();
+          if (backchannelTimer) {
+            clearTimeout(backchannelTimer);
+            backchannelTimer = null;
+          }
           console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms`);
         }
         assistantText += delta;
@@ -571,10 +731,55 @@ class CallSession {
       console.error('[call-loop] LLM error', err);
       this.send({ type: 'error', message: 'LLM request failed' });
     } finally {
+      if (backchannelTimer) clearTimeout(backchannelTimer);
       if (this.turnState?.id === turnId) {
         this.turnState.llmDone = true;
         this._maybeRetireTurn(turnId);
       }
+    }
+  }
+
+  // Which cached filler clip (if any) applies for this session's current
+  // backend+voice — see fillerCache/prewarmFillerCache above for how it's
+  // populated. Backends with a single global env-configured voice
+  // (elevenlabs/cartesia/minimax) look themselves up directly; kokoro's
+  // voice varies per session so it isn't prewarmed, meaning a kokoro call
+  // simply has no cached filler to play (see _maybeSpeakBackchannel).
+  _fillerCacheKey(text) {
+    const voice =
+      this.ttsBackend === 'elevenlabs' ? ELEVENLABS_VOICE_ID :
+      this.ttsBackend === 'cartesia' ? CARTESIA_VOICE_ID :
+      this.ttsBackend === 'minimax' ? MINIMAX_VOICE_ID :
+      this.voice;
+    return `${this.ttsBackend}::${voice}::${text}`;
+  }
+
+  _maybeSpeakBackchannel(turnId) {
+    if (this.activeTurn !== turnId) return; // barge-in or turn already resolved
+    const word = this.backchannelWords[Math.floor(Math.random() * this.backchannelWords.length)];
+    const buf = fillerCache.get(this._fillerCacheKey(word));
+    // No cached clip for this backend/voice — skip rather than synthesize
+    // live, which would be just as slow as the real response it's meant to
+    // hide (see fillerCache's comment).
+    if (!buf) return;
+    console.log(`[call-loop] turn ${turnId} backchannel: "${word}"`);
+    this._speakCached(buf, turnId);
+  }
+
+  // Sends a pre-synthesized filler clip immediately — no network call, so
+  // this is the one "speak" path with zero added latency. Still
+  // participates in the same pendingTts/turnState bookkeeping every other
+  // TTS path uses (see _speak/_speakHttpTts) so barge-in and
+  // _maybeRetireTurn stay correct even when a filler is the only thing a
+  // superseded turn ever said.
+  _speakCached(buffer, turnId) {
+    if (this.activeTurn !== turnId) return;
+    if (this.clientWs.readyState !== WebSocket.OPEN) return;
+    if (this.turnState?.id === turnId) this.turnState.pendingTts++;
+    this.clientWs.send(buffer, { binary: true });
+    if (this.turnState?.id === turnId) {
+      this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
+      this._maybeRetireTurn(turnId);
     }
   }
 
@@ -1086,4 +1291,9 @@ class CallSession {
 server.listen(PORT, () => {
   console.log(`[call-loop] listening on http://localhost:${PORT}`);
   console.log(`[call-loop] TTS gateway: ${TTS_GATEWAY_WS_URL}`);
+  // Always prewarm regardless of the process-wide default — a per-session
+  // context override can enable backchanneling even when it's off globally,
+  // and the prewarm cost (a handful of short TTS calls, once, at startup)
+  // is trivial either way.
+  prewarmFillerCache();
 });
