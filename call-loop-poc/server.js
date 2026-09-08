@@ -596,6 +596,7 @@ class CallSession {
     // otherwise never ends a call on its own.
     this.isShopper = false;
     this._shopperClosingCount = 0;
+    this._closing = false;
     // Live-monitoring metadata — which tenant owns this call and the phone
     // number involved, both set from the {"type":"context"} message (see
     // onClientMessage). Null for anonymous browser demo calls, which carry no
@@ -788,6 +789,17 @@ class CallSession {
   }
 
   async _onUserTurnComplete(userText) {
+    // Cycle-2 mystery-shopper finding (see MYSTERY_SHOPPER_DECISIONS.md):
+    // close() only disconnects once the audio queue drains, but nothing
+    // stopped a NEW turn from being generated (and re-filling that queue)
+    // in the meantime if the other party kept talking — so if they never
+    // stopped, the real disconnect never happened either. Once a hangup
+    // has been decided, stop generating new turns outright, regardless of
+    // what's still coming in from the other side.
+    if (this._closing) {
+      console.log('[call-loop] turn ignored — session is closing');
+      return;
+    }
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
     this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
@@ -984,6 +996,7 @@ class CallSession {
             this._shopperClosingCount = (this._shopperClosingCount || 0) + 1;
             if (this._shopperClosingCount >= 2) {
               console.log('[call-loop] shopper: second closing-shaped reply, hanging up proactively');
+              this._closing = true;
               setTimeout(() => this.close(), 2000);
             }
           }
@@ -1289,6 +1302,7 @@ class CallSession {
       // would cut the assistant off on its own words.
       if (this.turnState.nodeType === 'goodbye') {
         console.log('[call-loop] flow reached goodbye node — hanging up');
+        this._closing = true;
         this.close();
         return;
       }
