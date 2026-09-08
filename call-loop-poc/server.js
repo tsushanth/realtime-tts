@@ -286,8 +286,10 @@ const SHOPPER_SYSTEM_PROMPT =
   'Morgan. Your goal: book an appointment for tomorrow afternoon. Wait for the business to ' +
   'speak first and answer their questions naturally, one at a time, in whatever order they ' +
   'ask — do not volunteer your name or the appointment time before they ask for it. If asked ' +
-  'to confirm something, confirm it. Once the booking is confirmed, thank them briefly and ' +
-  'let the call end naturally — do not ask further questions after that. Keep replies short ' +
+  'to confirm something, confirm it. Once the booking is confirmed, thank them briefly ONE ' +
+  'time and say a single goodbye — do not keep exchanging further pleasantries, goodbyes, or ' +
+  '"you too, thanks" back-and-forth after that, even if the other party keeps talking; the ' +
+  'call will be ended automatically after your goodbye. Keep replies short ' +
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
@@ -523,6 +525,7 @@ twilioWss.on('connection', (twilioWs) => {
       // until it hears something (see MYSTERY_SHOPPER_DECISIONS.md decision
       // 2), which is exactly right for a customer who calls IN and waits for
       // the business to greet first, rather than speaking first.
+      session.isShopper = true;
       session.onClientMessage(JSON.stringify({
         type: 'context',
         systemPrompt: SHOPPER_SYSTEM_PROMPT,
@@ -588,6 +591,11 @@ class CallSession {
     // demo calls and flow-MCP test calls have none, and simply don't get
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
+    // Mystery-shopper flag (see MYSTERY_SHOPPER_DECISIONS.md) — enables the
+    // closing-loop-detection hangup below, since a flow-less session
+    // otherwise never ends a call on its own.
+    this.isShopper = false;
+    this._shopperClosingCount = 0;
     // Live-monitoring metadata — which tenant owns this call and the phone
     // number involved, both set from the {"type":"context"} message (see
     // onClientMessage). Null for anonymous browser demo calls, which carry no
@@ -956,6 +964,29 @@ class CallSession {
           // side too, same format, so `flyctl logs` has both halves of the
           // conversation.
           console.log(`[call-loop] turn ${turnId} assistant: "${assistantText}"`);
+        }
+        // Real bug, caught on the first mystery-shopper run (see
+        // MYSTERY_SHOPPER_DECISIONS.md decision 6): a flow-less shopper
+        // session never hangs up on its own, and the business side often
+        // says goodbye without proactively hanging up either (normal phone
+        // etiquette — waiting for the caller to hang up). With neither side
+        // ending the call, both looped exchanging "bye"/"take care" for
+        // over a minute until the repetitive context caused the LLM to
+        // break character and hallucinate a bizarre "let's do another
+        // roleplay scenario" meta-conversation — on BOTH the Retell call
+        // and our own, identically, confirming this is a shopper-design
+        // bug, not something either backend did wrong. Fix: once the
+        // shopper itself has said something closing-shaped twice, hang up
+        // proactively instead of waiting on the other side.
+        if (this.isShopper && assistantText) {
+          const isClosing = /\b(bye|goodbye|take care|have a (great|good|wonderful) day|thanks?,?\s*(so much)?\.?\s*$)/i.test(assistantText.trim());
+          if (isClosing) {
+            this._shopperClosingCount = (this._shopperClosingCount || 0) + 1;
+            if (this._shopperClosingCount >= 2) {
+              console.log('[call-loop] shopper: second closing-shaped reply, hanging up proactively');
+              setTimeout(() => this.close(), 2000);
+            }
+          }
         }
         // TTS-backend-independent observability — chunk_meta only exists on
         // the kokoro path, so a client (browser UI, or a headless test
