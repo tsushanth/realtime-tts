@@ -57,6 +57,44 @@ obvious labeling bias risk (models can pick up on framing). Blind A/B with
 the label randomized per run, then de-anonymized only when reporting back
 to the user, avoids that.
 
+## Finding from cycle 1 (real run): goodbye-loop + character break
+
+First real run: both the Retell call (181s) and our own call (80s, but a
+stale-looking tail) showed a bizarre pattern — after the real booking
+conversation ended, the SHOPPER kept going for another 60-90s, ultimately
+hallucinating an near-identical ("I'll stay in character", "share the setup
+and I'll get started") meta-conversation about "the roleplay scenario" on
+BOTH calls independently. Root cause: neither side proactively hangs up
+after saying goodbye (normal phone etiquette — wait for the other party),
+so both loop exchanging "bye"/"take care" until the repetitive context
+causes the LLM to break character. This is a shopper-design bug, not
+something either backend did wrong — confirmed by it happening identically
+on both. Fix shipped: shopper hangs up proactively after its second
+closing-shaped reply (see the `isClosing` regex + `_shopperClosingCount` in
+server.js).
+
+## Finding from cycle 2 (real run): fix works against Retell, not against ourselves
+
+Re-ran both calls after the fix. Retell call: 64s, clean hangup — fix
+worked. Our own call: still hit the 181s safety cap. Logs show why: the
+shopper's `close()` fired correctly at the right point in the conversation,
+but the underlying CallSession kept processing NEW incoming turns and
+speaking new replies afterward (the shopper re-asked for the caller's name
+a second time, well after "hanging up"). Root cause:
+`TwilioCallAdapter.close()` only actually disconnects once its audio queue
+drains, but nothing stops `_onUserTurnComplete`/`_generateTurn` from
+continuing to run and refilling that queue if the other side keeps talking
+— so if the other party never stops, the queue never drains and the real
+disconnect never happens. This didn't show up on the Retell call because
+Retell's own system independently hung up its side of the real phone line;
+it only surfaces when our own close() is the only thing that's supposed to
+end the call. NOT YET FIXED — next concrete step: set a `this._closing`
+flag when hangup is decided and make `_onUserTurnComplete`/`_generateTurn`
+a no-op once it's set, so no new turns are generated after a hangup
+decision regardless of what the other side does; consider also having
+close() explicitly call Twilio's REST API to force-terminate the Call
+resource rather than relying solely on the media-stream WebSocket closing.
+
 ## Decision 5: safety caps
 
 A shopper call needs a hard max-duration / max-turn cutoff independent of
