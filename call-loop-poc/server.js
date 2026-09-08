@@ -115,7 +115,12 @@ function ttsBackendMissingKey(backend) {
 // BACKCHANNEL_DELAY_MS isn't one of Retell's named params (their docs don't
 // expose the threshold) but needs to be tunable too, so it gets the same
 // env-var + per-session treatment.
-const BACKCHANNEL_ENABLED_DEFAULT = process.env.BACKCHANNEL_ENABLED !== 'false'; // opt-out, defaults on
+// Opt-in, not opt-out: this was firing on ~80% of turns on every backend,
+// including fast ones like ElevenLabs, which was never the intent — the
+// intent was masking genuine latency (e.g. kokoro's cold start), not a
+// filler word before most replies. A tenant/call can still turn it on via
+// the {"type":"context"} message's backchannelEnabled field.
+const BACKCHANNEL_ENABLED_DEFAULT = process.env.BACKCHANNEL_ENABLED === 'true';
 const BACKCHANNEL_FREQUENCY_DEFAULT = Number(process.env.BACKCHANNEL_FREQUENCY ?? 0.8);
 const BACKCHANNEL_DELAY_MS_DEFAULT = Number(process.env.BACKCHANNEL_DELAY_MS ?? 400);
 const BACKCHANNEL_WORDS_DEFAULT = (process.env.BACKCHANNEL_WORDS || 'Mm-hmm.,Got it.,One sec.,Sure thing.')
