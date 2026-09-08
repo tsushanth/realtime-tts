@@ -393,7 +393,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs } = req.body || {};
+  const { toNumber, routeAs, record } = req.body || {};
   if (!toNumber || !routeAs) {
     return res.status(400).json({ error: 'toNumber and routeAs are required' });
   }
@@ -417,6 +417,14 @@ app.post('/place-test-call', express.json(), async (req, res) => {
 
     const voiceUrl = `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}`;
     const params = new URLSearchParams({ To: toNumber, From: fromNumber, Url: voiceUrl });
+    // Opt-in only — a normal test call shouldn't silently start recording.
+    // Twilio's own dual-channel recording (caller + callee on separate
+    // tracks) gives a real downloadable wav for the ASR eval harnesses,
+    // which need actual audio, not just a live transcript.
+    if (record) {
+      params.set('Record', 'true');
+      params.set('RecordingChannels', 'dual');
+    }
     const callRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`, {
       method: 'POST',
       headers: { Authorization: `Basic ${auth64}`, 'Content-Type': 'application/x-www-form-urlencoded' },
