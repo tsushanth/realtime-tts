@@ -276,6 +276,22 @@ const SYSTEM_PROMPT =
   'sentences unless asked for more detail. Never use markdown, bullet points, or emoji — ' +
   'this is spoken audio.';
 
+// The "mystery shopper" persona (see MYSTERY_SHOPPER_DECISIONS.md) — a
+// customer with a fixed goal, deliberately generic so the same call works
+// against any business's booking flow (ours or a competitor's) without
+// knowing its exact question order in advance.
+const SHOPPER_SYSTEM_PROMPT =
+  'You are calling a business on the phone to book an appointment. You are NOT an assistant ' +
+  'or an AI in this conversation — you are playing the role of a real customer named Alex ' +
+  'Morgan. Your goal: book an appointment for tomorrow afternoon. Wait for the business to ' +
+  'speak first and answer their questions naturally, one at a time, in whatever order they ' +
+  'ask — do not volunteer your name or the appointment time before they ask for it. If asked ' +
+  'to confirm something, confirm it. Once the booking is confirmed, thank them briefly and ' +
+  'let the call end naturally — do not ask further questions after that. Keep replies short ' +
+  'and conversational, like a real phone call. Never break character, never mention you are ' +
+  'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
+const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
+
 // Flux decides "they're done talking" from the words themselves, not just
 // silence — eot_threshold is the confidence bar for a real EndOfTurn, higher
 // = waits for more certainty before handing off to the LLM. StartOfTurn
@@ -344,16 +360,26 @@ app.post('/twilio/voice', async (req, res) => {
   // any tenant's routed number. ?routeAs=<number> lets an outbound call
   // explicitly say which tenant's flow it should run, without touching the
   // real inbound-routing path at all.
-  const toNumber = req.query.routeAs || req.body.To;
-  if (callSid) {
-    const resolved = await resolveInboundCall(toNumber).catch((err) => {
-      console.error('[call-loop] tenant lookup failed', err);
-      return null;
-    });
-    // Caller's number (From), carried through for the live-call registry's
-    // display — the dialed tenant number (To) is the same for every call, the
-    // caller's isn't.
-    if (resolved) pendingCallContext.set(callSid, { ...resolved, fromNumber: req.body.From || null, createdAt: Date.now() });
+  // Mystery-shopper mode: an outbound call WHERE WE PLAY THE CUSTOMER, dialed
+  // at an arbitrary target number (our own business line, or a competitor's
+  // like Retell's agent number) — not a tenant lookup at all, so it bypasses
+  // resolveInboundCall entirely. See MYSTERY_SHOPPER_DECISIONS.md decision 3
+  // for why this reuses /twilio/voice + the normal CallSession machinery
+  // instead of a separate service.
+  if (req.query.mode === 'shopper' && callSid) {
+    pendingCallContext.set(callSid, { isShopper: true, createdAt: Date.now() });
+  } else {
+    const toNumber = req.query.routeAs || req.body.To;
+    if (callSid) {
+      const resolved = await resolveInboundCall(toNumber).catch((err) => {
+        console.error('[call-loop] tenant lookup failed', err);
+        return null;
+      });
+      // Caller's number (From), carried through for the live-call registry's
+      // display — the dialed tenant number (To) is the same for every call, the
+      // caller's isn't.
+      if (resolved) pendingCallContext.set(callSid, { ...resolved, fromNumber: req.body.From || null, createdAt: Date.now() });
+    }
   }
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
@@ -393,9 +419,12 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record } = req.body || {};
-  if (!toNumber || !routeAs) {
-    return res.status(400).json({ error: 'toNumber and routeAs are required' });
+  const { toNumber, routeAs, record, shopper } = req.body || {};
+  // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
+  // play the customer, so there's no tenant to route as — toNumber is
+  // whatever business we're dialing (our own number, or a competitor's).
+  if (!toNumber || (!routeAs && !shopper)) {
+    return res.status(400).json({ error: 'toNumber is required, plus either routeAs or shopper:true' });
   }
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     return res.status(500).json({ error: 'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured' });
@@ -415,7 +444,9 @@ app.post('/place-test-call', express.json(), async (req, res) => {
       return res.status(500).json({ error: 'No Twilio phone number found on this account', detail: numbersBody });
     }
 
-    const voiceUrl = `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}`;
+    const voiceUrl = shopper
+      ? `https://${req.headers.host}/twilio/voice?mode=shopper`
+      : `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}`;
     const params = new URLSearchParams({ To: toNumber, From: fromNumber, Url: voiceUrl });
     // Opt-in only — a normal test call shouldn't silently start recording.
     // Twilio's own dual-channel recording (caller + callee on separate
@@ -487,6 +518,27 @@ twilioWss.on('connection', (twilioWs) => {
     const resolved = pendingCallContext.get(callSid);
     if (!resolved) return;
     pendingCallContext.delete(callSid);
+    if (resolved.isShopper) {
+      // No flow, no greeting — a flow-less CallSession already stays silent
+      // until it hears something (see MYSTERY_SHOPPER_DECISIONS.md decision
+      // 2), which is exactly right for a customer who calls IN and waits for
+      // the business to greet first, rather than speaking first.
+      session.onClientMessage(JSON.stringify({
+        type: 'context',
+        systemPrompt: SHOPPER_SYSTEM_PROMPT,
+        ttsBackend: 'elevenlabs',
+      }), false);
+      // Safety net (see decision 5): a flow-less session never hangs up on
+      // its own — normally fine, since the real business side ends the call
+      // — but if something on either end gets stuck, this stops a live PSTN
+      // call (real per-minute cost on both Twilio and whatever it's dialing)
+      // from running forever.
+      setTimeout(() => {
+        console.log(`[call-loop] shopper call ${callSid} hit max duration, hanging up`);
+        session.close();
+      }, SHOPPER_MAX_DURATION_MS);
+      return;
+    }
     session.onClientMessage(JSON.stringify({
       type: 'context',
       flow: resolved.flow,
