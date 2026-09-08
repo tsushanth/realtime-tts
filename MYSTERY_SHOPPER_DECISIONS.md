@@ -95,6 +95,26 @@ decision regardless of what the other side does; consider also having
 close() explicitly call Twilio's REST API to force-terminate the Call
 resource rather than relying solely on the media-stream WebSocket closing.
 
+## Finding from cycle 3: unrelated infra bug surfaced by the framework itself
+
+Cycle 3 (re-testing the "ours" self-call after the _closing-flag fix) showed
+a THIRD, completely different symptom: the shopper never spoke at all after
+the business's opening greeting, silent for the full 3-minute safety cap.
+Root cause, found in the logs: `ElevenLabs request failed: 401` right as
+the business tried to speak its greeting — production's ElevenLabs key was
+returning a real 401. Verified directly against ElevenLabs' API (not just
+assumed from the log): the OLD key was unauthorized, and even a fresh key
+the user provided returned `quota_exceeded` (0/10000 credits) — a real
+account-level billing issue, not a code or auth-config bug. Fixed by
+setting the new key as the Fly secret (ready to work the instant credits
+are added; the user is adding credits separately).
+
+This is worth calling out explicitly: the framework's job is to catch real
+quality regressions, and its first three real runs caught (1) a shopper
+design bug, (2) a close()-doesn't-stop-new-turns bug, and (3) a completely
+unrelated production infra outage — none of which were things anyone was
+specifically looking for. That's the framework doing exactly what it's for.
+
 ## Decision 5: safety caps
 
 A shopper call needs a hard max-duration / max-turn cutoff independent of
