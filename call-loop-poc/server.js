@@ -1193,6 +1193,26 @@ class CallSession {
         `Do not use closing/goodbye language in this step (e.g. "thanks for calling", "have a ` +
         `great day") — that belongs only to the call's actual final goodbye, which is a later ` +
         `step, not this one.\n`;
+      // Related but distinct bug seen after the above fix landed: a
+      // confirmation node re-asked "Does that work for you?" immediately
+      // after the caller had already explicitly said yes to the same
+      // thing — a wasted turn from re-confirming something not actually in
+      // question anymore.
+      prompt +=
+        `If the caller has already clearly said yes/confirmed something, don't ask them to ` +
+        `confirm it again — move on.\n`;
+    } else {
+      // The other half of this bug: even once a call correctly reaches the
+      // real goodbye node, that node's OWN single turn was itself
+      // internally redundant ("Thank you, Alex. Thanks so much for
+      // calling, Alex.") — thanking twice and repeating the name twice in
+      // one breath, which read as a script glitch rather than a person
+      // speaking. This is a single-turn discipline problem, separate from
+      // the cross-node issue fixed above.
+      prompt +=
+        `This is the final goodbye. Say it as ONE short, natural closing sentence: mention the ` +
+        `caller's name at most once, thank them at most once, and say goodbye once. Do not stack ` +
+        `multiple thank-yous or repeat their name within this line.\n`;
     }
     prompt += gs.allowInterruptions === false
       ? 'Complete your sentences before listening.\n'
