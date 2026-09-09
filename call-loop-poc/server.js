@@ -924,9 +924,34 @@ class CallSession {
     // word), reading "begin the flow" too literally. Every other node-entry
     // turn (function/knowledge_base/goodbye/transfer auto-advance, or the
     // greeting reached via a real transition) keeps the tool as normal.
-    const tools = node && node.edges.length > 0 && !suppressTransitionTool
-      ? [this._buildTransitionTool(node)]
-      : undefined;
+    const tools = [];
+    if (node && node.edges.length > 0 && !suppressTransitionTool) {
+      tools.push(this._buildTransitionTool(node));
+    }
+    // Real bug found via mystery-shopper testing: this.collectedData was
+    // only ever populated as a side effect of transition_flow, meaning a
+    // field captured several turns before the node's transition condition
+    // was met existed ONLY in conversation history, not in any tracked
+    // state — so the "Already collected this call" context the prompt
+    // shows is stale/empty for anything not yet transitioned on. Under a
+    // confusing turn (e.g. dead-air noise right after a goodbye), the model
+    // relying purely on re-reading history "forgot" a name it had already
+    // been given three turns earlier and re-asked for it multiple times.
+    // A lightweight tool that persists a field the MOMENT it's captured,
+    // independent of transitioning, closes that gap.
+    if (node && node.extract) {
+      tools.push({
+        name: 'record_field',
+        description:
+          'Call this immediately whenever the caller provides one of this step\'s fields, even ' +
+          'if you are not ready to transition yet. Safe to call multiple times.',
+        input_schema: {
+          type: 'object',
+          properties: { field: { type: 'string', enum: Object.keys(node.extract) }, value: { type: 'string' } },
+          required: ['field', 'value'],
+        },
+      });
+    }
 
     let firstTokenAt = null;
     let assistantText = '';
@@ -957,7 +982,7 @@ class CallSession {
         system: systemPrompt,
         max_tokens: 300,
         messages: this.history,
-        ...(tools ? { tools } : {}),
+        ...(tools.length > 0 ? { tools } : {}),
       });
 
       stream.on('text', (delta) => {
@@ -1041,6 +1066,16 @@ class CallSession {
         const toolUse = final.content.find((b) => b.type === 'tool_use' && b.name === 'transition_flow');
         if (toolUse && this.turnState?.id === turnId) {
           this.turnState.transition = toolUse.input;
+        }
+        // Unlike transition_flow (deferred until the turn finishes
+        // speaking, see _maybeRetireTurn), a recorded field has no effect
+        // on conversation flow state — it's just data — so it's safe to
+        // persist immediately rather than waiting.
+        for (const block of final.content) {
+          if (block.type === 'tool_use' && block.name === 'record_field' && block.input?.field) {
+            this.collectedData[block.input.field] = block.input.value;
+            console.log(`[call-loop] recorded field "${block.input.field}" = "${block.input.value}"`);
+          }
         }
       }
     } catch (err) {
@@ -1146,7 +1181,15 @@ class CallSession {
         `Ask for ALL of these together, in ONE question, the first time you speak in this step ` +
         `— do not ask for them one at a time across separate turns: ${fields.join(', ')}. ` +
         `If the caller already volunteered some of these earlier in the call, don't ask for them ` +
-        `again — only ask for whichever are still missing.\n`;
+        `again — only ask for whichever are still missing.\n` +
+        // Real bug: relying purely on conversation history to remember a
+        // field the caller already gave was fragile — under a confusing or
+        // noisy turn, the model re-asked for a name it had already been
+        // given. record_field persists it immediately, independent of the
+        // model's own memory of the conversation.
+        `The moment the caller gives you one of these fields, call record_field for it right ` +
+        `away, even mid-turn and even before you have all of them — don't wait until you're ` +
+        `ready to transition. This is separate from transition_flow and doesn't end the step.\n`;
       if (fields.some((f) => /time|date|when/i.test(f))) {
         // Second half of the same pattern: even when time WAS asked, a
         // vague answer ("tomorrow afternoon") was accepted as final and the
