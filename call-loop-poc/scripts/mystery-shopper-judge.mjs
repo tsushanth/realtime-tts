@@ -4,14 +4,17 @@
 // risk, so this always randomizes which transcript is "Call A" vs "Call B"
 // and only de-anonymizes in the final printed report.
 //
+// Runs the judge via the `claude` CLI (OAuth session auth), NOT the
+// Anthropic SDK + ANTHROPIC_API_KEY -- this is a one-off local analysis
+// task, not a cron/server workload, so it shouldn't burn metered API
+// credits (see the repo's own CLAUDE.md rule on this). Requires `claude`
+// on PATH and an active `claude login` session.
+//
 // Usage:
-//   ANTHROPIC_API_KEY=... node mystery-shopper-judge.mjs \
-//     --ours transcript-ours.txt --retell transcript-retell.txt \
-//     --ours-latency '{"first_token_ms": 900}' \
-//     --retell-latency '{"e2e": {"p50": 600}}'
+//   node mystery-shopper-judge.mjs --ours transcript-ours.txt --retell transcript-retell.txt
 
 import fs from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
+import { spawnSync } from 'node:child_process';
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -21,20 +24,18 @@ function arg(name) {
 const oursPath = arg('ours');
 const retellPath = arg('retell');
 if (!oursPath || !retellPath) {
-  console.error('usage: node mystery-shopper-judge.mjs --ours <file> --retell <file> [--ours-latency json] [--retell-latency json]');
+  console.error('usage: node mystery-shopper-judge.mjs --ours <file> --retell <file>');
   process.exit(1);
 }
 
 const oursTranscript = fs.readFileSync(oursPath, 'utf8');
 const retellTranscript = fs.readFileSync(retellPath, 'utf8');
-const oursLatency = arg('ours-latency') || 'not provided';
-const retellLatency = arg('retell-latency') || 'not provided';
 
 const oursIsA = Math.random() < 0.5;
 const [labelA, labelB] = oursIsA ? ['ours', 'retell'] : ['retell', 'ours'];
 const [transcriptA, transcriptB] = oursIsA ? [oursTranscript, retellTranscript] : [retellTranscript, oursTranscript];
 
-const RUBRIC = `You are an expert voice-AI conversation quality judge. You will be shown two
+const PROMPT = `You are an expert voice-AI conversation quality judge. You will be shown two
 real phone call transcripts, "Call A" and "Call B", both of the SAME customer
 persona/goal calling two different backend implementations of a booking
 assistant. You do not know which is which — score them purely on the
@@ -76,28 +77,26 @@ Justification: ...
 ## Suggestions to close the gap
 1. ...
 2. ...
+
+## Call A transcript
+${transcriptA}
+
+## Call B transcript
+${transcriptB}
 `;
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const message = await client.messages.create({
-  model: 'claude-sonnet-4-5',
-  max_tokens: 2048,
-  system: RUBRIC,
-  messages: [
-    {
-      role: 'user',
-      content:
-        `## Call A transcript\n${transcriptA}\n\n## Call B transcript\n${transcriptB}\n\n` +
-        `(Latency data, for context only, not decisive on its own: ` +
-        `Call A latency: ${labelA === 'ours' ? oursLatency : retellLatency} | ` +
-        `Call B latency: ${labelB === 'ours' ? oursLatency : retellLatency})`,
-    },
-  ],
+const result = spawnSync('claude', ['-p', '--output-format', 'text'], {
+  input: PROMPT,
+  encoding: 'utf8',
+  maxBuffer: 10 * 1024 * 1024,
 });
 
-const judgeOutput = message.content[0].text;
-console.log(judgeOutput);
+if (result.status !== 0) {
+  console.error('claude CLI failed:', result.stderr);
+  process.exit(1);
+}
+
+console.log(result.stdout);
 console.log('\n\n=== DE-ANONYMIZED ===');
 console.log(`Call A = ${labelA}`);
 console.log(`Call B = ${labelB}`);

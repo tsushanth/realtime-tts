@@ -517,6 +517,13 @@ twilioWss.on('connection', (twilioWs) => {
   // synthesized 'context' message, rather than duplicating that parsing
   // logic here.
   adapter.on('start', (callSid) => {
+    // Tags every "turn N user/assistant" log line below with the real
+    // Twilio CallSid, so a concurrent-run script (mystery-shopper-run.sh)
+    // can grep logs for one specific call instead of hand-disentangling
+    // multiple sessions' turn counters that collide when several calls run
+    // at once (real gap found running the mystery-shopper framework, see
+    // MYSTERY_SHOPPER_DECISIONS.md).
+    session.callSid = callSid;
     const resolved = pendingCallContext.get(callSid);
     if (!resolved) return;
     pendingCallContext.delete(callSid);
@@ -595,6 +602,7 @@ class CallSession {
     // closing-loop-detection hangup below, since a flow-less session
     // otherwise never ends a call on its own.
     this.isShopper = false;
+    this.callSid = null; // set once the Twilio 'start' event arrives (browser calls never get one)
     this._shopperClosingCount = 0;
     this._closing = false;
     // Live-monitoring metadata — which tenant owns this call and the phone
@@ -804,7 +812,7 @@ class CallSession {
     this.activeTurn = turnId;
     this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
     const turnStartedAt = Date.now();
-    console.log(`[call-loop] turn ${turnId} user: "${userText}"`);
+    console.log(`[call-loop] [call ${this.callSid || this.id}] turn ${turnId} user: "${userText}"`);
 
     this.history.push({ role: 'user', content: userText });
     this.send({ type: 'user_turn', turnId, text: userText });
@@ -975,7 +983,7 @@ class CallSession {
           // anything, e.g. Retell's own stored transcripts. Log our own
           // side too, same format, so `flyctl logs` has both halves of the
           // conversation.
-          console.log(`[call-loop] turn ${turnId} assistant: "${assistantText}"`);
+          console.log(`[call-loop] [call ${this.callSid || this.id}] turn ${turnId} assistant: "${assistantText}"`);
         }
         // Real bug, caught on the first mystery-shopper run (see
         // MYSTERY_SHOPPER_DECISIONS.md decision 6): a flow-less shopper
