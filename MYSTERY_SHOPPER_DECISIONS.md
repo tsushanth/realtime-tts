@@ -115,6 +115,31 @@ design bug, (2) a close()-doesn't-stop-new-turns bug, and (3) a completely
 unrelated production infra outage — none of which were things anyone was
 specifically looking for. That's the framework doing exactly what it's for.
 
+## Full automation validated (mystery-shopper-run.sh)
+
+Per explicit user direction: the Retell number swap/restore no longer asks
+for per-run confirmation (user: "it should run whenever.. reuse then put
+it back") and the judge runs via the `claude` CLI (OAuth session auth)
+instead of the Anthropic SDK + ANTHROPIC_API_KEY (user: "make sure
+everything runs off of oauth"), consistent with the repo's own rule
+against burning the API key on one-off local analysis.
+
+Closed the concurrent-run transcript-disambiguation gap flagged after
+cycle 4: every turn log line now carries `[call <Twilio CallSid>]`, so a
+script can grep one specific session's turns out of several interleaved
+ones instead of a human trying to disentangle colliding turn counters by
+hand. `mystery-shopper-run.sh` uses a `trap ... EXIT` to guarantee the
+Retell number gets restored to Audexa DJ even if the script fails
+partway through — the swap is the one step whose failure mode (a live
+production number stuck pointed at the wrong agent) actually matters.
+
+First fully-unattended run: real, different finding each time (this run:
+our flow never resolves a vague time like "afternoon" into a concrete
+slot and closes without answering the customer's direct follow-up
+question) — plus a fair, balanced result flagging a real Retell-side TTS
+stutter, not a one-sided "ours is always worse" outcome. Framework is now
+genuinely push-button.
+
 ## Decision 5: safety caps
 
 A shopper call needs a hard max-duration / max-turn cutoff independent of
