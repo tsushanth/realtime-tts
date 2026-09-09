@@ -293,6 +293,14 @@ const SHOPPER_SYSTEM_PROMPT =
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
+// Shared by both the shopper's own reply (server.js's assistant-turn
+// handling) and the check on what it just heard from the other party (see
+// _onUserTurnComplete below) — see MYSTERY_SHOPPER_PATTERNS.md pattern 2
+// for why watching only one side wasn't enough: dead-air mis-transcription
+// after a real goodbye produces garbage that never matches this pattern,
+// so a detector that only counts the SHOPPER's own replies can stall
+// forever once the OTHER party has already said an equally clear goodbye.
+const CLOSING_SHAPED_RE = /\b(bye|goodbye|take care|have a (great|good|wonderful) day|thanks?,?\s*(so much)?\.?\s*$)/i;
 
 // Flux decides "they're done talking" from the words themselves, not just
 // silence — eot_threshold is the confidence bar for a real EndOfTurn, higher
@@ -808,6 +816,20 @@ class CallSession {
       console.log('[call-loop] turn ignored — session is closing');
       return;
     }
+    // Pattern-2 fix (MYSTERY_SHOPPER_PATTERNS.md): once the shopper has said
+    // its OWN goodbye at least once, treat the other party's very next
+    // reply as the second (and stronger) signal to hang up if it's ALSO
+    // closing-shaped — don't wait for a second closing-shaped reply from
+    // the shopper itself, which a dead-air mis-transcription can prevent
+    // from ever arriving. This is checked before the turn is even
+    // generated, so the shopper never has a chance to respond to what
+    // might already be silence/noise on the line.
+    if (this.isShopper && this._shopperClosingCount >= 1 && CLOSING_SHAPED_RE.test(userText.trim())) {
+      console.log('[call-loop] shopper: other party also closing-shaped, hanging up immediately');
+      this._closing = true;
+      this.close();
+      return;
+    }
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
     this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
@@ -999,7 +1021,7 @@ class CallSession {
         // shopper itself has said something closing-shaped twice, hang up
         // proactively instead of waiting on the other side.
         if (this.isShopper && assistantText) {
-          const isClosing = /\b(bye|goodbye|take care|have a (great|good|wonderful) day|thanks?,?\s*(so much)?\.?\s*$)/i.test(assistantText.trim());
+          const isClosing = CLOSING_SHAPED_RE.test(assistantText.trim());
           if (isClosing) {
             this._shopperClosingCount = (this._shopperClosingCount || 0) + 1;
             if (this._shopperClosingCount >= 2) {
@@ -1111,7 +1133,33 @@ class CallSession {
         `opening line.\n`;
     }
     if (node.extract) {
-      prompt += `Collect these fields before moving on, asking for whichever are still missing: ${Object.keys(node.extract).join(', ')}.\n`;
+      const fields = Object.keys(node.extract);
+      // Real, repeated pattern found across mystery-shopper runs (see
+      // MYSTERY_SHOPPER_PATTERNS.md pattern 1): the model was asking for
+      // these fields ONE AT A TIME across separate turns, then sometimes
+      // even re-asking for a field it already had — Retell's benchmark
+      // agent asks for all of them together in a single question every
+      // time. This showed up in 4/4 relevant cycles, the highest-frequency
+      // finding of the whole investigation, so it's addressed directly
+      // rather than left to the model's own judgment.
+      prompt +=
+        `Ask for ALL of these together, in ONE question, the first time you speak in this step ` +
+        `— do not ask for them one at a time across separate turns: ${fields.join(', ')}. ` +
+        `If the caller already volunteered some of these earlier in the call, don't ask for them ` +
+        `again — only ask for whichever are still missing.\n`;
+      if (fields.some((f) => /time|date|when/i.test(f))) {
+        // Second half of the same pattern: even when time WAS asked, a
+        // vague answer ("tomorrow afternoon") was accepted as final and the
+        // call closed without ever committing to a clock time — caught
+        // live on a real call ("it ends without ever telling the customer
+        // when their appointment is"). A time/date field must resolve to
+        // something concrete before this node's goal counts as met.
+        prompt +=
+          `If the caller gives a vague date/time ("afternoon", "sometime next week"), do not ` +
+          `accept that as final — propose ONE specific, concrete slot within their range (e.g. ` +
+          `"does 2pm work?") and get their yes before treating that field as captured. Never ` +
+          `transition to the next step with a vague, unconfirmed time.\n`;
+      }
       // Real bug found via a live call: Deepgram mistranscribed the caller's
       // name ("Sushant" -> "Ashant") and the bot repeated the wrong name back
       // for the rest of the call with no chance to correct it. Speech-to-text
@@ -1132,6 +1180,19 @@ class CallSession {
       prompt +=
         `\nWhen this step's goal has been met, call the transition_flow tool to move to the ` +
         `next step. If it hasn't been met yet, keep talking and don't call the tool.\n`;
+    }
+    // Real pattern found across mystery-shopper runs: a non-goodbye node
+    // would sometimes phrase its own line as if the call were already
+    // ending ("thanks for calling... have a great day"), and then the
+    // ACTUAL goodbye node fired afterward and said a full second closing —
+    // sounding like two goodbyes back to back even though no code path
+    // literally spoke twice in one turn. Closing language belongs only to
+    // the goodbye node itself.
+    if (node.type !== 'goodbye') {
+      prompt +=
+        `Do not use closing/goodbye language in this step (e.g. "thanks for calling", "have a ` +
+        `great day") — that belongs only to the call's actual final goodbye, which is a later ` +
+        `step, not this one.\n`;
     }
     prompt += gs.allowInterruptions === false
       ? 'Complete your sentences before listening.\n'
