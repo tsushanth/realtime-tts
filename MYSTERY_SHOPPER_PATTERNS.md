@@ -74,6 +74,40 @@ here.
   specifically; Pattern 1 (slot-filling structure) subsumes most of its
   practical impact anyway.
 
+## Stopping point after cycles 7-9 (2026-09-09)
+
+Shipped and confirmed working, in order:
+- Combined name+time ask, vague-time resolution, hangup-loophole fix
+  (either party's closing-shaped reply now triggers hangup, not just the
+  shopper's own two) — cycle 7 confirmed clean, no loop/hallucination.
+- Goodbye-node internal redundancy fix (no more double "thanks"/repeated
+  name in one closing line) — addressed after cycle 7's finding.
+- `record_field` tool: persists a captured field the instant it's given,
+  independent of transition_flow, since `collectedData` previously only
+  updated at transition time — real root-cause fix for "the model forgot
+  a name it was already given," identified from raw logs after cycle 8.
+
+Still open, NOT resolved: cycle 9 showed the model calling `record_field`
+for `preferred_time` but not for `name` in the same turn where the caller
+gave both — the tool works, but isn't reliably invoked for every field
+every time. Cycle 9 also ended with no closing at all, a new failure mode
+not seen in cycles 1-8.
+
+Pattern across cycles 7-9: each fix resolved the specific prior failure
+and surfaced a *different* new one (goodbye redundancy → name-forgetting
+with a truncated fragment → name-forgetting with no closing at all)
+rather than converging. This node's system prompt has grown to ~6 stacked
+behavioral instructions (combined-ask, vague-time resolution, name/number
+read-back, no-closing-language, no-redundant-confirmation, record_field
+usage) — instruction overload is a real candidate explanation for
+inconsistent tool-calling, distinct from any single bug.
+
+**Decision: stopped here deliberately** rather than keep patching forward
+— per user direction, banking the confirmed wins (listed above, all live
+in production) and leaving the remaining booking-flow polish for a fresh
+pass, likely by simplifying/consolidating the node prompt rather than
+adding another targeted instruction on top of it.
+
 ## Priority order for fixes, given the above
 
 1. **Pattern 1** (slot-filling redesign) — highest frequency, highest
