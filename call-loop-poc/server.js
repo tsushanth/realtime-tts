@@ -1001,6 +1001,26 @@ class CallSession {
 
       const final = await stream.finalMessage();
       if (final.usage) this.cost.addLlmUsage(LLM_MODEL, final.usage.input_tokens, final.usage.output_tokens);
+      // Cycles 10-11 (mystery-shopper) finding: every "produced no speech"
+      // fallback fired exactly when the model also called record_field in
+      // the same turn — 100% correlation across two separate real calls,
+      // even after rewording the prompt to explicitly say recording a
+      // field must never substitute for a spoken reply. That the prompt
+      // fix had zero effect points at a code-level cause instead: the
+      // streaming 'text' event (which is all assistantText was ever built
+      // from) may not fire for a text block that arrives after a tool_use
+      // block in the same message. Cross-checking the final message
+      // directly, once streaming is done, is a cheap way to confirm and
+      // recover from that rather than falling back to a canned line when
+      // real text was there all along.
+      if (!assistantText) {
+        const textBlock = final.content.find((b) => b.type === 'text' && b.text);
+        if (textBlock) {
+          console.warn(`[call-loop] turn ${turnId}: streamed text was empty but final.content had real text — using it instead of the generic fallback`);
+          assistantText = textBlock.text;
+          this._speak(assistantText, turnId, turnStartedAt);
+        }
+      }
       if (this.activeTurn === turnId) {
         // Safety net for a terminal node (goodbye/transfer): dead air there
         // is a much worse failure than anywhere else in the flow — it's the
