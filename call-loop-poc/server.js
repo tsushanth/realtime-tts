@@ -300,7 +300,15 @@ const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
 // after a real goodbye produces garbage that never matches this pattern,
 // so a detector that only counts the SHOPPER's own replies can stall
 // forever once the OTHER party has already said an equally clear goodbye.
-const CLOSING_SHAPED_RE = /\b(bye|goodbye|take care|have a (great|good|wonderful) day|thanks?,?\s*(so much)?\.?\s*$)/i;
+// Cycle 13 finding: the original pattern's `thanks?...$` branch matched
+// ANY reply ending in ordinary "thanks!" — which happens constantly in
+// normal mid-conversation acknowledgment ("Perfect, thanks!"), not just
+// real goodbyes. That falsely incremented the shopper's closing counter
+// early in a call, and a later unrelated business turn then tripped the
+// either-party hangup check, killing a call mid-booking before it ever
+// reached a real conclusion. Dropped the bare "thanks" branch entirely —
+// only real, close-to-complete farewell phrases count now.
+const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) day)\b|\bbye\b/i;
 
 // Flux decides "they're done talking" from the words themselves, not just
 // silence — eot_threshold is the confidence bar for a real EndOfTurn, higher
