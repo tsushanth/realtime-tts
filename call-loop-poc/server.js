@@ -833,7 +833,7 @@ class CallSession {
     // generated, so the shopper never has a chance to respond to what
     // might already be silence/noise on the line.
     if (this.isShopper && this._shopperClosingCount >= 1 && CLOSING_SHAPED_RE.test(userText.trim())) {
-      console.log('[call-loop] shopper: other party also closing-shaped, hanging up immediately');
+      console.log(`[call-loop] shopper: other party also closing-shaped (count=${this._shopperClosingCount}, matched text: "${userText.trim()}"), hanging up immediately`);
       this._closing = true;
       this.close();
       return;
