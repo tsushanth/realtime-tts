@@ -1040,16 +1040,29 @@ class CallSession {
             ? 'Thank you so much for calling. Have a great day!'
             : "I'm connecting you now — one moment please.";
           this._speak(assistantText, turnId, turnStartedAt);
-        } else if (!assistantText) {
-          // Cycle 9 (mystery-shopper) finding: a non-terminal node
-          // occasionally produced neither text nor a tool call, leaving the
-          // call in dead silence with nothing forcing it forward — the
-          // caller's turn was heard, but nothing was ever said back. The
-          // fallback above only covered goodbye/transfer; any node can hit
-          // this, so the safety net needs to be general, not terminal-only.
-          console.warn(`[call-loop] node "${node?.id}" (${node?.type}) produced no speech — falling back to a generic clarifying line`);
+        } else if (!assistantText && !final.content.some((b) => b.type === 'tool_use')) {
+          // Cycle 9 finding: a non-terminal node occasionally produced
+          // neither text nor a tool call, leaving dead silence with
+          // nothing forcing the call forward — this fallback covers that.
+          //
+          // Cycle 12 finding (important refinement): this fallback was ALSO
+          // firing whenever record_field was called with no accompanying
+          // text — confirmed real Claude Haiku behavior (final.content
+          // genuinely has no text block, not a missed-streaming-event bug;
+          // see the check added above this block). In that case the field
+          // WAS captured correctly — nothing was actually unclear — so
+          // saying "Sorry, could you say that again?" is not just
+          // unnecessary, it's actively wrong and makes a working system
+          // sound broken (exactly what the judge flagged: "the system
+          // committed to a booking on a repeat of an utterance it had just
+          // declared unrecognizable"). Only use this apologetic fallback
+          // when NO tool call happened either — genuine silence — not when
+          // a tool call succeeded silently.
+          console.warn(`[call-loop] node "${node?.id}" (${node?.type}) produced no speech and no tool call — falling back to a generic clarifying line`);
           assistantText = "Sorry, could you say that again?";
           this._speak(assistantText, turnId, turnStartedAt);
+        } else if (!assistantText) {
+          console.log(`[call-loop] node "${node?.id}" (${node?.type}) called a tool with no spoken text — letting it pass silently rather than falsely claiming something was unclear`);
         }
         chunker.flush();
         if (assistantText) {
