@@ -108,6 +108,53 @@ in production) and leaving the remaining booking-flow polish for a fresh
 pass, likely by simplifying/consolidating the node prompt rather than
 adding another targeted instruction on top of it.
 
+## Cycles 10-15 (2026-09-11): applying judge suggestions, real deadlock chain uncovered
+
+Asked to apply cycle-9's judge suggestions and rerun. This surfaced a
+chain of FOUR distinct, increasingly deep real bugs, each found only
+because the prior fix was validated with another real call rather than
+assumed correct:
+
+1. **record_field suppressing spoken output** (cycle 10) — the model
+   treated calling record_field as the complete turn action, producing no
+   text at all. Fixed the prompt wording; had zero effect (cycle 11) —
+   proved this was real Claude Haiku tool-use behavior, not a prompt-
+   compliance issue, by confirming `final.content` genuinely had no text
+   block (not a missed-streaming-event bug).
+2. **Wrong fallback message** (cycle 12) — the generic "Sorry, could you
+   say that again?" fallback fired every time record_field succeeded
+   silently, falsely implying an error when the field was captured
+   correctly. Fixed: only use that apology when NO tool call happened
+   either; let a silent-but-successful tool call pass without comment.
+3. **CLOSING_SHAPED_RE false positive** (cycle 13) — the regex's bare
+   "thanks$" branch matched ordinary conversational replies ("Perfect,
+   thanks!"), falsely arming the either-party hangup check and killing a
+   call mid-booking. Fixed by requiring real farewell phrases only.
+4. **Genuine deadlock** (cycle 14, found via a live diagnostic run after
+   explicitly deciding to keep digging rather than stop) — the model
+   recorded every required field via record_field, satisfying the node's
+   transition condition, but called neither transition_flow nor said
+   anything else. With no new caller utterance coming, nothing was left
+   to prompt it forward — both sides silently waited until the 3-minute
+   safety cap. Fixed at the code level (not prompt wording): once per
+   node, if every extract field is captured but no transition happened,
+   push a system-note nudge and generate a follow-up turn immediately.
+
+Cycle 15 confirmed the fix: call closed cleanly for the first time since
+cycle 9, with real progress found: no stall, no false apology, no
+premature hangup, no hallucination. The one remaining issue is a
+duplicate name-ask — the SAME category of bug found in cycle 3, milder
+than anything found in cycles 10-14, suggesting the deeper/catastrophic
+bugs are now cleared and iteration is back to polishing the original,
+lower-severity pattern.
+
+**Lesson for next time:** three of these four bugs would have been
+invisible without pulling raw logs after every single cycle rather than
+trusting the judge's summary alone — the judge correctly identified
+symptoms (call didn't close, weird apology, etc.) but the actual root
+causes were only findable in `flyctl logs`, cross-referenced against the
+code that had just changed.
+
 ## Priority order for fixes, given the above
 
 1. **Pattern 1** (slot-filling redesign) — highest frequency, highest
