@@ -621,6 +621,7 @@ class CallSession {
     this.callSid = null; // set once the Twilio 'start' event arrives (browser calls never get one)
     this._shopperClosingCount = 0;
     this._closing = false;
+    this._nudgedNodeId = null; // see _maybeRetireTurn's deadlock-nudge fix
     // Live-monitoring metadata — which tenant owns this call and the phone
     // number involved, both set from the {"type":"context"} message (see
     // onClientMessage). Null for anonymous browser demo calls, which carry no
@@ -1467,7 +1468,37 @@ class CallSession {
         this._executeTransfer(this.turnState.nodeParams);
         return;
       }
-      if (this.turnState.transition) this._applyTransition(this.turnState.transition);
+      if (this.turnState.transition) {
+        this._applyTransition(this.turnState.transition);
+        return;
+      }
+      // Diagnostic-driven fix (found via mystery-shopper cycle 14, raw
+      // logs): the model recorded every required field via record_field —
+      // satisfying the node's transition condition — but called neither
+      // transition_flow nor said anything else in that turn. With no new
+      // caller utterance coming (the caller had nothing left to add,
+      // correctly), NOTHING was left to prompt the model to continue —
+      // both sides silently waited on each other forever, only ending via
+      // the 3-minute safety cap. This is a real deadlock, not something
+      // more prompt wording can fix reliably on its own — nudge the model
+      // to continue immediately instead of waiting on the caller.
+      const node = this.flowNodesById?.get(this.currentNodeId);
+      if (node?.extract && node.edges.length > 0) {
+        const fields = Object.keys(node.extract);
+        const allCaptured = fields.every((f) => this.collectedData[f]);
+        if (allCaptured && this._nudgedNodeId !== this.currentNodeId) {
+          this._nudgedNodeId = this.currentNodeId; // once per node — don't nudge forever if the model keeps ignoring it
+          console.log(`[call-loop] node "${node.id}" has all fields captured but didn't transition — nudging`);
+          this.history.push({
+            role: 'user',
+            content: `[System note: every required field for this step has been captured. Say your one-sentence summary now and call transition_flow.]`,
+          });
+          const nudgeTurnId = ++this.turnSeq;
+          this.activeTurn = nudgeTurnId;
+          this.turnState = { id: nudgeTurnId, llmDone: false, pendingTts: 0 };
+          this._generateTurn(nudgeTurnId, Date.now(), { isNodeEntry: false });
+        }
+      }
     }
   }
 
