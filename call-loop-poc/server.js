@@ -1193,7 +1193,7 @@ class CallSession {
       // unfinished even when the data was actually correct.
       prompt += `For this step, in order:\n`;
       prompt += `1. Ask for ALL of these together in ONE question: ${fields.join(', ')}. Don't ask one at a time, and don't re-ask anything the caller already volunteered earlier in the call.\n`;
-      prompt += `2. The moment the caller gives you a field, call record_field for it immediately — even mid-turn, even before you have the rest, even if you already asked for it again by mistake. This is not transition_flow and does not end the step.\n`;
+      prompt += `2. The moment the caller gives you a field, call record_field for it — but ALWAYS also say something out loud to the caller in that same turn. Calling record_field is a silent background action, never a substitute for actually replying — never let a turn consist of only a tool call with nothing spoken.\n`;
       if (hasTimeField) {
         prompt += `3. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
       }
