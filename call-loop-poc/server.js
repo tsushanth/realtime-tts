@@ -1020,6 +1020,16 @@ class CallSession {
             ? 'Thank you so much for calling. Have a great day!'
             : "I'm connecting you now — one moment please.";
           this._speak(assistantText, turnId, turnStartedAt);
+        } else if (!assistantText) {
+          // Cycle 9 (mystery-shopper) finding: a non-terminal node
+          // occasionally produced neither text nor a tool call, leaving the
+          // call in dead silence with nothing forcing it forward — the
+          // caller's turn was heard, but nothing was ever said back. The
+          // fallback above only covered goodbye/transfer; any node can hit
+          // this, so the safety net needs to be general, not terminal-only.
+          console.warn(`[call-loop] node "${node?.id}" (${node?.type}) produced no speech — falling back to a generic clarifying line`);
+          assistantText = "Sorry, could you say that again?";
+          this._speak(assistantText, turnId, turnStartedAt);
         }
         chunker.flush();
         if (assistantText) {
@@ -1169,52 +1179,26 @@ class CallSession {
     }
     if (node.extract) {
       const fields = Object.keys(node.extract);
-      // Real, repeated pattern found across mystery-shopper runs (see
-      // MYSTERY_SHOPPER_PATTERNS.md pattern 1): the model was asking for
-      // these fields ONE AT A TIME across separate turns, then sometimes
-      // even re-asking for a field it already had — Retell's benchmark
-      // agent asks for all of them together in a single question every
-      // time. This showed up in 4/4 relevant cycles, the highest-frequency
-      // finding of the whole investigation, so it's addressed directly
-      // rather than left to the model's own judgment.
-      prompt +=
-        `Ask for ALL of these together, in ONE question, the first time you speak in this step ` +
-        `— do not ask for them one at a time across separate turns: ${fields.join(', ')}. ` +
-        `If the caller already volunteered some of these earlier in the call, don't ask for them ` +
-        `again — only ask for whichever are still missing.\n` +
-        // Real bug: relying purely on conversation history to remember a
-        // field the caller already gave was fragile — under a confusing or
-        // noisy turn, the model re-asked for a name it had already been
-        // given. record_field persists it immediately, independent of the
-        // model's own memory of the conversation.
-        `The moment the caller gives you one of these fields, call record_field for it right ` +
-        `away, even mid-turn and even before you have all of them — don't wait until you're ` +
-        `ready to transition. This is separate from transition_flow and doesn't end the step.\n`;
-      if (fields.some((f) => /time|date|when/i.test(f))) {
-        // Second half of the same pattern: even when time WAS asked, a
-        // vague answer ("tomorrow afternoon") was accepted as final and the
-        // call closed without ever committing to a clock time — caught
-        // live on a real call ("it ends without ever telling the customer
-        // when their appointment is"). A time/date field must resolve to
-        // something concrete before this node's goal counts as met.
-        prompt +=
-          `If the caller gives a vague date/time ("afternoon", "sometime next week"), do not ` +
-          `accept that as final — propose ONE specific, concrete slot within their range (e.g. ` +
-          `"does 2pm work?") and get their yes before treating that field as captured. Never ` +
-          `transition to the next step with a vague, unconfirmed time.\n`;
+      const hasTimeField = fields.some((f) => /time|date|when/i.test(f));
+      // Consolidated from what was 4 separately-appended paragraphs (see
+      // MYSTERY_SHOPPER_PATTERNS.md's cycles 7-9 note on instruction
+      // overload: each fix landed as one more paragraph stacked onto this
+      // node's prompt, and by cycle 9 that volume itself was a plausible
+      // cause of inconsistent tool-calling — e.g. record_field getting
+      // called for one field but not another given in the same breath).
+      // Rewritten as one ordered checklist instead of accreted paragraphs,
+      // and a new final step (confirm the full summary before
+      // transitioning) added directly from the cycle-9 judge's own
+      // suggestion: closes without ever confirming a booking looked
+      // unfinished even when the data was actually correct.
+      prompt += `For this step, in order:\n`;
+      prompt += `1. Ask for ALL of these together in ONE question: ${fields.join(', ')}. Don't ask one at a time, and don't re-ask anything the caller already volunteered earlier in the call.\n`;
+      prompt += `2. The moment the caller gives you a field, call record_field for it immediately — even mid-turn, even before you have the rest, even if you already asked for it again by mistake. This is not transition_flow and does not end the step.\n`;
+      if (hasTimeField) {
+        prompt += `3. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
       }
-      // Real bug found via a live call: Deepgram mistranscribed the caller's
-      // name ("Sushant" -> "Ashant") and the bot repeated the wrong name back
-      // for the rest of the call with no chance to correct it. Speech-to-text
-      // will never be 100% on proper nouns and phone-mic audio — the fix that
-      // actually works regardless of which STT model/vendor we use is to have
-      // the LLM read back what it captured as a confirmation, the same way a
-      // human call-taker would, rather than silently trusting the transcript.
-      prompt +=
-        `Names and numbers (dates, times, phone numbers) are easy to mishear over the phone. ` +
-        `Once you think you've captured one, briefly read it back as part of your next reply ` +
-        `(e.g. "Got it, Alex, for 3pm tomorrow — did I get that right?") before relying on it or ` +
-        `transitioning. If the caller corrects you, use their correction, not your first guess.\n`;
+      prompt += `${hasTimeField ? '4' : '3'}. Names and numbers are easy to mishear — read back what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?") before relying on it. Use the caller's correction if given, not your first guess.\n`;
+      prompt += `${hasTimeField ? '5' : '4'}. Only once every field is recorded AND confirmed, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently or without ever stating the final summary.\n`;
     }
     if (Object.keys(this.collectedData).length > 0) {
       prompt += `Already collected this call: ${JSON.stringify(this.collectedData)}\n`;
