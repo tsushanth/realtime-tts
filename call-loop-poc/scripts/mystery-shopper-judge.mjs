@@ -141,3 +141,15 @@ console.log(result.stdout);
 console.log('\n\n=== DE-ANONYMIZED ===');
 console.log(`Call A = ${labelA}`);
 console.log(`Call B = ${labelB}`);
+
+// Resolve the judge's raw "Winner: A/B" (often markdown-bolded as
+// "**Winner: B**") straight to the real system name here, instead of
+// leaving every downstream consumer (mystery-shopper-run.sh's summary
+// table, a human skimming the output) to do that mapping themselves. A/B is
+// randomized per round specifically to keep the judge unbiased — printing
+// only the raw letter is exactly what caused a real mis-report: someone
+// (or something) summarizing several rounds' raw letters assumed "A" always
+// meant the same system and got the actual win/loss record backwards.
+const winnerMatch = result.stdout.match(/Winner:\s*\*{0,2}([AB])\b/i);
+const winnerLabel = winnerMatch ? { A: labelA, B: labelB }[winnerMatch[1].toUpperCase()] : null;
+console.log(`WINNER_SYSTEM: ${winnerLabel || 'unknown'}`);

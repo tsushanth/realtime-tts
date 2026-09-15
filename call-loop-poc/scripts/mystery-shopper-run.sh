@@ -216,7 +216,7 @@ print(t)
     --retell-metrics "$RUN_DIR/round-$r-retell-metrics.json" \
     > "$RUN_DIR/round-$r-verdict.txt" 2>&1
 
-  WINNER=$(grep -E 'Winner:' "$RUN_DIR/round-$r-verdict.txt" | tail -1 | tr -d '*' | awk -F'Winner:' '{print $2}' | awk '{print $1}' || true)
+  WINNER=$(grep -E '^WINNER_SYSTEM:' "$RUN_DIR/round-$r-verdict.txt" | tail -1 | awk '{print $2}' || true)
   echo "[mystery-shopper] round $r winner: ${WINNER:-n/a}"
 done
 
@@ -244,7 +244,7 @@ try:
     print(f\"{l['median_ms']}/{l['p95_ms']}\" if l.get('n') else 'n/a')
 except Exception:
     print('n/a')")
-  winner=$(grep -E 'Winner:' "$RUN_DIR/round-$r-verdict.txt" 2>/dev/null | tail -1 | tr -d '*' | awk -F'Winner:' '{print $2}' | awk '{print $1}' || true)
+  winner=$(grep -E '^WINNER_SYSTEM:' "$RUN_DIR/round-$r-verdict.txt" 2>/dev/null | tail -1 | awk '{print $2}' || true)
   winner=${winner:-n/a}
   printf "%-5s %-8s %-16s %-16s\n" "$r" "$winner" "$ours_w" "$retell_w"
   if [ -s "$RUN_DIR/round-$r-biz-latency.txt" ]; then

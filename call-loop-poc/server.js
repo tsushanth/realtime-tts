@@ -71,6 +71,15 @@ if (TTS_BACKEND === 'elevenlabs' && !ELEVENLABS_API_KEY) {
 const CARTESIA_API_KEY = process.env.CARTESIA_API_KEY;
 const CARTESIA_VOICE_ID = process.env.CARTESIA_VOICE_ID;
 const CARTESIA_MODEL = process.env.CARTESIA_MODEL || 'sonic-3.6';
+// Per-call ttsModel override allowlist (see CallSession.onClientMessage and
+// /test-tts-override) — lets the mystery-shopper latency harness A/B TTS
+// model/provider tiers against a live tenant's real agent without touching
+// its DB config or the process-wide default, which would affect every real
+// caller for the duration of the test.
+const VALID_TTS_MODELS = {
+  elevenlabs: new Set(['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5']),
+  cartesia: new Set(['sonic-3.6', 'sonic-2']),
+};
 if (TTS_BACKEND === 'cartesia' && (!CARTESIA_API_KEY || !CARTESIA_VOICE_ID)) {
   console.warn('[call-loop] TTS_BACKEND=cartesia but CARTESIA_API_KEY/CARTESIA_VOICE_ID not set — TTS will fail');
 }
@@ -115,14 +124,20 @@ function ttsBackendMissingKey(backend) {
 // BACKCHANNEL_DELAY_MS isn't one of Retell's named params (their docs don't
 // expose the threshold) but needs to be tunable too, so it gets the same
 // env-var + per-session treatment.
-// Opt-in, not opt-out: this was firing on ~80% of turns on every backend,
-// including fast ones like ElevenLabs, which was never the intent — the
-// intent was masking genuine latency (e.g. kokoro's cold start), not a
-// filler word before most replies. A tenant/call can still turn it on via
-// the {"type":"context"} message's backchannelEnabled field.
-const BACKCHANNEL_ENABLED_DEFAULT = process.env.BACKCHANNEL_ENABLED === 'true';
+// Was opt-in, not opt-out, at a 400ms threshold: that fired on ~80% of
+// turns on every backend, including fast ones like ElevenLabs, which was
+// never the intent — the intent was masking genuine latency (e.g. kokoro's
+// cold start), not a filler word before most replies. Re-enabled by default
+// now that mystery-shopper's real [latency] data gives an actual number to
+// set the threshold from: ordinary turns land at 500-900ms llmTtfbMs, the
+// closing/goodbye turn (see the isNodeEntry note above) regularly spikes to
+// 3-4.4s. 1500ms sits well clear of the former and well under the latter,
+// so this should now fire almost only on the turns that actually need
+// masking. A tenant/call can still override via the {"type":"context"}
+// message's backchannelEnabled/backchannelDelayMs fields.
+const BACKCHANNEL_ENABLED_DEFAULT = process.env.BACKCHANNEL_ENABLED !== 'false';
 const BACKCHANNEL_FREQUENCY_DEFAULT = Number(process.env.BACKCHANNEL_FREQUENCY ?? 0.8);
-const BACKCHANNEL_DELAY_MS_DEFAULT = Number(process.env.BACKCHANNEL_DELAY_MS ?? 400);
+const BACKCHANNEL_DELAY_MS_DEFAULT = Number(process.env.BACKCHANNEL_DELAY_MS ?? 1500);
 const BACKCHANNEL_WORDS_DEFAULT = (process.env.BACKCHANNEL_WORDS || 'Mm-hmm.,Got it.,One sec.,Sure thing.')
   .split(',')
   .map((w) => w.trim())
@@ -297,6 +312,13 @@ const SHOPPER_SYSTEM_PROMPT =
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
+// How many times _maybeRetireTurn will nudge a silent/stalled extraction
+// node before giving up and forcing a hard-coded spoken fallback instead —
+// see the deadlock-nudge fix there. Real call reproduced 2 consecutive
+// silent turns on the same node (nudge itself went silent too), so 1 nudge
+// wasn't enough; this is deliberately small so a model that's genuinely
+// stuck doesn't nudge indefinitely before falling back.
+const MAX_NUDGE_ATTEMPTS = 2;
 // Shared by both the shopper's own reply (server.js's assistant-turn
 // handling) and the check on what it just heard from the other party (see
 // _onUserTurnComplete below) — see MYSTERY_SHOPPER_PATTERNS.md pattern 2
@@ -371,6 +393,17 @@ app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded f
 // opens the stream (e.g. caller hangs up mid-ring) doesn't leak forever.
 const pendingCallContext = new Map();
 
+// Test-only, in-memory, TEST_CALL_SECRET-gated: lets the mystery-shopper
+// latency harness force a real tenant's INBOUND agent (resolved from
+// Supabase in /twilio/voice below) onto a different ttsBackend/ttsModel for
+// a short window, without writing to that tenant's DB row -- which would
+// change the experience for any real caller hitting the number during the
+// test, not just the synthetic shopper call. Keyed by the dialed number;
+// swept lazily on read (expired entries are just ignored, not deleted
+// proactively -- this map is expected to have at most a couple of entries
+// at once, size isn't a concern).
+const testTtsOverrides = new Map();
+
 // Registry of calls currently in progress — one entry per live CallSession,
 // keyed by the session's own id. This is *live call state* (who's on a call
 // right now, on what flow node), NOT an audio stream: the flow position it
@@ -420,7 +453,19 @@ app.post('/twilio/voice', async (req, res) => {
       // Caller's number (From), carried through for the live-call registry's
       // display — the dialed tenant number (To) is the same for every call, the
       // caller's isn't.
-      if (resolved) pendingCallContext.set(callSid, { ...resolved, fromNumber: req.body.From || null, createdAt: Date.now() });
+      if (resolved) {
+        // Test-only override (see testTtsOverrides above) — wins over the
+        // tenant's real DB config, but only for the window set via
+        // /test-tts-override, and only for this one call.
+        const override = testTtsOverrides.get(toNumber);
+        const ttsOverride = override && override.expiresAt > Date.now() ? override : null;
+        pendingCallContext.set(callSid, {
+          ...resolved,
+          ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
+          fromNumber: req.body.From || null,
+          createdAt: Date.now(),
+        });
+      }
     }
   }
   const twiml =
@@ -515,6 +560,36 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   }
 });
 
+// Sets/clears a short-lived per-number TTS override for A/B latency testing
+// against a real tenant's live agent (see testTtsOverrides above for why
+// this exists instead of just editing the tenant's DB row). Same admin-
+// secret guard as /place-test-call. Body: { number, ttsBackend, ttsModel,
+// ttsExpiresInMs? } to set (defaults to a 5-minute TTL so a forgotten
+// override can't linger and silently affect real callers); { number } alone
+// (no ttsBackend) clears it early.
+app.post('/test-tts-override', express.json(), (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const { number, ttsBackend, ttsModel, ttsExpiresInMs } = req.body || {};
+  if (!number) return res.status(400).json({ error: 'number is required' });
+  if (!ttsBackend) {
+    testTtsOverrides.delete(number);
+    return res.json({ cleared: number });
+  }
+  if (!VALID_TTS_BACKENDS.includes(ttsBackend)) {
+    return res.status(400).json({ error: `invalid ttsBackend: ${ttsBackend}` });
+  }
+  if (ttsModel && !VALID_TTS_MODELS[ttsBackend]?.has(ttsModel)) {
+    return res.status(400).json({ error: `invalid ttsModel ${ttsModel} for backend ${ttsBackend}` });
+  }
+  const expiresAt = Date.now() + Math.min(Number(ttsExpiresInMs) || 5 * 60_000, 30 * 60_000);
+  testTtsOverrides.set(number, { ttsBackend, ttsModel: ttsModel || null, expiresAt });
+  console.log(`[call-loop] test TTS override set for ${number}: ${ttsBackend}${ttsModel ? `/${ttsModel}` : ''}, expires ${new Date(expiresAt).toISOString()}`);
+  res.json({ number, ttsBackend, ttsModel: ttsModel || null, expiresAt });
+});
+
 const server = http.createServer(app);
 // Two WebSocketServer instances each bound with {server, path} don't reliably
 // coexist on one shared http.Server in this ws version — the second path
@@ -593,6 +668,7 @@ twilioWss.on('connection', (twilioWs) => {
       type: 'context',
       flow: resolved.flow,
       ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
+      ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
       ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
       ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
       ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
@@ -618,6 +694,7 @@ class CallSession {
     this.voice = TTS_VOICE;
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
+    this.ttsModel = null; // per-call override via context `ttsModel` — see onClientMessage
     this.llmModel = LLM_MODEL; // per-call override via context `model` — see onClientMessage
     this._latency = null; // per-turn latency instrumentation — see _markTtsFirstByte
     this.backchannelEnabled = BACKCHANNEL_ENABLED_DEFAULT;
@@ -647,7 +724,8 @@ class CallSession {
     this.callSid = null; // set once the Twilio 'start' event arrives (browser calls never get one)
     this._shopperClosingCount = 0;
     this._closing = false;
-    this._nudgedNodeId = null; // see _maybeRetireTurn's deadlock-nudge fix
+    this._nudgeAttempts = new Map(); // nodeId -> count, see _maybeRetireTurn's deadlock-nudge fix
+    this._queuedUserText = null; // see _onUserTurnComplete's in-flight-turn guard
     // Live-monitoring metadata — which tenant owns this call and the phone
     // number involved, both set from the {"type":"context"} message (see
     // onClientMessage). Null for anonymous browser demo calls, which carry no
@@ -798,6 +876,13 @@ class CallSession {
           this.cost.ttsBackend = msg.ttsBackend;
         }
       }
+      // Test-only knob (see /test-tts-override): which model/tier within
+      // this.ttsBackend to use, validated per-backend so a typo can't reach
+      // the provider's API as an arbitrary string. Unset = that backend's
+      // process-wide default (ELEVENLABS_MODEL/CARTESIA_MODEL).
+      if (typeof msg.ttsModel === 'string' && VALID_TTS_MODELS[this.ttsBackend]?.has(msg.ttsModel.trim())) {
+        this.ttsModel = msg.ttsModel.trim();
+      }
       // Same knob as Retell's LLM choice, one model per call: a tenant that
       // needs a stronger/cheaper model than the process default picks it here
       // instead of requiring an app-wide restart.
@@ -833,7 +918,7 @@ class CallSession {
         // on the greeting exactly like it does on every other response.
         const turnId = ++this.turnSeq;
         this.activeTurn = turnId;
-        this.turnState = { id: turnId, llmDone: true, pendingTts: 0 };
+        this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
         this._speak(msg.greeting, turnId, Date.now());
       } else if (this.flow) {
         // No explicit greeting text — let the flow's own start node (usually
@@ -871,9 +956,37 @@ class CallSession {
       this.close();
       return;
     }
+    // Real bug, found via mystery-shopper + code review: this function used
+    // to blindly overwrite this.activeTurn/this.turnState for every final
+    // transcript, with no check for whether the PREVIOUS turn's LLM call
+    // was still in flight. _generateTurn only speaks/logs/records a turn's
+    // result if this.activeTurn still matches its own turnId when the LLM
+    // stream finishes (see the check there) — so a second utterance arriving
+    // a second or two after the first (completely normal in a real
+    // conversation, e.g. "Yes." then "That's correct." in quick succession)
+    // would silently blow away whatever the first turn's LLM call was about
+    // to say, with NO log line, no fallback, nothing. On a live call this
+    // ate turns that happened to be the actual booking confirmation, making
+    // the call end with no acknowledgment at all.
+    //
+    // This is NOT the same thing as a real barge-in (see _bargeIn, driven by
+    // Deepgram's StartOfTurn+real-words while the assistant is actively
+    // speaking) — a real barge-in explicitly resets activeTurn to 0 first,
+    // so by the time its EndOfTurn arrives here there's nothing in flight to
+    // race against. This guard only catches the case _bargeIn was never
+    // meant to cover: the assistant hasn't said a single word of its reply
+    // yet (turnState.startedSpeaking is still false), so there's nothing to
+    // legitimately interrupt — queue the new utterance and let
+    // _maybeRetireTurn replay it the moment the in-flight turn finishes,
+    // instead of discarding it.
+    if (this.activeTurn !== 0 && this.turnState?.id === this.activeTurn && !this.turnState.startedSpeaking) {
+      this._queuedUserText = this._queuedUserText ? `${this._queuedUserText} ${userText}` : userText;
+      console.log(`[call-loop] turn ${this.activeTurn} hasn't spoken yet — queuing instead of preempting: "${userText}"`);
+      return;
+    }
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
-    this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
+    this.turnState = { id: turnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
     const turnStartedAt = Date.now();
     // Seed the per-turn latency trace: turnStart is the server-side moment
     // Deepgram's EndOfTurn arrived (i.e. end of the caller's speech), so the
@@ -898,7 +1011,7 @@ class CallSession {
     this.currentNodeId = nodeId;
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
-    this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
+    this.turnState = { id: turnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
     // The model needs a fresh `user` turn at the end of history to actually
     // have something to respond to. The call's very opening has nothing at
     // all yet (isCallOpening). A LATER auto-advance — the flow moved to
@@ -1011,13 +1124,20 @@ class CallSession {
       this._speak(sentence, turnId, turnStartedAt);
     });
 
-    // Backchanneling — only for a real reply to something the caller just
-    // said, not a flow auto-advance turn (isNodeEntry) where there's no
-    // caller utterance to be acknowledging. Cleared the moment the LLM's
-    // first token actually arrives (below) or the turn ends (finally,
-    // below) so a stray filler never fires after the real response.
+    // Backchanneling. Used to be gated on !isNodeEntry ("no caller utterance
+    // to be acknowledging" for a flow auto-advance turn like the goodbye
+    // node) — but mystery-shopper's real [latency] data shows the closing/
+    // goodbye turn is consistently the single slowest turn in a call
+    // (llmTtfbMs regularly 3-4.4s there vs 500-900ms on ordinary turns,
+    // every call checked), and that's an isNodeEntry turn, so it could never
+    // get a filler regardless of this flag — dead air on exactly the turn
+    // most likely to need masking. A filler doesn't have to be replying to
+    // anything to be worth playing; it just has to fill the gap. Cleared the
+    // moment the LLM's first token actually arrives (below) or the turn
+    // ends (finally, below) so a stray filler never fires after the real
+    // response.
     let backchannelTimer = null;
-    if (!isNodeEntry && this.backchannelEnabled) {
+    if (this.backchannelEnabled) {
       backchannelTimer = setTimeout(() => {
         backchannelTimer = null;
         if (Math.random() < this.backchannelFrequency) this._maybeSpeakBackchannel(turnId);
@@ -1050,6 +1170,27 @@ class CallSession {
 
       const final = await stream.finalMessage();
       if (final.usage) this.cost.addLlmUsage(this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+      // Real bug found via mystery-shopper: this used to live inside the
+      // `if (this.activeTurn === turnId)` block below, alongside the
+      // speaking/logging logic that's correctly gated on it (a superseded
+      // turn shouldn't get to speak or log after the fact). But a recorded
+      // field is real data the model already genuinely extracted from what
+      // the caller said BEFORE any barge-in happened — interrupting the
+      // agent's spoken acknowledgment of a fact doesn't make that fact
+      // untrue. Gating this behind the same check as speaking meant a
+      // barge-in (or anything else that moved activeTurn on) silently
+      // discarded already-correct data: caught on a live call where the
+      // caller gave their name, got barged over mid-reply, and the agent
+      // asked for the name again two turns later because it was never
+      // persisted. stream.finalMessage() already waited for the complete
+      // response regardless of activeTurn, so this only needs to run once,
+      // unconditionally, right here.
+      for (const block of final.content) {
+        if (block.type === 'tool_use' && block.name === 'record_field' && block.input?.field) {
+          this.collectedData[block.input.field] = block.input.value;
+          console.log(`[call-loop] recorded field "${block.input.field}" = "${block.input.value}"`);
+        }
+      }
       // Cycles 10-11 (mystery-shopper) finding: every "produced no speech"
       // fallback fired exactly when the model also called record_field in
       // the same turn — 100% correlation across two separate real calls,
@@ -1112,6 +1253,20 @@ class CallSession {
           this._speak(assistantText, turnId, turnStartedAt);
         } else if (!assistantText) {
           console.log(`[call-loop] node "${node?.id}" (${node?.type}) called a tool with no spoken text — letting it pass silently rather than falsely claiming something was unclear`);
+          // Real bug found via mystery-shopper: this silent pass-through is
+          // correct on its own (see the cycle-12 note above — saying "sorry,
+          // could you repeat that" when data WAS captured is worse than
+          // saying nothing), but the existing deadlock-nudge below only
+          // fires once EVERY field for the node is captured. A turn that
+          // captures only SOME fields (e.g. the caller gave a name and a
+          // vague "tomorrow afternoon", the model records name but the
+          // vague time isn't extractable as a field) still ends this turn
+          // with nothing said and nothing asked — and if the caller has
+          // nothing more to volunteer unprompted, both sides wait forever
+          // with no captured-fields threshold ever met to trigger the
+          // existing nudge. Mark it here so _maybeRetireTurn can nudge on
+          // ANY silent turn, not just a fully-captured one.
+          if (this.turnState?.id === turnId) this.turnState.saidNothing = true;
         }
         chunker.flush();
         if (assistantText) {
@@ -1159,16 +1314,6 @@ class CallSession {
         if (toolUse && this.turnState?.id === turnId) {
           this.turnState.transition = toolUse.input;
         }
-        // Unlike transition_flow (deferred until the turn finishes
-        // speaking, see _maybeRetireTurn), a recorded field has no effect
-        // on conversation flow state — it's just data — so it's safe to
-        // persist immediately rather than waiting.
-        for (const block of final.content) {
-          if (block.type === 'tool_use' && block.name === 'record_field' && block.input?.field) {
-            this.collectedData[block.input.field] = block.input.value;
-            console.log(`[call-loop] recorded field "${block.input.field}" = "${block.input.value}"`);
-          }
-        }
       }
     } catch (err) {
       console.error('[call-loop] LLM error', err);
@@ -1206,7 +1351,7 @@ class CallSession {
     // hide (see fillerCache's comment).
     if (!buf) return;
     console.log(`[call-loop] turn ${turnId} backchannel: "${word}"`);
-    this._speakCached(buf, turnId);
+    this._speakCached(buf, turnId).catch((err) => console.error('[call-loop] backchannel send failed', err));
   }
 
   // Sends a pre-synthesized filler clip immediately — no network call, so
@@ -1215,14 +1360,31 @@ class CallSession {
   // TTS path uses (see _speak/_speakHttpTts) so barge-in and
   // _maybeRetireTurn stay correct even when a filler is the only thing a
   // superseded turn ever said.
-  _speakCached(buffer, turnId) {
+  async _speakCached(buffer, turnId) {
     if (this.activeTurn !== turnId) return;
-    if (this.clientWs.readyState !== WebSocket.OPEN) return;
     if (this.turnState?.id === turnId) this.turnState.pendingTts++;
-    this.clientWs.send(buffer, { binary: true });
-    if (this.turnState?.id === turnId) {
-      this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
-      this._maybeRetireTurn(turnId);
+    // Same ordering chain _speakHttpTts uses — a cached clip (backchannel
+    // filler, kokoro warmup line) sent straight to clientWs.send() with no
+    // regard for _sendChain could jump ahead of or interleave with a
+    // sentence still being flushed for another turn. Only a live risk now
+    // that backchanneling is enabled by default again; claim a ticket the
+    // same way so this can never race a real sentence's audio.
+    const prior = this._sendChain || Promise.resolve();
+    let releaseNext;
+    this._sendChain = new Promise((resolve) => {
+      releaseNext = resolve;
+    });
+    await prior;
+    try {
+      if (this.activeTurn !== turnId) return;
+      if (this.clientWs.readyState !== WebSocket.OPEN) return;
+      this.clientWs.send(buffer, { binary: true });
+    } finally {
+      releaseNext();
+      if (this.turnState?.id === turnId) {
+        this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
+        this._maybeRetireTurn(turnId);
+      }
     }
   }
 
@@ -1512,6 +1674,20 @@ class CallSession {
         this._applyTransition(this.turnState.transition);
         return;
       }
+      // See _onUserTurnComplete's in-flight-turn guard: the caller may have
+      // said something new while this turn's LLM call was still running.
+      // Answer it now, before considering an artificial nudge below — real
+      // caller input always beats a synthetic one. (Known gap: this only
+      // covers the plain fallthrough case, i.e. this turn was ordinary
+      // back-and-forth with no transition/goodbye/transfer — the rarer case
+      // of queued text arriving exactly around a flow transition isn't
+      // handled here yet and needs its own follow-up.)
+      if (this._queuedUserText) {
+        const queued = this._queuedUserText;
+        this._queuedUserText = null;
+        this._onUserTurnComplete(queued);
+        return;
+      }
       // Diagnostic-driven fix (found via mystery-shopper cycle 14, raw
       // logs): the model recorded every required field via record_field —
       // satisfying the node's transition condition — but called neither
@@ -1526,17 +1702,75 @@ class CallSession {
       if (node?.extract && node.edges.length > 0) {
         const fields = Object.keys(node.extract);
         const allCaptured = fields.every((f) => this.collectedData[f]);
-        if (allCaptured && this._nudgedNodeId !== this.currentNodeId) {
-          this._nudgedNodeId = this.currentNodeId; // once per node — don't nudge forever if the model keeps ignoring it
-          console.log(`[call-loop] node "${node.id}" has all fields captured but didn't transition — nudging`);
-          this.history.push({
-            role: 'user',
-            content: `[System note: every required field for this step has been captured. Say your one-sentence summary now and call transition_flow.]`,
-          });
-          const nudgeTurnId = ++this.turnSeq;
-          this.activeTurn = nudgeTurnId;
-          this.turnState = { id: nudgeTurnId, llmDone: false, pendingTts: 0 };
-          this._generateTurn(nudgeTurnId, Date.now(), { isNodeEntry: false });
+        // See the "saidNothing" note above (_generateTurn's silent-tool-call
+        // branch): a turn that captures only SOME fields and says nothing
+        // deadlocks exactly like the all-captured case below, just without
+        // ever meeting allCaptured — the caller has nothing left to
+        // volunteer unprompted, so nobody ever nudges the model to ask for
+        // what's still missing. Nudge on either condition.
+        const saidNothing = this.turnState.saidNothing;
+        // Real bug found running this exact fix live: using allCaptured as
+        // an independent trigger (alongside saidNothing) meant that once
+        // every field was captured, EVERY future turn retirement on this
+        // node re-entered this branch — including completely normal turns
+        // where the model spoke just fine and simply hadn't transitioned
+        // yet. Combined with the bounded-attempts fallback below, that
+        // turned into a runaway loop: the canned fallback line fired on
+        // nearly every turn for the rest of the call, drowning out the
+        // model's real (perfectly fine) replies, because allCaptured never
+        // stops being true once it's true. saidNothing is per-turn and
+        // always resets to false on a new turnState, so gating on it alone
+        // — using allCaptured only to pick which message to say, not as an
+        // independent trigger — means this can only ever fire on a turn
+        // that genuinely just said nothing, never on an ordinary one.
+        if (saidNothing) {
+          // Real bug found via mystery-shopper: a ONE-SHOT "once per node"
+          // guard (a bare nodeId flag) meant that if the model went silent
+          // AGAIN on the nudge turn itself — genuinely reproduced on a live
+          // call: nudged, model recorded the remaining field but still said
+          // nothing — there was no nudge left to fire a second time, and the
+          // call deadlocked for real, only ending 2+ minutes later via the
+          // shopper's hard safety-timeout, not any actual conversational
+          // resolution. Bounded retries fix the immediate deadlock; the
+          // final fallback guarantees SOMETHING is always said rather than
+          // silently giving up after the cap.
+          const attempts = this._nudgeAttempts.get(this.currentNodeId) || 0;
+          if (attempts < MAX_NUDGE_ATTEMPTS) {
+            this._nudgeAttempts.set(this.currentNodeId, attempts + 1);
+            console.log(
+              `[call-loop] node "${node.id}" ${allCaptured ? 'has all fields captured but didn\'t transition' : 'ended a silent turn with fields still missing'} — nudging (attempt ${attempts + 1}/${MAX_NUDGE_ATTEMPTS})`
+            );
+            this.history.push({
+              role: 'user',
+              content: allCaptured
+                ? `[System note: every required field for this step has been captured. Say your one-sentence summary now and call transition_flow.]`
+                : `[System note: you just recorded a field but said nothing out loud. Continue now — acknowledge what you captured and ask for whatever is still missing, in one spoken sentence.]`,
+            });
+            const nudgeTurnId = ++this.turnSeq;
+            this.activeTurn = nudgeTurnId;
+            this.turnState = { id: nudgeTurnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+            this._generateTurn(nudgeTurnId, Date.now(), { isNodeEntry: false });
+          } else {
+            console.warn(`[call-loop] node "${node.id}" still silent after ${MAX_NUDGE_ATTEMPTS} nudges — forcing a spoken fallback instead of deadlocking`);
+            // Real bug found via mystery-shopper: allCaptured only means
+            // every field HAS a value, not that the caller actually
+            // confirmed a concrete one — a vague "tomorrow afternoon"
+            // satisfies it just as well as an agreed "2pm tomorrow". The
+            // old "I've got you down" phrasing asserted a confirmed booking
+            // that, per the transcript, was never actually agreed to — the
+            // judge correctly called this a fabricated confirmation. Read
+            // the values back as a question instead of asserting them as
+            // fact, whether or not every field technically has a value.
+            const missing = fields.filter((f) => !this.collectedData[f]);
+            const fallback = missing.length > 0
+              ? `Sorry, I want to make sure I get this right — could you tell me ${missing.join(' and ')} one more time?`
+              : `Sorry, let me just double check — ${fields.map((f) => `${f.replace(/_/g, ' ')}: ${this.collectedData[f]}`).join(', ')}. Is that all correct?`;
+            const fallbackTurnId = ++this.turnSeq;
+            this.activeTurn = fallbackTurnId;
+            this.turnState = { id: fallbackTurnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+            this.history.push({ role: 'assistant', content: fallback });
+            this._speak(fallback, fallbackTurnId, Date.now());
+          }
         }
       }
     }
@@ -1598,7 +1832,7 @@ class CallSession {
       const warmupBuf = fillerCache.get(`warmup::elevenlabs::${ELEVENLABS_VOICE_ID}::${KOKORO_WARMUP_PHRASE}`);
       if (warmupBuf) {
         console.log(`[call-loop] turn ${turnId}: kokoro gateway not ready yet, playing warmup line`);
-        this._speakCached(warmupBuf, turnId);
+        this._speakCached(warmupBuf, turnId).catch((err) => console.error('[call-loop] warmup send failed', err));
       }
     }
     const dispatch = () => {
@@ -1650,17 +1884,44 @@ class CallSession {
   // all (see its send()). pcm16 still needs the 6-byte (3-sample) carry
   // alignment: a chunk boundary landing mid-decimation-group would shift
   // twilioAdapter's naive resampleInt16 phase for everything after it.
+  // Sentence-level ordering (see SentenceChunker's callback in _runLlmTurn):
+  // one _speakHttpTts call per sentence, fired as each completes during LLM
+  // streaming, NOT awaited by its caller — so with a fast-enough TTS
+  // provider, sentence 2's fetch can genuinely finish and start writing to
+  // clientWs before sentence 1's does. That never showed up against
+  // ElevenLabs (its ~1-1.4s leg time meant sentence N's stream reliably
+  // finished long before sentence N+1 was even chunked), but it's a real,
+  // audible bug against Cartesia (~150-380ms) — heard on a real call as
+  // overlapping "hi there"s and swallowed words. Fetches stay concurrent
+  // (kept unbuffered/streamed within a sentence, so first-byte latency for
+  // the turn's opening sentence is unaffected), but writes to clientWs are
+  // serialized through this chain so sentence N+1's audio can never reach
+  // the client before sentence N's has fully gone out.
   async _speakHttpTts(label, fetchPcm, text, turnId, turnStartedAt, format = 'pcm16') {
     if (!this._httpTtsAborts) this._httpTtsAborts = new Set();
     const controller = new AbortController();
     this._httpTtsAborts.add(controller);
 
+    // Claim this sentence's place in the turn's send order SYNCHRONOUSLY,
+    // before the fetch below even starts — ordering must reflect call order
+    // (the order SentenceChunker detected sentences in), not fetch-
+    // completion order. Claiming this after the fetch (an earlier version
+    // of this fix did exactly that) let a short, fast-to-synthesize later
+    // sentence jump ahead of a longer earlier one whenever it happened to
+    // finish first — heard on a real call as "How can I help you today?"
+    // playing before "Hi there, thanks for calling CallDeskTech."
+    const prior = this._sendChain || Promise.resolve();
+    let releaseNext;
+    this._sendChain = new Promise((resolve) => {
+      releaseNext = resolve;
+    });
+
     let carry = Buffer.alloc(0);
     let firstByteAt = null;
+    const chunks = [];
 
     const onChunk = (chunk) => {
       if (this.activeTurn !== turnId) return; // barge-in — stop forwarding
-      if (this.clientWs.readyState !== WebSocket.OPEN) return;
       let buf = chunk;
       if (format === 'pcm16') {
         buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk;
@@ -1673,19 +1934,38 @@ class CallSession {
         }
       }
       if (buf.length === 0) return;
-      if (firstByteAt === null) {
-        firstByteAt = Date.now();
-        this._markTtsFirstByte(turnId, label, firstByteAt);
-        console.log(`[call-loop] TTS TTFB: ${firstByteAt - turnStartedAt}ms (turn latency end-to-end, ${label})`);
-      }
-      this.clientWs.send(buf, { binary: true, format: format === 'mulaw8k' ? 'mulaw8k' : undefined });
+      chunks.push(buf);
     };
 
     try {
       await fetchPcm(text, controller.signal, turnId, onChunk);
     } catch (err) {
       if (err.name !== 'AbortError') console.error(`[call-loop] ${label} stream error`, err);
+    }
+
+    // Fetch may have finished well before an earlier sentence's flush did —
+    // wait for it (already complete at this point, so this is just
+    // queueing, no extra network wait) before this sentence's audio goes
+    // out, so playback order always matches call order.
+    await prior;
+    try {
+      for (const buf of chunks) {
+        if (this.activeTurn !== turnId) break; // barge-in — stop forwarding
+        if (this.clientWs.readyState !== WebSocket.OPEN) break;
+        if (firstByteAt === null) {
+          firstByteAt = Date.now();
+          this._markTtsFirstByte(turnId, label, firstByteAt);
+          console.log(`[call-loop] TTS TTFB: ${firstByteAt - turnStartedAt}ms (turn latency end-to-end, ${label})`);
+        }
+        // See _onUserTurnComplete's in-flight-turn guard: real audio has now
+        // gone out for this turn, so a new caller utterance from here on is
+        // a genuine (would-be) barge-in, not a race against a turn that
+        // hasn't said anything yet.
+        if (this.turnState?.id === turnId) this.turnState.startedSpeaking = true;
+        this.clientWs.send(buf, { binary: true, format: format === 'mulaw8k' ? 'mulaw8k' : undefined });
+      }
     } finally {
+      releaseNext();
       this._httpTtsAborts.delete(controller);
       if (this.turnState?.id === turnId) {
         this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
@@ -1713,7 +1993,7 @@ class CallSession {
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text,
-            model_id: ELEVENLABS_MODEL,
+            model_id: this.ttsModel || ELEVENLABS_MODEL,
             voice_settings: { stability: 0.5, similarity_boost: 0.75 },
           }),
           signal,
@@ -1750,7 +2030,7 @@ class CallSession {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model_id: CARTESIA_MODEL,
+          model_id: this.ttsModel || CARTESIA_MODEL,
           transcript: text,
           voice: { id: CARTESIA_VOICE_ID },
           output_format: outputFormat,
@@ -1837,6 +2117,7 @@ class CallSession {
     if (isBinary) {
       // PCM16LE mono 24kHz chunk immediately following a chunk_meta message.
       if (this.clientWs.readyState === WebSocket.OPEN) {
+        if (this.turnState) this.turnState.startedSpeaking = true; // see _onUserTurnComplete
         this.clientWs.send(data, { binary: true });
       }
       return;
