@@ -12,6 +12,15 @@
 //
 // Usage:
 //   node mystery-shopper-judge.mjs --ours transcript-ours.txt --retell transcript-retell.txt
+//   [--ours-metrics metrics-ours.json] [--retell-metrics metrics-retell.json]
+//
+// The optional --*-metrics files carry the audio-derived timing/latency
+// numbers (output of analyze-call-ttfb.py --json) for each call. They're
+// handed to the judge alongside the transcripts so it can factor real,
+// objective response-latency and turn-timing differences into its scores —
+// the one dimension transcripts alone can't represent. They follow the same
+// blind randomization: whichever transcript becomes "Call A", its own
+// metrics go with it.
 
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -24,16 +33,36 @@ function arg(name) {
 const oursPath = arg('ours');
 const retellPath = arg('retell');
 if (!oursPath || !retellPath) {
-  console.error('usage: node mystery-shopper-judge.mjs --ours <file> --retell <file>');
+  console.error('usage: node mystery-shopper-judge.mjs --ours <file> --retell <file> [--ours-metrics <json>] [--retell-metrics <json>]');
   process.exit(1);
 }
 
 const oursTranscript = fs.readFileSync(oursPath, 'utf8');
 const retellTranscript = fs.readFileSync(retellPath, 'utf8');
 
+// Metrics files are optional. Read as pretty-printed JSON text for the prompt.
+function readMetrics(path) {
+  if (!path || !fs.existsSync(path)) return null;
+  try {
+    return JSON.stringify(JSON.parse(fs.readFileSync(path, 'utf8')), null, 2);
+  } catch {
+    console.warn(`[judge] could not parse metrics file ${path} — judging on transcripts only`);
+    return null;
+  }
+}
+
+const oursMetrics = readMetrics(arg('ours-metrics'));
+const retellMetrics = readMetrics(arg('retell-metrics'));
+
 const oursIsA = Math.random() < 0.5;
 const [labelA, labelB] = oursIsA ? ['ours', 'retell'] : ['retell', 'ours'];
 const [transcriptA, transcriptB] = oursIsA ? [oursTranscript, retellTranscript] : [retellTranscript, oursTranscript];
+const [metricsA, metricsB] = oursIsA ? [oursMetrics, retellMetrics] : [retellMetrics, oursMetrics];
+
+function metricsSection(metrics) {
+  if (!metrics) return '(no timing metrics were provided for this call — score the transcript alone.)';
+  return metrics;
+}
 
 const PROMPT = `You are an expert voice-AI conversation quality judge. You will be shown two
 real phone call transcripts, "Call A" and "Call B", both of the SAME customer
@@ -52,6 +81,11 @@ Score each call 1-5 (5 = best) on:
    multi-beat wrap-up
 6. Any awkward or robotic-sounding phrasing (quote it if present)
 
+If '"timing metrics"' sections were provided for a call, also factor them in
+(they are real, measured numbers, not impressions):
+7. Response latency — median/max time from the customer finishing speaking to
+   the agent starting to respond; smaller is better. Flag egregious outliers.
+
 Then give an overall winner (A, B, or tie) with a one-paragraph justification,
 and 2-4 CONCRETE, ACTIONABLE suggestions for how the worse-performing call's
 system could be improved to close the gap — specific enough to hand directly
@@ -66,6 +100,7 @@ Respond in this exact structure:
 - Error recovery: X/5 — reasoning
 - Closing quality: X/5 — reasoning
 - Awkward phrasing: [quote or "none noted"]
+- Response latency: X/5 — reasoning (only if timing metrics were provided)
 
 ## Call B
 (same structure)
@@ -81,8 +116,14 @@ Justification: ...
 ## Call A transcript
 ${transcriptA}
 
+## Call A timing metrics
+${metricsSection(metricsA)}
+
 ## Call B transcript
 ${transcriptB}
+
+## Call B timing metrics
+${metricsSection(metricsB)}
 `;
 
 const result = spawnSync('claude', ['-p', '--output-format', 'text'], {

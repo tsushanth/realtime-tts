@@ -78,6 +78,23 @@ Server console logs two latency numbers per turn:
 - `TTS TTFB` — time from end-of-user-speech to the first audio chunk_meta back from the
   TTS gateway (i.e. the number that actually matters for "does this feel like a real call")
 
+Plus one structured `[latency]` line per real user turn, tagged with the call's CallSid so
+a script can grep one session's numbers out of interleaved logs:
+
+```
+[latency] [call <CallSid>] turn <n> {"source":"elevenlabs","ttsBackend":"elevenlabs","llmTtfbMs":620,"ttsLegMs":310,"responseMs":930}
+```
+
+- `llmTtfbMs` — end-of-speech → first LLM token
+- `ttsLegMs` — first LLM token → first TTS audio byte
+- `responseMs` — end-of-speech → first TTS audio byte (the number that maps to the
+  caller's perceived turn-taking gap)
+
+The mystery-shopper pipeline (`scripts/mystery-shopper-run.sh`) now also measures
+response-onset latency straight off both Twilio call recordings (`scripts/
+analyze-call-ttfb.py`), so "ours vs Retell" latency is compared from the actual audio on
+both sides, not just from our own server logs.
+
 ## Known POC gaps (deliberately not built)
 
 - No telephony (Twilio) — browser mic only. Adding phone calls means SIP/PSTN ingress

@@ -256,8 +256,12 @@ async function prewarmFillerCache() {
 // Haiku over Sonnet for the voice path specifically — a phone reply doesn't
 // need Sonnet's depth of reasoning, and LLM TTFB was the single biggest
 // latency line item measured in real calls (1.3-1.8s), bigger than
-// everything else in the pipeline combined.
+// everything else in the pipeline combined. Process-wide default, overridable
+// per call via the context message's `model` field (see CallSession.
+// onClientMessage) so a quality-sensitive tenant can opt into a stronger
+// model without changing what every other call pays/suffers in latency.
 const LLM_MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
+const VALID_LLM_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6']);
 // Only needed for a flow's 'transfer' node type on a real (Twilio) phone
 // call — redirects the live call via Twilio's REST API. Not needed for
 // browser calls (there's nothing to redirect) or flows with no transfer node.
@@ -323,12 +327,32 @@ const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) da
 // even sees it can only lose information, never add it back. `numerals=true`
 // converts spoken numbers to digits, which matters for a booking flow parsing
 // dates/times out of the transcript.
-const DEEPGRAM_WS_URL_BROWSER =
-  'wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000' +
-  '&eot_threshold=0.7&eot_timeout_ms=5000&numerals=true';
-const DEEPGRAM_WS_URL_TWILIO =
-  'wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=mulaw&sample_rate=8000' +
-  '&eot_threshold=0.7&eot_timeout_ms=5000&numerals=true';
+//
+// Latency/quality knobs (defaults set from the latency review — the
+// mystery-shopper timing analysis added in the same change now measures
+// real response-onset on every call, so these can be tuned against actual
+// numbers rather than by hand):
+// - eot_threshold lowered 0.7 -> 0.6: the semantic-certainty bar before the
+//   LLM is allowed to start. 0.7 was conservative — it gates response onset
+//   behind a high-confidence end-of-Thought that typically costs a few
+//   hundred ms of the perceived turn-taking gap. 0.6 is still above the
+//   acoustic-turn floor, so it rarely cuts a speaker off mid-word; the guard
+//   against premature handoff is eot_timeout_ms below.
+// - keyterm=<list>: Deepgram boosts recognition of the supplied phrases (e.g.
+//   a tenant's known caller names or product terms). Unset = no boosting.
+//   (smart_format was tried here too, but Flux rejects it outright --
+//   INVALID_QUERY_PARAMETER, "Unknown query parameters: smart_format" --
+//   it's a nova-model-only param. Every call's Deepgram socket was failing
+//   its WS handshake with a 400 until this was caught: no STT connected on
+//   any call, so no transcript, no turns, and no [latency] line ever fired.)
+const DEEPGRAM_EOT_THRESHOLD = process.env.DEEPGRAM_EOT_THRESHOLD ?? '0.6';
+const DEEPGRAM_EOT_TIMEOUT_MS = process.env.DEEPGRAM_EOT_TIMEOUT_MS ?? '5000';
+const DEEPGRAM_KEYWORDS = process.env.DEEPGRAM_KEYWORDS?.trim() || null;
+const deepgramParams =
+  `model=flux-general-en&eot_threshold=${DEEPGRAM_EOT_THRESHOLD}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}` +
+  `&numerals=true${DEEPGRAM_KEYWORDS ? `&keyterm=${encodeURIComponent(DEEPGRAM_KEYWORDS)}` : ''}`;
+const DEEPGRAM_WS_URL_BROWSER = `wss://api.deepgram.com/v2/listen?${deepgramParams}&encoding=linear16&sample_rate=16000`;
+const DEEPGRAM_WS_URL_TWILIO = `wss://api.deepgram.com/v2/listen?${deepgramParams}&encoding=mulaw&sample_rate=8000`;
 
 if (!DEEPGRAM_API_KEY) console.warn('[call-loop] DEEPGRAM_API_KEY not set — STT will fail');
 if (!ANTHROPIC_API_KEY) console.warn('[call-loop] ANTHROPIC_API_KEY not set — LLM will fail');
@@ -594,6 +618,8 @@ class CallSession {
     this.voice = TTS_VOICE;
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
+    this.llmModel = LLM_MODEL; // per-call override via context `model` — see onClientMessage
+    this._latency = null; // per-turn latency instrumentation — see _markTtsFirstByte
     this.backchannelEnabled = BACKCHANNEL_ENABLED_DEFAULT;
     this.backchannelFrequency = BACKCHANNEL_FREQUENCY_DEFAULT;
     this.backchannelDelayMs = BACKCHANNEL_DELAY_MS_DEFAULT;
@@ -772,6 +798,12 @@ class CallSession {
           this.cost.ttsBackend = msg.ttsBackend;
         }
       }
+      // Same knob as Retell's LLM choice, one model per call: a tenant that
+      // needs a stronger/cheaper model than the process default picks it here
+      // instead of requiring an app-wide restart.
+      if (typeof msg.model === 'string' && VALID_LLM_MODELS.has(msg.model.trim())) {
+        this.llmModel = msg.model.trim();
+      }
       // Same three knobs Retell exposes as enable_backchannel/
       // backchannel_frequency/backchannel_words, plus our own tunable delay
       // threshold — see BACKCHANNEL_*_DEFAULT above for what each controls.
@@ -809,7 +841,7 @@ class CallSession {
         // every other node's turn.
         this._runNodeTurn(this.currentNodeId);
       }
-      console.log(`[call-loop] context set — prompt: ${this.systemPrompt.length} chars, voice: ${this.voice}, ttsBackend: ${this.ttsBackend}`);
+      console.log(`[call-loop] context set — prompt: ${this.systemPrompt.length} chars, voice: ${this.voice}, ttsBackend: ${this.ttsBackend}, model: ${this.llmModel}`);
     }
   }
 
@@ -843,6 +875,13 @@ class CallSession {
     this.activeTurn = turnId;
     this.turnState = { id: turnId, llmDone: false, pendingTts: 0 };
     const turnStartedAt = Date.now();
+    // Seed the per-turn latency trace: turnStart is the server-side moment
+    // Deepgram's EndOfTurn arrived (i.e. end of the caller's speech), so the
+    // downstream timestamps in _markTtsFirstByte measure the true response
+    // latency. Cleared after its TTS first byte is logged. Only a real user
+    // turn seeds a trace — a flow auto-advance (nudge/_nodeTurn) has no
+    // caller utterance to measure a response to.
+    this._latency = { turnStart: turnStartedAt };
     console.log(`[call-loop] [call ${this.callSid || this.id}] turn ${turnId} user: "${userText}"`);
 
     this.history.push({ role: 'user', content: userText });
@@ -987,7 +1026,7 @@ class CallSession {
 
     try {
       const stream = anthropic.messages.stream({
-        model: LLM_MODEL,
+        model: this.llmModel,
         system: systemPrompt,
         max_tokens: 300,
         messages: this.history,
@@ -1002,6 +1041,7 @@ class CallSession {
             clearTimeout(backchannelTimer);
             backchannelTimer = null;
           }
+          if (this._latency?.turnStart) this._latency.llmFirstToken = firstTokenAt;
           console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms`);
         }
         assistantText += delta;
@@ -1009,7 +1049,7 @@ class CallSession {
       });
 
       const final = await stream.finalMessage();
-      if (final.usage) this.cost.addLlmUsage(LLM_MODEL, final.usage.input_tokens, final.usage.output_tokens);
+      if (final.usage) this.cost.addLlmUsage(this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
       // Cycles 10-11 (mystery-shopper) finding: every "produced no speech"
       // fallback fired exactly when the model also called record_field in
       // the same turn — 100% correlation across two separate real calls,
@@ -1635,6 +1675,7 @@ class CallSession {
       if (buf.length === 0) return;
       if (firstByteAt === null) {
         firstByteAt = Date.now();
+        this._markTtsFirstByte(turnId, label, firstByteAt);
         console.log(`[call-loop] TTS TTFB: ${firstByteAt - turnStartedAt}ms (turn latency end-to-end, ${label})`);
       }
       this.clientWs.send(buf, { binary: true, format: format === 'mulaw8k' ? 'mulaw8k' : undefined });
@@ -1767,6 +1808,31 @@ class CallSession {
     }, text, turnId, turnStartedAt, format);
   }
 
+  // One structured [latency] line per real user turn (see the _latency seed
+  // in _onUserTurnComplete) — end-to-end response time plus its LLM/TTS
+  // split, tagged with the CallSid so the mystery-shopper pipeline can grep
+  // one session's numbers out of interleaved logs. Emitted on the TTS first
+  // byte (per-provider: chunk_meta for the kokoro gateway, first audio chunk
+  // for the HTTP backends), once per turn, and only for turns that actually
+  // had a caller utterance to respond to.
+  _markTtsFirstByte(turnId, source, at) {
+    if (!this._latency?.turnStart || this._latency.ttsFirstByte !== undefined) return;
+    this._latency.ttsFirstByte = at;
+    const llmMs = this._latency.llmFirstToken ? this._latency.llmFirstToken - this._latency.turnStart : null;
+    const ttsMs = at - this._latency.turnStart;
+    const llmToTtsMs = this._latency.llmFirstToken ? at - this._latency.llmFirstToken : null;
+    console.log(
+      `[latency] [call ${this.callSid || this.id}] turn ${turnId} ${JSON.stringify({
+        source,
+        ttsBackend: this.ttsBackend,
+        llmTtfbMs: llmMs,
+        ttsLegMs: llmToTtsMs,
+        responseMs: ttsMs,
+      })}`
+    );
+    this._latency = null;
+  }
+
   _onTtsMessage(data, isBinary) {
     if (isBinary) {
       // PCM16LE mono 24kHz chunk immediately following a chunk_meta message.
@@ -1782,6 +1848,7 @@ class CallSession {
       return;
     }
     if (msg.type === 'chunk_meta' && this._pendingTurnStart) {
+      this._markTtsFirstByte(this.turnState?.id ?? 0, 'kokoro', Date.now());
       console.log(`[call-loop] TTS TTFB: ${Date.now() - this._pendingTurnStart}ms (turn latency end-to-end)`);
       this._pendingTurnStart = null;
     }

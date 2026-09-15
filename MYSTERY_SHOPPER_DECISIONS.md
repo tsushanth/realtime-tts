@@ -140,6 +140,36 @@ question) — plus a fair, balanced result flagging a real Retell-side TTS
 stutter, not a one-sided "ours is always worse" outcome. Framework is now
 genuinely push-button.
 
+## Measurement layer: objective audio latency in the blind judge
+
+Transcripts alone can't score latency, and the two backends expose no common
+timing data (we can't read Retell's server timings). So the framework now
+measures each leg against its own Twilio recording, which captures BOTH
+directions of audio regardless of target. Per call:
+
+- `scripts/analyze-call-ttfb.py --recording <RecordingSid>` fetches the
+  dual-channel .wav, splits channels (ch0 = shopper, ch1 = agent), runs an
+  adaptive energy-VAD over 20 ms frames, merges speech into turn segments,
+  and for every agent turn computes `onset_agent - end_prior_shopper_turn`.
+  Overlaps (barge-in) and the opening exchange are excluded — a "response
+  latency" only exists when the customer genuinely finished speaking. Output
+  includes median/p90/p95/max/mean response latency, plus counts.
+- `mystery-shopper-run.sh` now fetches recordings for both legs per round,
+  runs the analyzer, and passes the JSON to the judge via
+  `--ours-metrics`/`--retell-metrics` (side files avoid shell-quoting). The
+  judge's prompt embeds each call's real timing numbers under a "timing
+  metrics" section and scores response latency on them (smaller = better),
+  still blind — whichever transcript becomes Call A, its own metrics follow.
+- The "ours" script additionally resolves the business-flow inbound CallSid
+  (list Twilio calls To=+12245061194, Direction=inbound, matching window)
+  and greps that session's server-side `[latency]` lines from the Fly log —
+  the `llmTtfbMs`/`ttsLegMs`/`responseMs` split per real user turn that
+  recruitment-era A/Bs have always used. Retell has no server logs we can
+  read, so audio metrics are the only fair common ground.
+
+Supported: `mystery-shopper-run.sh --rounds N` repeats the call+judge cycle
+so win rates and latency distributions get statistically meaningful.
+
 ## Decision 5: safety caps
 
 A shopper call needs a hard max-duration / max-turn cutoff independent of
