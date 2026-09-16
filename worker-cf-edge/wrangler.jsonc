@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tts-edge-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-15",
+  "routes": [
+    {
+      "pattern": "tts.readaloudai.org/*",
+      "zone_name": "readaloudai.org"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
