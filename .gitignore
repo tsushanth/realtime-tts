@@ -12,3 +12,5 @@ training-data/audio/
 training-data/manifest.jsonl
 training-data/pilot/wavs/
 training-data/wavs_full/
+training-data/wavs_full.tar
+training-data/parts/

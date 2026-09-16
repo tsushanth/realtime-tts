@@ -149,3 +149,45 @@ full corpus once it's ready, for the CPU-serving/cold-start angle.
   a competing TTS model — flagged by a peer session, not yet verified. Should be
   checked before scaling training spend further, independent of which architecture is
   used.
+
+## Full-corpus fine-tune — done (2026-09-16)
+
+Scaled `pilot_finetune.py`'s approach to the complete 22,011-sample corpus:
+`full_finetune.py` (training) + `synthesize_full_ft.py` (inference from the
+resulting checkpoint) + `build_filelists.py` (train/val split generation).
+
+**Getting the data there was the hard part, not the training.** Uploading the
+~4.2GB of WAV audio directly from this Mac — via `modal volume put` or
+`aws s3 cp` on the single tar file — died silently and non-deterministically
+every single time (at 7%, 17%, then 1% of the transfer, no error text, no
+consistent cutoff point), regardless of destination or sandbox mode. One
+attempt did surface a real `SSLV3_ALERT_BAD_RECORD_MAC` TLS error, pointing to
+a flaky home network link rather than a bug in either CLI. Fixed by splitting
+the tar into 100MB chunks (`split -b 100m`) and uploading with `aws s3 sync`
+(skips already-uploaded chunks on rerun, so a mid-job failure only costs
+chunks in flight) — all 43 chunks landed cleanly. A Modal function
+(`setup_corpus_volume` in `full_finetune.py`) then reassembles and extracts
+them **from inside Modal** onto the training volume — cloud-to-cloud S3 read,
+completely bypassing this Mac's flaky connection for the actual heavy lift.
+Uses a dedicated IAM user (`tts-corpus-modal-reader`) scoped to read-only
+access on just this one S3 bucket, not the broader shared account key.
+
+**Training itself was uneventful** — same T4/batch-size-8 config as the pilot
+(so the ~$0.01/300-steps rate stays a valid basis for cost), 20,000 steps,
+completed in full with no crashes. Final losses: train ~1.31-1.37, val
+~1.21-1.33 — comparable to the pilot's range, now trained on the real 22K-
+sample corpus instead of a 279-sample smoke test slice.
+
+**Result, `training-data/full_ft_output/sample_0.wav` through `sample_4.wav`**:
+5 held-out test sentences (call-center-style phrasing, including one with a
+spoken-digit sequence) synthesized with the fully fine-tuned model. This is
+the first real checkpoint trained on the full corpus, not just the tiny pilot
+slice — listen and judge quality before deciding on next steps (more training
+steps if it's still improving, or move to comparing against a fine-tuned
+Piper for the CPU-serving angle).
+
+Checkpoints for every 2,000 steps (plus the final one) are on the
+`tts-checkpoints` Modal volume at `/full_ft/`, in case an earlier step turns
+out to sound better than the final one (possible if the model started
+overfitting or drifting late in training — worth comparing a few, not just
+assuming later is always better).
