@@ -4,8 +4,62 @@ from scratch. 279 samples/500 steps from random init would never produce
 coherent speech regardless of architecture — that's not a fair test.
 Starting from pretrained weights (already knows general speech structure)
 and adapting to our voice/domain is both the correct pilot design AND,
-if it works, a much cheaper path for the real production run too (far
-less data/compute needed than the from-scratch $62-195 estimate)."""
+if it works, a much cheaper path for the real production run too — real
+measured cost from this pilot: ~$0.01 for 300 steps on a T4; even 50,000
+steps extrapolates to ~$1.77. NOT the same cost class as the from-scratch
+pretraining estimate ($62-195, or earlier $500-1,500) quoted elsewhere in
+this repo's history — that number belonged to a different plan (training
+a FastPitch-style acoustic model + vocoder from random init), and doesn't
+apply once you're fine-tuning an already-converged checkpoint instead.
+
+REFERENCE FOR NEXT TIME — repo-wide package version conflicts hit while
+getting this working (8 rounds of debugging), so nobody has to rediscover
+these:
+  - matcha-tts's PyPI package (the "matcha-tts" wheel) ships a broken
+    `configs/` — just an empty package marker, not the real Hydra YAML
+    tree. MUST clone the GitHub repo and `pip install -e .` from source
+    instead; pip-installing the package name alone silently gives you no
+    usable configs.
+  - matcha-tts declares many more runtime deps than its own setup.py
+    installs automatically (rich, pandas, Unidecode, inflect, seaborn,
+    gdown, wget, ipywidgets, notebook, pytest, pre-commit, torchvision,
+    hydra-optuna-sweeper, gradio==3.43.2) — pip only warns about these as
+    "not installed" rather than failing at install time, so the failures
+    surface one at a time, at import, deep in the training run. Install
+    them all up front (see below) rather than chasing ImportErrors one
+    per debug cycle.
+  - unpinned `torchvision` drags `torch` up to whatever's newest (2.14 as
+    of writing), which breaks the pinned `torchaudio==2.1.2`. Pin
+    torchvision to the version matching your torch (0.16.2 <-> 2.1.2).
+  - `setuptools>=81` dropped `pkg_resources` entirely, which
+    `lightning`'s fabric module still imports at load time. Pin
+    `setuptools<81`.
+  - `diffusers==0.25.0` (an old version Matcha's decoder needs) imports
+    `cached_download` from `huggingface_hub`, removed in recent
+    huggingface_hub releases. Pin `huggingface_hub==0.20.3`.
+  - `matplotlib>=3.8` removed `FigureCanvasAgg.tostring_rgb()`, which
+    Matcha's own validation-image plotting code (`matcha/utils/utils.py`)
+    still calls. Pin `matplotlib==3.7.5`.
+  - Lightning's `TensorBoardLogger` (not `CSVLogger`) is required — the
+    model's `on_validation_end` hook calls `self.logger.experiment.
+    add_image(...)`, a TensorBoard-specific API that other loggers don't
+    implement, so validation crashes with any other logger.
+  - Hydra's `compose()` API (used here instead of the full `@hydra.main`
+    decorator, since we need to load pretrained weights into the model
+    *before* calling `trainer.fit`, not just compose-and-run) does NOT
+    populate `cfg.hydra` the way the real runtime does. Any config value
+    using a `${hydra:...}` interpolation (the default trainer/callbacks
+    configs both do, for their output-directory paths) throws
+    "HydraConfig was not set" at instantiation time. Fix: don't
+    `hydra.utils.instantiate(cfg.trainer)` or `cfg.callbacks` at all —
+    construct `lightning.Trainer(...)` directly with plain kwargs, and
+    pass `callbacks=none` in the compose overrides.
+  - Modal function return values containing large payloads (here, base64
+    audio) can silently fail to transfer if the `modal run` CLI
+    disconnects first ("local client disconnected"). Use `@app.
+    local_entrypoint()` to call `.remote()` and handle/save the result
+    locally, not a bare `modal run module.py::function_name` invocation.
+"""
 import modal
 
 image = (
@@ -17,17 +71,23 @@ image = (
         extra_index_url="https://download.pytorch.org/whl/cu121",
     )
     .run_commands(
+        # The PyPI "matcha-tts" package's configs/ dir is broken (empty
+        # stub) — must install from source to get the real Hydra configs.
         "git clone --depth 1 https://github.com/shivammehta25/Matcha-TTS.git /opt/matcha-src"
     )
     .workdir("/opt/matcha-src")
     .run_commands("pip install -e . --no-deps")
     .pip_install(
+        # Matcha's own declared deps that its setup.py doesn't actually
+        # install (see docstring above) — installing individually rather
+        # than trusting `pip install -e .` to pull them all in.
         "lightning==2.1.4", "pytorch-lightning==2.1.4", "hydra-core==1.3.2",
         "hydra-colorlog==1.2.0", "rootutils", "phonemizer==3.2.1", "einops",
         "conformer==0.3.2", "diffusers==0.25.0", "Cython", "numpy<2.0.0",
         "librosa", "matplotlib==3.7.5", "tensorboard", "rich", "pandas", "Unidecode",
         "inflect", "seaborn", "gdown", "wget", "ipywidgets", "notebook",
         "pytest", "pre-commit", "torchvision==0.16.2", "hydra-optuna-sweeper==1.2.0",
+        # Pinned to avoid known breakages — see docstring above for why each one:
         "gradio==3.43.2", "setuptools<81", "huggingface_hub==0.20.3",
     )
     .run_commands(
