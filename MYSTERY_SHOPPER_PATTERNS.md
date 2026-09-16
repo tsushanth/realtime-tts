@@ -344,3 +344,47 @@ tell it that field is "already collected."
 One data point only. Not acting on it yet — next mystery-shopper run
 should specifically watch for whether this recurs before it's treated as
 a real, prioritized fix rather than one run's variance.
+
+## Cycle 21 (2026-09-16, fifth run): neither cycle-19 nor cycle-20 finding reproduced; cycle-17 fragmentation returned with a precise mechanism
+
+Reran for a second data point on cycle 20's front-loaded-info finding.
+Neither that nor cycle 19's vague-time finding reproduced this round —
+both remain single-data-point, unconfirmed. Logging that explicitly:
+"didn't reproduce again" across two separate follow-up rounds is itself
+useful information (recall cycle 4's stopping point: the framework's job
+includes not over-fixing things that aren't actually a stable pattern).
+
+Instead, cycle 17's sentence-fragmentation symptom came back, and this
+time the raw per-call log (pulled directly from the SHOPPER's own
+session, not just the judge's transcript — the cycle 10-14 lesson about
+raw logs beating transcript summaries holds again) shows exactly what's
+happening, with timestamps:
+
+```
+21:16:07  business turn 3: "To get you scheduled, I'll need your name and your preferred appointment date and time."
+21:16:09  business turn 4: "what works best for you."         <- separate turn, 2s later
+21:16:10  shopper replies mid-thought: "I'm Alex Morgan. And I'm looking for tomorrow afternoon..."
+```
+
+**Revised hypothesis, now evidence-backed rather than speculative**: this
+was never one fragmented utterance. `SentenceChunker` (sentenceChunker.js)
+deliberately splits a reply into one TTS call per sentence, by design, so
+audio can start on sentence 1 before the LLM finishes generating sentence
+2. If the gap between sentence-1's audio ending and sentence-2's audio
+starting is long enough, the LISTENER's own turn-detection (VAD) reads
+that silence as "they're done talking" and jumps in — which is exactly
+what happened here: Deepgram (on the shopper's side) registered the
+business's single logical reply as two separate turns, 2 seconds apart,
+and the shopper barged in with its own reply after the first sentence
+before the business's second sentence was ever spoken. This reframes both
+cycle 17's dangling "please." and this cycle's dropped "what works best
+for you." as the SAME mechanism — sentence-by-sentence TTS chunking
+creating audible gaps long enough to fool the other party's own VAD —
+rather than two unrelated fragmentation bugs.
+
+Not fixed this cycle — this is a newly-formed, evidence-backed hypothesis
+(one real log trace), not yet a confirmed root cause across multiple
+calls, and the actual fix (tightening the gap between chunked sentences,
+or some other turn-taking change) is a bigger, more architecturally
+sensitive change than anything patched so far in this log. Needs its own
+dedicated investigation rather than a same-session patch.
