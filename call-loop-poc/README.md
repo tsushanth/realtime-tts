@@ -97,9 +97,6 @@ both sides, not just from our own server logs.
 
 ## Known POC gaps (deliberately not built)
 
-- No telephony (Twilio) — browser mic only. Adding phone calls means SIP/PSTN ingress
-  feeding the same `/call` WS in mulaw@8kHz instead of the browser's PCM16@16kHz — a
-  format/resample change, not an architecture change.
 - No conversation memory beyond the in-process `session.history` array — resets on
   reconnect.
 - No interruption grace period — barge-in fires on Deepgram's `SpeechStarted` VAD event
@@ -107,3 +104,20 @@ both sides, not just from our own server logs.
   window) — see the caveat about turn-taking tuning in the original response.
 - Uses `ScriptProcessorNode` (deprecated but universally supported) for mic capture
   instead of an AudioWorklet — fine for a POC, worth swapping for production.
+- **No bulk/batch outbound calling** (Retell has this as a first-class feature — see
+  the 2026-09-16 feature-parity pass). `/place-test-call` only places one call at a
+  time, for testing. Flagged, not built — real design questions to answer before
+  building this, not just a for-loop over `/place-test-call`:
+  - **Compliance**: calling a list of real phone numbers with an AI voice raises TCPA
+    exposure in the US (consent, opt-out, calling-hours restrictions, an AI-disclosure
+    requirement in some states) — materially different from the single-call testing
+    this POC does today, and a different risk category from anything else in this repo.
+  - **Concurrency/rate limits**: Twilio, the LLM, and the TTS backend all have their own
+    rate limits — a real batch dialer needs a queue and backoff, not N parallel
+    `/place-test-call` requests.
+  - **Cost at scale**: every call in a batch bills LLM + STT + TTS + Twilio minutes:
+    a batch of thousands is a different cost profile than today's one-off test/shopper
+    calls and needs its own budget guardrail, not just the existing per-call billing.
+  - **Retry/failure handling**: no-answer, voicemail, busy, and failed calls all need a
+    defined policy (retry once? skip? flag for a human?) — Retell does voicemail
+    detection specifically to handle this; we have none.
