@@ -245,3 +245,41 @@ there either) and check whether the fragmented "please." came from the
 SentenceChunker's end-of-stream `flush()` (server.js, emits whatever's
 left in the buffer unconditionally once the LLM stream ends, regardless of
 whether it's a complete sentence) or from a second, separate turn.
+
+## Cycle 18 (2026-09-16, same day, second run): duplicate-name-ask confirmed reproducible
+
+Reran immediately after cycle 17 specifically to get a second data point
+before treating either symptom as real — per the note above, one run
+wasn't enough to tell hypothesis (a) from (b) apart. Retell won again
+(latency: ours 2440/2480ms p50/p95 vs Retell 2020/3420ms; ours also hit a
+6.72s single-turn max this round).
+
+This round's transcript is clean of any sentence fragmentation — that
+symptom did not recur. The duplicate name-ask did, unambiguously:
+
+```
+Business: "I'll need your name and confirm a specific time..."
+Business: "What's your name?"
+Customer: "It's Alex Morgan."
+Business: "would something like 2 PM work for you?"
+Customer: "Yeah, 2 PM tomorrow works great for me."
+Business: "Perfect. And what's your name?"     <- re-asked, already had it
+Customer: "Alex Morgan."
+```
+
+**This resolves the cycle-17 open question in favor of hypothesis (b):**
+this is the cycle-15 "combined name+time ask, no re-asks" fix not holding,
+not a `_sendChain`/TTS-ordering side effect from cycle 16 — the
+fragmentation symptom that pointed at (a) didn't show up this time, while
+the re-ask did, cleanly, on a turn with no barge-in or TTS race involved.
+The node's own system prompt announces a combined ask ("I'll need your
+name and confirm a specific time") but then asks name and time as two
+separate turns anyway, and re-asks name after `record_field` should
+already have captured it — pointing at either the prompt's combined-ask
+instruction not being followed, or the model not checking
+`collectedData`/history for an already-filled slot before asking again.
+
+Not yet fixed — this is deliberately a stop-and-document point rather than
+a same-session patch, per the process gap flagged before cycle 16: two
+consistent data points now exist, which is the bar for treating this as a
+real, prioritized fix rather than one run's noise.
