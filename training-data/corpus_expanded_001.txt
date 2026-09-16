@@ -812,102 +812,105 @@ Weekend hours are ten to two, Saturday only.
 That department is open until six in the evening.
 We're currently open, so I can help you right now.
 That team typically responds within one business day.
-The wait time is usually under ten minutes.
+The wait time is usually under 15 minutes.
+The wait time is usually under 5 minutes.
+The wait time is usually under 10 minutes.
+The wait time is usually under 20 minutes.
 Response times can be longer during peak hours.
 Do you have a promo code you'd like to apply?
 Would you like to use your saved payment method?
 I can apply that discount to your order now.
-Your card ending in 7084 will be charged.
-Your card ending in 2466 will be charged.
-Your card ending in 5075 will be charged.
-Your card ending in 3583 will be charged.
-Your card ending in 9190 will be charged.
-Your card ending in 2497 will be charged.
-Your card ending in 6544 will be charged.
-Your card ending in 1983 will be charged.
-Your card ending in 1979 will be charged.
-Your card ending in 6824 will be charged.
-Your card ending in 3521 will be charged.
-Your card ending in 9787 will be charged.
-Your card ending in 2759 will be charged.
-Your card ending in 3061 will be charged.
-Your card ending in 8992 will be charged.
-Your card ending in 4812 will be charged.
-Your card ending in 6189 will be charged.
-Your card ending in 6690 will be charged.
-Your card ending in 8187 will be charged.
-Your card ending in 4161 will be charged.
-Your card ending in 1349 will be charged.
-Your card ending in 7189 will be charged.
-Your card ending in 6868 will be charged.
-Your card ending in 3207 will be charged.
-Your card ending in 5107 will be charged.
-Your card ending in 1646 will be charged.
-Your card ending in 8951 will be charged.
-Your card ending in 8168 will be charged.
-Your card ending in 5828 will be charged.
-Your card ending in 9892 will be charged.
-Your card ending in 9029 will be charged.
-Your card ending in 4109 will be charged.
-Your card ending in 4057 will be charged.
-Your card ending in 9906 will be charged.
-Your card ending in 6696 will be charged.
-Your card ending in 6303 will be charged.
-Your card ending in 8674 will be charged.
-Your card ending in 5510 will be charged.
-Your card ending in 3627 will be charged.
-Your card ending in 2128 will be charged.
-Your card ending in 9702 will be charged.
-Your card ending in 3539 will be charged.
-Your card ending in 8362 will be charged.
-Your card ending in 5844 will be charged.
-Your card ending in 5314 will be charged.
-Your card ending in 9873 will be charged.
-Your card ending in 7014 will be charged.
-Your card ending in 8439 will be charged.
-Your card ending in 1011 will be charged.
-Your card ending in 9289 will be charged.
-Your card ending in 7210 will be charged.
-Your card ending in 4039 will be charged.
-Your card ending in 1306 will be charged.
-Your card ending in 6965 will be charged.
-Your card ending in 4912 will be charged.
-Your card ending in 6254 will be charged.
-Your card ending in 2037 will be charged.
-Your card ending in 9830 will be charged.
-Your card ending in 7348 will be charged.
-Your card ending in 4110 will be charged.
-The refund will be processed within 5 to 9 business days.
+Your card ending in 5953 will be charged.
+Your card ending in 4869 will be charged.
+Your card ending in 9212 will be charged.
+Your card ending in 5519 will be charged.
+Your card ending in 2015 will be charged.
+Your card ending in 5221 will be charged.
+Your card ending in 7343 will be charged.
+Your card ending in 1482 will be charged.
+Your card ending in 5590 will be charged.
+Your card ending in 4695 will be charged.
+Your card ending in 3485 will be charged.
+Your card ending in 6599 will be charged.
+Your card ending in 7436 will be charged.
+Your card ending in 3248 will be charged.
+Your card ending in 2438 will be charged.
+Your card ending in 7262 will be charged.
+Your card ending in 9531 will be charged.
+Your card ending in 4726 will be charged.
+Your card ending in 7837 will be charged.
+Your card ending in 4938 will be charged.
+Your card ending in 3502 will be charged.
+Your card ending in 7987 will be charged.
+Your card ending in 6118 will be charged.
+Your card ending in 6395 will be charged.
+Your card ending in 8359 will be charged.
+Your card ending in 9883 will be charged.
+Your card ending in 3158 will be charged.
+Your card ending in 4387 will be charged.
+Your card ending in 3270 will be charged.
+Your card ending in 9869 will be charged.
+Your card ending in 4314 will be charged.
+Your card ending in 3262 will be charged.
+Your card ending in 6062 will be charged.
+Your card ending in 9582 will be charged.
+Your card ending in 3215 will be charged.
+Your card ending in 8046 will be charged.
+Your card ending in 3378 will be charged.
+Your card ending in 3589 will be charged.
+Your card ending in 6201 will be charged.
+Your card ending in 2111 will be charged.
+Your card ending in 9732 will be charged.
+Your card ending in 2939 will be charged.
+Your card ending in 4016 will be charged.
+Your card ending in 6203 will be charged.
+Your card ending in 3384 will be charged.
+Your card ending in 1483 will be charged.
+Your card ending in 6221 will be charged.
+Your card ending in 7783 will be charged.
+Your card ending in 7737 will be charged.
+Your card ending in 5970 will be charged.
+Your card ending in 8258 will be charged.
+Your card ending in 5485 will be charged.
+Your card ending in 3489 will be charged.
+Your card ending in 4079 will be charged.
+Your card ending in 2749 will be charged.
+Your card ending in 3155 will be charged.
+Your card ending in 4026 will be charged.
+Your card ending in 1429 will be charged.
+Your card ending in 5372 will be charged.
+Your card ending in 4783 will be charged.
 The refund will be processed within 5 to 7 business days.
+The refund will be processed within 3 to 6 business days.
+The refund will be processed within 4 to 6 business days.
+The refund will be processed within 5 to 9 business days.
+The refund will be processed within 3 to 9 business days.
 The refund will be processed within 5 to 8 business days.
 The refund will be processed within 4 to 9 business days.
-The refund will be processed within 3 to 6 business days.
-The refund will be processed within 5 to 6 business days.
 The refund will be processed within 3 to 7 business days.
-The refund will be processed within 4 to 7 business days.
 The refund will be processed within 3 to 8 business days.
-The refund will be processed within 3 to 9 business days.
-The refund will be processed within 4 to 6 business days.
+The refund will be processed within 4 to 7 business days.
+The refund will be processed within 5 to 6 business days.
 The refund will be processed within 4 to 8 business days.
 I'll go ahead and update your billing address.
 Your subscription renews automatically next month.
 You can cancel anytime from your account settings.
-That plan includes unlimited access for eighty-nine dollars a month.
-That plan includes unlimited access for ninety-four fifty a month.
-That plan includes unlimited access for forty-eight dollars a month.
-That plan includes unlimited access for twelve dollars and fifty cents a month.
-That plan includes unlimited access for seventy-one dollars and ten cents a month.
-That plan includes unlimited access for sixty-three ninety-nine a month.
-That plan includes unlimited access for twenty-three dollars a month.
-That plan includes unlimited access for twenty-nine ninety-five a month.
-That plan includes unlimited access for one hundred and eighteen dollars a month.
-That plan includes unlimited access for forty-two fifty a month.
-That plan includes unlimited access for two hundred and eighty-nine ninety-nine a month.
 That plan includes unlimited access for seventeen ninety-nine a month.
+That plan includes unlimited access for two hundred and eighty-nine ninety-nine a month.
+That plan includes unlimited access for forty-two fifty a month.
+That plan includes unlimited access for seventy-one dollars and ten cents a month.
+That plan includes unlimited access for twelve dollars and fifty cents a month.
+That plan includes unlimited access for twenty-three dollars a month.
 That plan includes unlimited access for thirty-four dollars and twenty cents a month.
+That plan includes unlimited access for sixty-three ninety-nine a month.
+That plan includes unlimited access for twenty-nine ninety-five a month.
 That plan includes unlimited access for two hundred and four dollars a month.
-That plan includes unlimited access for one hundred and fifty dollars and thirty cents a month.
+That plan includes unlimited access for ninety-four fifty a month.
 That plan includes unlimited access for fifty-six ninety-nine a month.
+That plan includes unlimited access for eighty-nine dollars a month.
+That plan includes unlimited access for one hundred and fifty dollars and thirty cents a month.
+That plan includes unlimited access for one hundred and eighteen dollars a month.
+That plan includes unlimited access for forty-eight dollars a month.
 I've added a note to waive that fee this time.
 Let's get your account set up.
 I'll need your full name to get started.

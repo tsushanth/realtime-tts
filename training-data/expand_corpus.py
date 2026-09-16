@@ -105,6 +105,22 @@ SUBSTITUTIONS = [
      lambda: f"{random.randint(3,5)} to {random.randint(6,9)} business days"),
     (r"\bfifteen minutes\b", lambda: f"{random.choice([5,10,15,20,25,30,45])} minutes"),
     (r"\bJohn\b", lambda: random.choice(FIRST_NAMES)),
+    # batch_002 additions
+    (r"\bAlex\b", lambda: random.choice(FIRST_NAMES)),
+    (r"\btwenty dollar\b", lambda: random.choice(DOLLAR_AMOUNTS).split(" and")[0].replace(" dollars", " dollar")),
+    (r"\bnineteen dollars and ninety-five cents\b", lambda: random.choice(DOLLAR_AMOUNTS)),
+    (r"\bthirty-five dollars\b", lambda: random.choice(DOLLAR_AMOUNTS)),
+    (r"\btwenty-four hours\b", lambda: f"{random.choice([12, 24, 36, 48, 72])} hours"),
+    (r"\bninety days\b", lambda: f"{random.choice([30, 60, 90, 120])} days"),
+    (r"\bthirty days\b", lambda: f"{random.choice([14, 21, 30, 45, 60])} days"),
+    (r"\bone year\b", lambda: f"{random.choice(['six months', 'one year', 'two years', 'eighteen months'])}"),
+    (r"\bthirty minutes\b", lambda: f"{random.choice([10, 15, 20, 30, 45])} minutes"),
+    (r"\bthe next two hours\b", lambda: f"the next {random.choice([1,2,3,4])} hours"),
+    (r"\beight and eleven in the morning\b",
+     lambda: f"{random.choice(['seven','eight','nine'])} and {random.choice(['ten','eleven','noon'])} in the morning"),
+    (r"\bten minutes\b", lambda: f"{random.choice([5,10,15,20])} minutes"),
+    (r"\boriginally for Tuesday\b", lambda: f"originally for {random.choice(DAYS)}"),
+    (r"\bWednesday or skip ahead\b", lambda: f"{random.choice(DAYS)} or skip ahead"),
 ]
 
 COMPILED = [(re.compile(pat), fn) for pat, fn in SUBSTITUTIONS]
