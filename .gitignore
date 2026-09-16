@@ -11,3 +11,4 @@ worker/models/
 training-data/audio/
 training-data/manifest.jsonl
 training-data/pilot/wavs/
+training-data/wavs_full/
