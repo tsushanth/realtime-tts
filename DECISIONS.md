@@ -361,13 +361,48 @@ model (`providers: ["modal-t4-cuda"]`, byte count matched exactly).
   pricing beyond free credits not published). Paused here — real endpoint exists but
   needs an actual account to verify further; not pursued without that.
 
-**Architecture-level fix, considered but not attempted (2026-09-16):** could Kokoro
-itself be modified to have TensorRT/torch.compile-friendly static shapes — e.g. replace
-the LSTM duration predictor with a feed-forward alternative? Conceptually yes (this is
-exactly the FastPitch/FastSpeech2 design), but it means changing model *weights*, not
-just serving code, and we don't have Kokoro's original training data to retrain from
-scratch. The tractable path, if pursued, is distilling just the LSTM duration-predictor
-submodule (run the existing model on lots of text, record its duration outputs, train a
-small feed-forward network to replicate them) rather than a full rebuild — real ML
-engineering effort (weeks, not a bench-app spike), uncertain prosody-quality payoff, and
-not started as of this writing.
+**Architecture-level fix, three options scoped (2026-09-16):** could Kokoro itself be
+modified to have TensorRT/torch.compile-friendly static shapes — e.g. replace the LSTM
+duration predictor with a feed-forward alternative? Conceptually yes (this is exactly
+the FastPitch/FastSpeech2 design). Three options researched:
+- **Option A — full retrain, FastPitch-style architecture, on data that gives Kokoro's
+  own voice.** Kokoro's actual training data (paired audio/text) was never released —
+  the model card only documents a curation *recipe* ("a few hundred hours" of permissively
+  licensed + synthetic audio from unnamed closed commercial TTS providers), and the
+  GitHub README thanks "everyone who contributed synthetic training data" — implying a
+  community-crowdsourced synthetic corpus (generate audio by calling commercial TTS
+  APIs, donate the pairs), not a single documented pipeline. This means the *technique*
+  is reproducible even though the exact dataset isn't — no special/restricted access was
+  involved. Open substitute datasets exist (LibriTTS-R: 585hrs/2,456 speakers, CC BY 4.0;
+  NVIDIA's HiFiTTS-2: ~36,700hrs/5,000 speakers, CC BY 4.0) but are multi-speaker
+  audiobook narration — training on them would produce a different-sounding (not
+  necessarily worse) voice, not a faster version of Kokoro's specific one. Effort:
+  weeks-months. Not started.
+- **Option B — distill just the LSTM duration predictor** (run Kokoro on lots of text,
+  record its duration outputs as training labels, train a small feed-forward student, no
+  original training data needed). Research found the field already tried and moved away
+  from this: FastSpeech distilled durations from a teacher this way; FastSpeech 2
+  explicitly dropped it as "complicated, time-consuming, and lossy" in favor of training
+  on real forced-alignment data. No prior art found for doing this to a StyleTTS2/Kokoro-
+  style LSTM specifically. Duration/timing is a highly quality-sensitive submodule. Not
+  started — would be a time-boxed spike at most, not a committed plan.
+- **Option C — keep FastPitch (already fast, no LSTM), fix its voice instead of Kokoro's
+  speed.** Tested by swapping FastPitch's vocoder from HiFi-GAN to BigVGAN (a newer,
+  higher-fidelity non-autoregressive vocoder), both the full 112M-param
+  `bigvgan_22khz_80band` and the 14M-param `bigvgan_base_22khz_80band`, zero-shot (no
+  fine-tuning — FastPitch's exact mel config, 80 mels/22050Hz/fmax 8000Hz, matches these
+  checkpoints' expected input directly). Latency: full BigVGAN 374-620ms warm (slower
+  than both Kokoro and HiFi-GAN — bigger vocoder, real compute cost); `bigvgan_base`
+  216-260ms warm (better, still slower than HiFi-GAN's 77-189ms). **Killed on quality
+  regardless of latency: confirmed by ear that BigVGAN "sounds exactly like" HiFi-GAN —
+  the vocoder was never the source of the robotic quality.** The problem is upstream, in
+  FastPitch's acoustic model (deterministic pitch/duration prediction, a known FastPitch
+  weakness in the literature) — no vocoder swap can fix prosody that's already flat in
+  the spectrogram it's handed. This closes out the "fix FastPitch's voice" approach
+  entirely, not just this specific vocoder choice.
+
+**Net conclusion across all three architecture-level options: none is a quick fix.**
+Option C (the one actually built and tested) is fully closed out. Options A and B remain
+real but require dedicated ML engineering effort (weeks+) with uncertain payoff, and
+weren't started. As of this writing, Kokoro remains the best available combination of
+speed and quality for this product.
