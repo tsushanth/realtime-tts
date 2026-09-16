@@ -76,12 +76,24 @@ allowance for the first 12 months).
 - `corpus_final.txt` — the dataset to synthesize. Everything else in this directory
   is an intermediate artifact of how it was built.
 
-## Bulk audio generation — in progress
+## Bulk audio generation — done
 
-`generate_corpus_audio.py` running against all 22,011 lines in `corpus_final.txt`
-(resumable, rate-limited via a small thread pool + exponential backoff). Output
-audio (~650MB) and `manifest.jsonl` are gitignored — real destination is S3, not git,
-once this is gigabytes rather than a few small samples.
+`generate_corpus_audio.py` ran against all 22,011 lines in `corpus_final.txt`
+(resumable, rate-limited via a small thread pool + exponential backoff). First run
+hit a transient `ConnectionResetError` from AWS around the 20,000 mark (network
+blip, not a code/quota bug) — re-running the same script picked up where it left
+off since it skips any output file that already exists and is non-empty. One
+residual gap: 4 files had been created as zero-byte placeholders by the interrupted
+run and were correctly *not* skipped (size-zero check), so a second re-run filled
+them in. **Final state: 22,011/22,011 files, 0 errors, 623MB.**
+
+`manifest.jsonl` accumulated duplicate lines across the two runs (appends, not
+overwrites) — deduped by `idx` (keep-last) down to exactly 22,011 records matching
+the 22,011 audio files. If this script is ever re-run for a partial fill again,
+dedupe the manifest the same way afterward.
+
+Output audio (~623MB) and `manifest.jsonl` are gitignored — real destination is S3,
+not git, once this is gigabytes rather than a few small samples.
 
 ## Phase 0 pilot — done, real signal, not yet production quality
 
@@ -99,10 +111,12 @@ held-out sentences — saved in `pilot_output/`. Listened by ear: real voice ada
 happening, audibly moving toward the training data's voice, still somewhat artificial
 at this tiny step count (expected — 300 steps is a smoke test, not a converged run).
 
-**Next:** scale this same fine-tuning script to the full 22,011-sample corpus once
-bulk audio generation finishes, with more steps, and re-evaluate by ear at each
-checkpoint before committing to a "final" run — same incremental-verification
-discipline used throughout this whole investigation.
+**Next:** bulk audio generation is now done (see above) — scale this same
+fine-tuning script to the full 22,011-sample corpus, with more steps, and
+re-evaluate by ear at each checkpoint before committing to a "final" run — same
+incremental-verification discipline used throughout this whole investigation. Also
+build the Piper fine-tuning pilot (see "Also still open" below) against the same
+full corpus once it's ready, for the CPU-serving/cold-start angle.
 
 ## Also still open
 
@@ -113,8 +127,24 @@ discipline used throughout this whole investigation.
   satisfactory voice.
 - Kokoro was independently flagged (by a peer session's research) as possibly the
   stronger fine-tuning target overall — same architecture already running in our own
-  production `call-loop-poc` infra, 82M params, Apache 2.0. Not yet tried; worth a
-  parallel pilot if Matcha-TTS's fine-tuned quality plateaus below what's needed.
+  production `call-loop-poc` infra, 82M params, Apache 2.0. Real fine-tuning path
+  found (2026-09-16): DIY only — hexgrad never released Kokoro training code, only
+  inference weights. The only route is patching Kokoro's weights into the separate
+  StyleTTS2 training repo plus a custom checkpoint converter; two small community
+  projects (semidark/kikiri-tts, avri-schneider/kokoro-hebrew) did this but there's no
+  official/maintained path. Higher debugging risk than Matcha-TTS was. Not yet tried;
+  worth a pilot only if Piper's fine-tuned quality plateaus below what's needed.
+- **New candidate: Piper, specifically for CPU-served always-on serving** (see
+  `../DECISIONS.md`, "Fine-tuning path reopens Option A/B cheaply"). MIT, VITS-based,
+  CPU-optimized. Official, maintained fine-tuning support via OHF-Voice/piper1-gpl
+  (`--ckpt_path` against published pretrained checkpoints, works cross-language, plain
+  `filename|text` CSV data format). Lower integration risk than Kokoro's DIY path.
+  Directly relevant to the cold-start problem from the original ElevenLabs-parity
+  investigation: a good Piper fine-tune could run on an always-on CPU instance instead
+  of paying for a warm GPU floor (~$425/mo/T4) to avoid the ~17.5s cold start — CPU
+  instances are typically much cheaper to keep resident 24/7 than GPU instances. This
+  is the next planned pilot, following the same Phase-0-cheap-first discipline used
+  for Matcha-TTS.
 - Amazon Polly's terms of service may restrict using its synthesized output to train
   a competing TTS model — flagged by a peer session, not yet verified. Should be
   checked before scaling training spend further, independent of which architecture is

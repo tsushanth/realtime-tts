@@ -406,3 +406,52 @@ Option C (the one actually built and tested) is fully closed out. Options A and 
 real but require dedicated ML engineering effort (weeks+) with uncertain payoff, and
 weren't started. As of this writing, Kokoro remains the best available combination of
 speed and quality for this product.
+
+## Fine-tuning path reopens Option A/B cheaply (2026-09-16)
+
+Revisited after realizing fine-tuning a pretrained checkpoint is a completely
+different cost class than the from-scratch training estimated above ($62-195, or
+earlier $500-1,500 — both were from-scratch pretraining research, never
+recalculated after the pivot to fine-tuning). Real measured fine-tuning cost: see
+`training-data/README.md` and `training-data/pilot_finetune.py` — ~$0.01 for 300
+steps on a T4, extrapolating to ~$1-5 for a full run. At this cost, doing this
+across every viable open-weight candidate and comparing quality + latency head to
+head is cheap enough to just do.
+
+**Matcha-TTS: real fine-tuning pilot completed and working**, see
+`training-data/pilot_finetune.py` (extensively commented with every environment
+gotcha hit — 8 rounds of debugging, don't rediscover these). Pretrained LJSpeech
+checkpoint fine-tuned on 279 samples of our own Polly-Joanna corpus; loaded cleanly
+(0 missing/unexpected keys), loss decreased and stabilized, synthesized output
+confirmed by ear to show real voice adaptation (still artificial at this tiny step
+count, expected).
+
+**Kokoro fine-tuning: real but complicated, not officially supported.** hexgrad
+never released Kokoro training code — only inference weights (Apache 2.0). The only
+path found is loading Kokoro's weights into the separate StyleTTS2 training repo
+(yl4579/StyleTTS2), since Kokoro is StyleTTS2-derived (minus diffusion, decoder-
+only). Checkpoints are NOT compatible as-is — real community examples
+(semidark/kikiri-tts, avri-schneider/kokoro-hebrew) needed custom checkpoint-
+conversion scripts and patches to StyleTTS2 itself for stable training. Expect
+Matcha-TTS-level debugging risk, possibly worse (no maintained repo, two small
+independent community projects instead of one). Not started.
+
+**Piper fine-tuning: real, current, well-documented, low risk — and specifically
+relevant to the cold-start/warm-floor cost problem.** Piper (MIT, VITS-based) is
+explicitly CPU-optimized. Its training code lives at OHF-Voice/piper1-gpl
+(successor to the now-archived rhasspy/piper), with an official, maintained
+fine-tuning workflow: `--ckpt_path` against published pretrained checkpoints
+(huggingface.co/datasets/rhasspy/piper-checkpoints), explicitly documented to work
+"even if the checkpoint is from a different language." Data format is a simple
+`filename|text` CSV. Community reports successful fine-tunes on modest consumer
+hardware (8GB VRAM). This is the lower-risk second pilot to build — and because
+Piper targets CPU serving, a good fine-tune here could let us run an always-on CPU
+instance instead of paying for a warm GPU floor (~$425/mo/T4 estimated earlier in
+this file) to avoid the ~17.5s cold start — CPU instances are typically far cheaper
+to keep resident 24/7. Not started; next planned pilot.
+
+**Recommendation:** build the Piper fine-tuning pilot next (lower risk, official
+support, plus the CPU-serving/cold-start angle makes it strategically relevant
+beyond just a quality comparison). Revisit Kokoro fine-tuning only if Piper's
+output quality/character proves insufficient, since Kokoro is generally regarded as
+higher-fidelity but carries real, undocumented integration risk.
