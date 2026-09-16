@@ -1408,9 +1408,24 @@ class CallSession {
   // instead of restating the step instructions as if they were still owed.
   _buildNodeSystemPrompt(node, isNodeEntry) {
     const gs = this.flow?.globalSettings || {};
+    // Real call finding (2026-09-16, live test call): the prompt never told
+    // the model what day it actually is, so a relative date like "the day
+    // after" or "tomorrow" could only be echoed back verbatim, never
+    // resolved to a real calendar date — "Perfect, I've got you down for
+    // the day after tomorrow" instead of "that's Thursday the 18th".
+    // Anchoring today's date here fixes that for every node, not just
+    // booking ones, since any step could reasonably need it.
+    const todayStr = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: gs.timezone || 'America/Los_Angeles', // no per-tenant timezone field exists yet; defaults to the server's own region
+    });
     let prompt =
       `You are a concise, friendly voice assistant on a phone call, currently in the ` +
-      `"${node.id}" step of a structured conversation flow.\n\n`;
+      `"${node.id}" step of a structured conversation flow.\n\n` +
+      `Today's date is ${todayStr}. When the caller gives a relative date ("tomorrow", ` +
+      `"the day after", "next Tuesday"), resolve it to a specific calendar date yourself and ` +
+      `say the actual date out loud (e.g. "that's Thursday the 18th") — never just repeat the ` +
+      `caller's relative phrasing back as if it were a booked date.\n\n`;
     if (isNodeEntry) {
       prompt += `Step instructions: ${node.prompt}\n`;
     } else {
@@ -1458,16 +1473,48 @@ class CallSession {
       if (hasTimeField) {
         prompt += `3. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
       }
-      prompt += `${hasTimeField ? '4' : '3'}. Names and numbers are easy to mishear — read back what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?") before relying on it. Use the caller's correction if given, not your first guess.\n`;
-      prompt += `${hasTimeField ? '5' : '4'}. Only once every field is recorded AND confirmed, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently or without ever stating the final summary.\n`;
+      // Real call finding (2026-09-16): this step used to say "read back
+      // what you captured before relying on it" — soft enough that a live
+      // call skipped straight from record_field to a confident summary
+      // ("Perfect, Vishan! I've got you down for...") on a name Deepgram
+      // had actually mis-transcribed, with no yes/no question in between.
+      // record_field only means the model heard SOMETHING, not that it's
+      // correct — reworded as a hard requirement that's explicit about
+      // what "confirmed" means, instead of leaving the model to treat its
+      // own capture as sufficient.
+      prompt += `${hasTimeField ? '4' : '3'}. Names and numbers are easy to mishear. Before treating any field as final, you MUST ask the caller a direct yes/no question repeating back exactly what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?"). Calling record_field is NOT confirmation — it only means you heard something. Wait for the caller to actually say yes (or correct you) before moving on.\n`;
+      prompt += `${hasTimeField ? '5' : '4'}. Only after the caller has explicitly confirmed every field this way, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently, without a prior yes/no confirmation, or without ever stating the final summary.\n`;
     }
     if (Object.keys(this.collectedData).length > 0) {
       prompt += `Already collected this call (do NOT ask for these again): ${JSON.stringify(this.collectedData)}\n`;
     }
     if (node.edges.length > 0) {
+      // Real call finding (2026-09-16): transitioning into an extraction
+      // step (e.g. booking) doesn't itself trigger a proactive opening
+      // question — only 'function'/'knowledge_base'/'goodbye'/'transfer'
+      // nodes auto-speak on entry (see _applyTransition's AUTO_ADVANCE_TYPES).
+      // A live call hit this directly: the caller said "I wanted to make an
+      // appointment", the model replied with a bare acknowledgment ("Great!
+      // I can help you book an appointment with us.") and silently called
+      // transition_flow with nothing else asked — leaving the caller to
+      // carry the conversation until they guessed to ask about availability.
+      // Deliberately not adding extraction to auto-advance types to fix
+      // this: some flows already have the CURRENT node ask the next step's
+      // question itself before transitioning (seen working correctly in
+      // earlier mystery-shopper runs), and an unconditional auto-turn on
+      // every entry would double-ask in those cases — the same bug already
+      // fixed today, in the opposite direction. Instead, make the
+      // requirement explicit at the point of transitioning: never hand off
+      // silently.
       prompt +=
         `\nWhen this step's goal has been met, call the transition_flow tool to move to the ` +
-        `next step. If it hasn't been met yet, keep talking and don't call the tool.\n`;
+        `next step. If it hasn't been met yet, keep talking and don't call the tool. If you call ` +
+        `transition_flow, your spoken reply in that SAME turn must move the conversation forward ` +
+        `— never a bare acknowledgment with nothing else (e.g. never just "Great, I can help you ` +
+        `book an appointment" with no question and no info). The caller should never be left ` +
+        `wondering what to say next: if the next step needs information from the caller, ask for ` +
+        `it yourself, in this same reply — don't just acknowledge and wait, since nothing else ` +
+        `will proactively ask on your behalf.\n`;
     }
     // Real pattern found across mystery-shopper runs: a non-goodbye node
     // would sometimes phrase its own line as if the call were already
