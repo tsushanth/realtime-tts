@@ -226,3 +226,148 @@ Cross-checks cleanly with the connection-reuse finding above: the isolated raw s
 region nor connection overhead explains the range's upper end — whatever pushes a real
 turn toward 900ms is Anthropic's own per-request response-time variance, not something
 on our side of the wire.
+
+## Can we match ElevenLabs' TTS latency? (2026-09-15/16)
+
+Full investigation, kept in order because several "obvious fix" hypotheses were tested
+and killed, and the dead ends are as load-bearing as the one thing that worked.
+
+**Starting point.** Real production numbers, gateway direct-to-Modal: first turn of a
+fresh call ~970ms (WS open + first synth), later turns on a warm connection ~408ms.
+ElevenLabs' full round trip (network + their compute): ~170-430ms. So we were 2-3x
+slower even in our best case, before accounting for the first-turn tax.
+
+**1. Network-layer isolation.** Connection-only (DNS+TCP+TLS+WS-upgrade, no inference)
+timing from a US-West vantage point: Modal ~201ms, ElevenLabs ~90ms. Root cause: every
+`*.modal.run` endpoint resolves to `us-east-1` (Virginia) — single-region, no anycast.
+ElevenLabs/Replicate terminate TLS at an edge PoP near the client; we pay full
+transcontinental RTT x2-3 handshake round trips. Confirmed via connection-reuse test:
+cold handshake-to-first-byte 267ms, warm/reused 89ms — ~178ms of the cost is pure
+handshake, gone on a reused connection. **Fix shipped** (see "Cloudflare edge-termination
+proxy" below).
+
+**2. Cold start is real and severe, and scale-to-zero alone can't be the answer for a
+competing product.** Measured true cold start (freshly redeployed container, zero warm
+state) at **~17.5s** to first audio — 14.8s container boot (image start, CUDA init,
+model load) + 2.35s first-hit tax. Unusable for a live caller. This ruled out relying on
+Modal's scale-to-zero without at least one warm container (`min_containers`) for a real
+product — the fix isn't architectural (our shared-pool Modal app already has the same
+shape ElevenLabs' infra does), it's that our current aggregate call volume is too low to
+keep the pool naturally warm the way ElevenLabs' volume does. `min_containers=N` is a
+paid subsidy for that gap (~$0.59/hr per warm T4, ~$425/mo for one instance 24/7 on
+Modal's per-second GPU billing) until real traffic volume closes it on its own.
+
+**3. GPU compute is NOT the bottleneck for Kokoro — ruled out with real measurements, not
+assumed.** First profiling pass wrongly suggested GPU compute was ~0ms (a
+`torch.cuda.synchronize()` was missing before stopping the timer, so it only measured
+async kernel-*dispatch*, not completion) — corrected instrumentation showed the real
+model forward pass is **90-185ms/clause on a T4**, and:
+- **T4 vs L4 vs L4+fp16: no meaningful difference** (135-191ms / 153-191ms / 113-130ms).
+  Kokoro's architecture (StyleTTS2 lineage: BERT encoder → LSTM duration predictor →
+  decoder) is kernel-launch-bound on many small sequential ops, not FLOPs-bound — a
+  bigger/newer GPU chip doesn't help because there's no large matmul to accelerate.
+- **CPU-only (no GPU at all): 900-2500ms/clause, 6-15x slower.** This *does* prove the
+  GPU is doing real, necessary work — the earlier "GPU is basically free" read was a
+  mislabeling of the instrumentation bug above, not evidence the GPU is idle.
+- **`torch.compile()`: hung.** First call ran 70+ seconds and blocked the whole
+  container's event loop (had to force-kill it) rather than complete. Root cause: the
+  LSTM + data-dependent shapes (`torch.repeat_interleave` sized by predicted durations,
+  variable phoneme-length inputs) are a known weak spot for TorchInductor tracing —
+  RNNs and dynamic control flow fragment into many small graphs or stall outright. This
+  was treated as decisive enough to also rule out CUDA graphs (same static-shape
+  requirement) and de-prioritize TensorRT without spending further cycles on it, since
+  TensorRT needs the same predictable-shape property torch.compile choked on, and
+  `torch.compile` is the cheap/fast way to test that property before committing to the
+  much heavier TensorRT export pipeline.
+- **ONNX Runtime + CUDA: no win, after fixing three real upstream bugs to get a fair
+  test.** Used `kokoro-onnx` (pre-converted v1.0 ONNX weights, no custom export needed).
+  (a) the library hardcodes `speed` as `int32` for newer-export models, but the
+  published `kokoro-v1.0.onnx` (from the release that added float speed input) expects
+  `float32` — worked around with a one-line dtype fix bypassing the buggy method: (b) its
+  GPU auto-detection checks `importlib.util.find_spec("onnxruntime-gpu")`, which can
+  never succeed (that pip package installs into the `onnxruntime` module namespace, not
+  a separately-importable one) — silently runs CPU-only regardless of what's installed;
+  worked around via its `ONNX_PROVIDER` env override; (c) even then, `onnxruntime-gpu`'s
+  wheel doesn't bundle CUDA/cuDNN like PyTorch's wheels do — needed
+  `nvidia-{cublas,cudnn,curand,cufft,cusolver,cusparse,nvjitlink,cuda-nvrtc}-cu12` pip
+  packages plus `LD_LIBRARY_PATH` added one missing `.so` at a time (5 rounds) before
+  `CUDAExecutionProvider` was actually active (confirmed via
+  `session.get_providers()`, not inferred from timing — same lesson as the RunPod
+  investigation above). Real result once genuinely GPU-accelerated: **160-270ms/clause —
+  same or slightly worse than plain PyTorch eager (90-185ms).** No win available here;
+  don't revisit without a materially different approach (e.g. TensorRT execution
+  provider specifically, untested).
+
+**Conclusion on Kokoro's floor:** ~90-185ms/clause on a T4 is a real property of this
+model's architecture (StyleTTS2/LSTM lineage — see "Architecture-level fix" below), not
+a config problem. Every standard inference-optimization lever (GPU tier, fp16, compile,
+ONNX) was tried and closed out.
+
+**4. Cloudflare edge-termination proxy — shipped, real win.** Since GPU/model
+optimization was closed out, focus shifted to the network-layer finding from step 1.
+Fronting `t-sushanth--realtime-tts-worker-web.modal.run` with a Cloudflare Worker
+(`worker-cf-edge/`) that terminates the client's WebSocket at Cloudflare's anycast edge
+and opens its own outbound connection to Modal — same trick ElevenLabs/Replicate use.
+Couldn't use the simpler "just proxy the DNS record" approach: Cloudflare's Origin Rules
+SNI-override (needed because Modal's serverless routing depends on SNI matching
+`*.modal.run`, not our custom domain) requires a Business-tier+ plan, not available on
+this zone's Free plan. The Worker sidesteps that entirely by making its own outbound
+fetch with the correct hostname. Two real bugs caught before production: (a) forwarding
+the client's full header set (including Cloudflare-injected `cf-*` headers) to the
+origin fetch caused a "Network connection lost" failure — fixed with a minimal, explicit
+header set; (b) Cloudflare's WebSocket API defaults binary message `event.data` to a
+`Blob`, which isn't directly re-sendable and silently stringifies to `"[object Blob]"`
+on relay — since our protocol is 100% PCM16 audio over binary frames, this would have
+corrupted every reply's audio; fixed with `binaryType = "arraybuffer"` on both sockets,
+caught via an authenticated echo test *before* it reached real traffic.
+**Measured result: connection-only handshake dropped from 166-193ms to 52-55ms
+(~3.3x).** Routed via `tts.readaloudai.org` (Cloudflare-proxied CNAME, zone already on
+Cloudflare — no nameserver migration needed) + a Workers Route. `TTS_GATEWAY_WS_URL` on
+call-loop-poc now points here. Added a 20s WS ping heartbeat
+(`call-loop-poc/server.js`) since this leg introduces a Cloudflare idle-timeout that
+direct-to-Modal never had. Verified end-to-end with real production auth and the real
+model (`providers: ["modal-t4-cuda"]`, byte count matched exactly).
+
+**5. Alternative model architectures — none beat Kokoro's speed/quality combination.**
+- **Chatterbox-Turbo (Resemble AI, MIT, 350M params):** marketed as "75ms, single-step."
+  Measured 977-2043ms/clause on T4 — 6-20x slower, and **not GPU-tier-bound** (L4 gave
+  no improvement: 949-1982ms), ruling out "just needs a bigger GPU." Root cause found by
+  reading `T3.inference_turbo`'s source: "single-step" only describes the vocoder
+  (`n_cfm_timesteps=2`, genuinely fast at ~170-225ms) — the text-to-speech-token stage
+  is a full autoregressive transformer decode loop (KV-cache, temperature/top-k/top-p
+  sampling, one token per forward pass, ~14-15ms/token, 39-97 tokens/utterance),
+  architecturally identical to LLM token generation. Built a real streaming-wrapper spike
+  (generate only the first ~15-18 tokens, run the vocoder on just that chunk) to test
+  whether the 75ms claim was actually a time-to-first-chunk metric rather than
+  full-utterance latency: **even the smallest viable first chunk cost 500-750ms warm** —
+  the AR decode can't be parallelized away (each token depends on the last) and the
+  vocoder has a roughly fixed per-call overhead that doesn't shrink with chunk size.
+  Genuine dead end on this hardware tier, not a premature one.
+- **FastPitch + HiFi-GAN (the models behind NVIDIA Riva TTS), self-hosted via the
+  open-source NeMo toolkit (`nemo_toolkit[tts]`, no Riva/Triton/TensorRT server, no NGC
+  login):** this is the "standalone open checkpoint, avoid the Riva/NIM licensing
+  question" path — genuinely faster than Kokoro: **77-189ms warm (mostly 91-107ms)**,
+  matching NVIDIA's published T4/L4 numbers reasonably well for plain PyTorch eager mode
+  (no TensorRT). True cold start ~29.5s (worse than Kokoro's ~17.5s — heavier dependency
+  tree, two separate checkpoints). **Killed on voice quality** — confirmed by ear as
+  "robotic" compared to Kokoro. Licensing was a non-issue: NVIDIA's Community License
+  permits production TTS use free up to 25M characters/day, almost certainly covering
+  our volume.
+- **MagpieTTS (NVIDIA's newer model, in the same NeMo package):** also autoregressive
+  (audio-codec-token decode loop, same family as Chatterbox) despite being the
+  higher-quality successor — `list_available_models()` returns empty, no public
+  self-hostable checkpoint. Only available as `nvidia/magpie-tts-multilingual` on
+  build.nvidia.com (hosted API, gRPC not REST, requires its own account/API key,
+  pricing beyond free credits not published). Paused here — real endpoint exists but
+  needs an actual account to verify further; not pursued without that.
+
+**Architecture-level fix, considered but not attempted (2026-09-16):** could Kokoro
+itself be modified to have TensorRT/torch.compile-friendly static shapes — e.g. replace
+the LSTM duration predictor with a feed-forward alternative? Conceptually yes (this is
+exactly the FastPitch/FastSpeech2 design), but it means changing model *weights*, not
+just serving code, and we don't have Kokoro's original training data to retrain from
+scratch. The tractable path, if pursued, is distilling just the LSTM duration-predictor
+submodule (run the existing model on lots of text, record its duration outputs, train a
+small feed-forward network to replicate them) rather than a full rebuild — real ML
+engineering effort (weeks, not a bench-app spike), uncertain prosody-quality payoff, and
+not started as of this writing.
