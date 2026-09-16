@@ -455,3 +455,73 @@ support, plus the CPU-serving/cold-start angle makes it strategically relevant
 beyond just a quality comparison). Revisit Kokoro fine-tuning only if Piper's
 output quality/character proves insufficient, since Kokoro is generally regarded as
 higher-fidelity but carries real, undocumented integration risk.
+
+## Real hardware validation: Jetson Orin Nano Super, 8GB (2026-09-16)
+
+Ran both Piper and Matcha-TTS for real on the actual Jetson Orin Nano Super
+Developer Kit (8GB, JetPack 7.2, L4T R39, CUDA 13.2.1, driver 595.58.03, MAXN_SUPER
+power mode) over SSH — not a simulation or vendor-claim check. Both candidate
+architectures for the CPU-serving pilot were smoke-tested end to end with
+pretrained (not yet our fine-tuned) checkpoints, and results confirmed by ear.
+
+**Piper — CPU only, no GPU involved:**
+`pip install piper-tts` produced a working aarch64 wheel immediately (also pulled
+`onnxruntime` 1.30.0 as a CPU dependency — answers part of the earlier open
+question about whether ONNX Runtime has aarch64/JetPack-7.2 wheels: yes, at least
+the CPU build). Loading the model once in a persistent process and synthesizing
+repeatedly (not the one-shot CLI, which reloads the 63MB model from disk every
+call and shows ~2.8s/request as a result) gives the real per-request number:
+**~450-680ms synthesis for 2.5-3.3s of audio, RTF ~0.18-0.20 (~5x realtime), pure
+ARM CPU, model load ~2s once at process start.** This is the number that matters
+for an always-on server design — the load cost is paid once, not per call. Test
+used the stock `en_US-lessac-medium` voice (just to validate the pipeline, not a
+quality pick) — by ear, the accent read as a bit synthetic/generic; worth trying a
+different published Piper voice as the fine-tuning base rather than assuming
+`lessac` is representative of Piper's ceiling.
+
+**Matcha-TTS — real GPU acceleration confirmed working:**
+Official pretrained LJSpeech checkpoint + HiFi-GAN vocoder, run via the git source
+(not the broken PyPI package — see the original pilot's notes above). RTF with
+vocoder measured at **0.13-0.30 (3.4x-7.8x realtime)** on the Orin's GPU, second
+run notably faster than the first (CUDA context/kernel warm-up). GPU utilization
+confirmed via the CLI's own `[+] GPU Available! Using GPU` output, not inferred.
+By ear: clearly the better-sounding of the two pretrained samples, though speaking
+rate reads a bit slow — tunable via `--speaking_rate` (e.g. `0.85`) at no compute
+cost, a prosody setting rather than a latency finding.
+
+**New environment gotchas hit getting Matcha-TTS running on this JetPack 7.2 /
+Python 3.12 / torch 2.14+cu130 stack (none of these appeared in the Modal pilot,
+which pinned torch 2.1.2 — newer versions across the board surfaced new breaks):**
+1. Same `setuptools<81`/`pkg_resources.ImpImporter` break as the Modal pilot, but
+   pip's isolated build env picks up its own fresh setuptools regardless of what's
+   pinned outside — fixed with `pip install --no-build-isolation` after pinning.
+2. `Cython` needs to be pre-installed before `pip install -e .` for the same
+   reason (build-time dependency not satisfied inside the isolated build env).
+3. NumPy 2.5.3 (pulled in later by `librosa`) breaks the *system* apt-installed
+   `matplotlib`, which was compiled against the NumPy 1.x ABI — this is a
+   different failure mode than the "matplotlib>=3.8 drops tostring_rgb" API-level
+   break hit on Modal; the fix here is installing a pip-built matplotlib (built
+   against NumPy 2) to shadow the broken system one, not a version pin.
+4. `gdown` import-time dependency, same as the Modal pilot.
+5. The per-subfolder `matcha/utils/monotonic_align/setup.py` is now entirely
+   commented out in the current upstream repo (a real upstream change, not an
+   environment issue) — the Cython extension build moved to the top-level
+   `setup.py build_ext --inplace` instead.
+6. Building the extension once, then having `librosa` upgrade NumPy afterward,
+   produces a binary that import-fails at runtime with no build-time error —
+   rebuild the extension **after** all other deps (especially `librosa`) are
+   installed, not before.
+7. PyTorch 2.6+ changed `torch.load`'s default `weights_only` to `True`, which
+   breaks loading this Lightning checkpoint (it pickles an `omegaconf.DictConfig`
+   inside). Lightning's `load_from_checkpoint` doesn't expose a way to pass
+   `weights_only=False` through Matcha-TTS's CLI, and the old
+   `TORCH_FORCE_WEIGHTS_ONLY_LOAD` env var is ignored by newer Lightning. Fixed by
+   monkeypatching `torch.load` at the top of `matcha/cli.py` to force
+   `weights_only=False` for this one trusted, official checkpoint (already used
+   safely in the Modal pilot) — not something to do for untrusted checkpoints.
+
+**Net takeaway:** this specific Jetson can genuinely serve either candidate model
+for real, today — Piper entirely on CPU (the strongest fit for the always-on/
+no-cold-start goal), Matcha-TTS with real GPU acceleration at 3-8x realtime. Voice
+quality (pretrained, not our fine-tune) confirmed acceptable by ear on both, with
+Matcha-TTS the stronger-sounding of the two stock samples.
