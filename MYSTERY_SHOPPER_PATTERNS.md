@@ -165,3 +165,83 @@ code that had just changed.
    time and produce a noisy transcript).
 3. **Pattern 2** (double-close in our flow) — real but lower frequency.
 4. Pattern 4 — insufficient data, no action yet.
+
+## Cycle 16 (2026-09-15, commit 12f6c11): six fixes in one batch, written up late
+
+This cycle shipped without a doc entry at the time — reconstructed here
+after the fact, from the commit itself and the diagnostics it cites. Noting
+this gap explicitly: this is the first cycle in the log that broke the
+"verify with a real call, write it down" discipline cycles 1-15 held to.
+The size of this batch is also a departure — six independent fixes landing
+in one commit, versus the one-fix-per-cycle pattern above.
+
+1. **Dropped turns**: a fast caller reply arriving before the in-flight
+   turn had started speaking was silently discarded instead of replayed —
+   eating real replies, including booking confirmations. Fixed by queuing
+   the new utterance and replaying it once the in-flight turn retires. This
+   is a real latency/correctness tradeoff, not a pure win: a caller who
+   responds unusually fast now waits for the in-flight turn to finish
+   before being heard, in exchange for never losing their words.
+2. **Lost fields on barge-in**: `record_field` persistence was gated on
+   the same "turn still active" check as speech output, so an interrupted
+   turn could lose a field the model had already correctly captured.
+   Un-gated — a recorded field now persists regardless of what happens to
+   the turn's speech.
+3. **Partial-capture deadlock**: the existing nudge only fired once EVERY
+   field was captured, so a node that went silent with only *some* fields
+   captured had nothing to unstick it. Fixed with a bounded-retry nudge
+   (`MAX_NUDGE_ATTEMPTS = 2`) plus a forced spoken fallback past the cap —
+   this is the same deadlock class as cycle 14, one level more specific.
+4. **TTS sentence-ordering race**: concurrent per-sentence TTS fetches
+   could let a faster later sentence's audio reach the caller before an
+   earlier, slower one's — reproduced against Cartesia specifically (fast
+   enough to expose a race ElevenLabs' own latency had been masking).
+   Fixed by claiming send order synchronously before each fetch starts
+   (`_sendChain`), not after it resolves — the commit message notes the
+   first attempt (claim after fetch) played sentences out of order live
+   before landing on claim-before-fetch.
+5. **Backchanneling re-enabled by default**, threshold raised 400ms→1500ms
+   and no longer skipped on flow auto-advance turns — driven by real
+   [latency] data showing the goodbye/closing turn is consistently the
+   slowest (3-4.4s) and was exactly the turn type previously exempted from
+   filler coverage.
+6. **`ttsModel` per-call override** + `/test-tts-override` endpoint, so
+   this same mystery-shopper harness can A/B TTS backend/model choices
+   against a live tenant without touching DB config.
+
+No cycle-16 mystery-shopper run was recorded confirming these against a
+real call before shipping — see cycle 17 below, which is the first real
+run since.
+
+## Cycle 17 (2026-09-16): Retell won, two symptoms not seen before
+
+First real mystery-shopper run since cycle 16 shipped. Retell won on both
+quality and latency:
+
+- **Ours**: response latency p50/p95 = 2280ms/3460ms, 6 turns to complete
+  the booking, one turn spiked to 8.6s.
+- **Retell**: p50/p95 = 2040ms/2160ms, 4 turns, no outlier.
+
+Two symptoms the judge flagged had not appeared in any of cycles 1-15:
+
+1. **Sentence fragmentation**: a single logical reply arrived split across
+   separate turns/transmission events — e.g. "And with something like 2 PM
+   tomorrow work for you," as one piece, "please." as a dangling second
+   piece.
+2. **Duplicate name-ask returned** — the same category of bug cycle 15
+   left as a mild, believed-cleared residual issue.
+
+**Not yet root-caused.** Two competing explanations, not yet distinguished:
+(a) one of cycle 16's six changes — most plausibly the `_sendChain`
+TTS-ordering fix, since it directly touches how/when sentence chunks reach
+the caller — introduced this as a side effect, or (b) this is the cycle-15
+fix for the duplicate-name-ask not actually holding, only now visible
+because this is the first run since. Cycle-16 shipping without the
+verify-then-document discipline cycles 1-15 used means there's no
+intermediate checkpoint to distinguish these. Next step before any further
+patching: pull raw `flyctl logs` for this call (per the cycle 10-14
+lesson — the judge's transcript alone wasn't enough to find root causes
+there either) and check whether the fragmented "please." came from the
+SentenceChunker's end-of-stream `flush()` (server.js, emits whatever's
+left in the buffer unconditionally once the LLM stream ends, regardless of
+whether it's a complete sentence) or from a second, separate turn.
