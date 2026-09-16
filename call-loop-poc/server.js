@@ -1038,7 +1038,7 @@ class CallSession {
         content: `[System note: the flow has moved to the "${nodeId}" step. Give your opening line for this step now.]`,
       });
     }
-    await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening });
+    await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening, isCallOpening });
   }
 
   // Shared by both a real caller turn and a flow auto-advance turn — the
@@ -1049,7 +1049,7 @@ class CallSession {
   // this.systemPrompt every other turn uses, and the LLM signals when to
   // advance by calling the transition_flow tool rather than us guessing from
   // the model's prose.
-  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false } = {}) {
+  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false } = {}) {
     if (!anthropic) {
       this.send({ type: 'error', message: 'ANTHROPIC_API_KEY not configured' });
       if (this.turnState?.id === turnId) this.turnState.llmDone = true;
@@ -1136,8 +1136,18 @@ class CallSession {
     // moment the LLM's first token actually arrives (below) or the turn
     // ends (finally, below) so a stray filler never fires after the real
     // response.
+    //
+    // Real call finding (2026-09-16): removing the isNodeEntry gate also
+    // let a filler fire on the call's very FIRST turn — a caller picking up
+    // the phone and hearing "Got it." before the agent has said a single
+    // word, let alone before they've said anything themselves. There is
+    // nothing to acknowledge yet; unlike goodbye (which follows a real
+    // conversation), the call-opening turn has no context a filler could
+    // plausibly be reacting to. Explicitly excluding just this one turn,
+    // not reintroducing the old blanket isNodeEntry gate the goodbye fix
+    // was for.
     let backchannelTimer = null;
-    if (this.backchannelEnabled) {
+    if (this.backchannelEnabled && !isCallOpening) {
       backchannelTimer = setTimeout(() => {
         backchannelTimer = null;
         if (Math.random() < this.backchannelFrequency) this._maybeSpeakBackchannel(turnId);
