@@ -1,0 +1,220 @@
+/data/wavs_full/012813.wav|Your PIN is one, six, eight, six.
+/data/wavs_full/018197.wav|Your case ID is C S dash 7730.
+/data/wavs_full/005792.wav|One more confirmation, the callback number ends in six, zero, one, zero?
+/data/wavs_full/004219.wav|Let me repeat the confirmation number back: 781, 161.
+/data/wavs_full/015628.wav|Your card ending in 2399 will be charged.
+/data/wavs_full/021426.wav|Your ticket number is 683, dash, 678.
+/data/wavs_full/020231.wav|Your extension is 9662.
+/data/wavs_full/019152.wav|Your extension is 3719.
+/data/wavs_full/013407.wav|Your PIN is two, four, three, nine.
+/data/wavs_full/004066.wav|Let me repeat the confirmation number back: 706, 985.
+/data/wavs_full/011010.wav|The last four digits of your card are one, zero, eight, four.
+/data/wavs_full/009825.wav|That will be shipped to zip code 84452.
+/data/wavs_full/007407.wav|Repeating that back to you, the address is 558 Willow Drive.
+/data/wavs_full/012705.wav|Your PIN is one, eight, five, one.
+/data/wavs_full/004584.wav|Let me repeat the confirmation number back: 969, 359.
+/data/wavs_full/019281.wav|Your extension is 4373.
+/data/wavs_full/015187.wav|Your appointment is confirmed for next Tuesday, November the fifth, at nine in the morning.
+/data/wavs_full/015756.wav|Your card ending in 3078 will be charged.
+/data/wavs_full/012753.wav|Your PIN is one, four, one, three.
+/data/wavs_full/009664.wav|That will be shipped to zip code 75957.
+/data/wavs_full/006888.wav|Repeating that back to you, the address is 281 Willow Drive.
+/data/wavs_full/019241.wav|Your extension is 4202.
+/data/wavs_full/016800.wav|Your card ending in 8974 will be charged.
+/data/wavs_full/003350.wav|Let me repeat the confirmation number back: 299, 636.
+/data/wavs_full/004821.wav|One more confirmation, the callback number ends in eight, three, four, zero?
+/data/wavs_full/001579.wav|Let me read that back to you — your address is 185 Oak Street, apartment 5A.
+/data/wavs_full/000955.wav|I can offer either Wednesday or Friday.
+/data/wavs_full/000946.wav|I can offer either Thursday or Tuesday.
+/data/wavs_full/012903.wav|Your PIN is seven, five, seven, two.
+/data/wavs_full/007174.wav|Repeating that back to you, the address is 437 Cedar Way.
+/data/wavs_full/015713.wav|Your card ending in 2893 will be charged.
+/data/wavs_full/012005.wav|What's the best callback number for you?
+/data/wavs_full/000465.wav|Alright, I have your email as rachel dot williams at example dot com — is that correct?
+/data/wavs_full/008400.wav|Thanks for calling, my name is Daniel, how can I assist you today?
+/data/wavs_full/002316.wav|Let me read that back to you — your address is 606 Maple Street, apartment 7B.
+/data/wavs_full/001027.wav|I have an opening Saturday at eleven forty-five, would that work?
+/data/wavs_full/018567.wav|Your case ID is C S dash 9656.
+/data/wavs_full/006075.wav|One more confirmation, the callback number ends in two, six, zero, four?
+/data/wavs_full/015375.wav|Your card ending in 1075 will be charged.
+/data/wavs_full/018376.wav|Your case ID is C S dash 8654.
+/data/wavs_full/015806.wav|Your card ending in 3350 will be charged.
+/data/wavs_full/004113.wav|Let me repeat the confirmation number back: 728, 725.
+/data/wavs_full/011510.wav|The last four digits of your card are two, five, nine, seven.
+/data/wavs_full/001559.wav|Let me read that back to you — your address is 178 Elm Street, apartment 6C.
+/data/wavs_full/017181.wav|Your case ID is C S dash 2171.
+/data/wavs_full/013512.wav|Your PIN is two, zero, eight, seven.
+/data/wavs_full/018302.wav|Your case ID is C S dash 8272.
+/data/wavs_full/009551.wav|That will be shipped to zip code 69636.
+/data/wavs_full/001419.wav|Let me loop in someone from that department.
+/data/wavs_full/001235.wav|Just a moment, I'm checking our system.
+/data/wavs_full/005869.wav|One more confirmation, the callback number ends in three, one, nine, three?
+/data/wavs_full/010949.wav|The last four digits of your card are one, seven, nine, seven.
+/data/wavs_full/001747.wav|Let me read that back to you — your address is 279 Elm Street, apartment 6A.
+/data/wavs_full/003322.wav|Let me repeat the confirmation number back: 287, 298.
+/data/wavs_full/007263.wav|Repeating that back to you, the address is 484 Cedar Way.
+/data/wavs_full/009179.wav|That will be shipped to zip code 49705.
+/data/wavs_full/000044.wav|Alright, I have your email as amanda dot moore at example dot com — is that correct?
+/data/wavs_full/013734.wav|Your appointment is confirmed for Friday, July the twenty-fifth, at seven thirty in the evening.
+/data/wavs_full/000603.wav|Combined with shipping, the final total is forty-eight dollars.
+/data/wavs_full/005928.wav|One more confirmation, the callback number ends in three, three, two, five?
+/data/wavs_full/019893.wav|Your extension is 7730.
+/data/wavs_full/014164.wav|Your appointment is confirmed for Sunday, January the second, at one o'clock.
+/data/wavs_full/008452.wav|That plan includes unlimited access for one hundred and eighteen dollars a month.
+/data/wavs_full/002810.wav|Let me read that back to you — your address is 894 Elm Street, apartment 4D.
+/data/wavs_full/015124.wav|Your appointment is confirmed for next Tuesday, February the tenth, at noon.
+/data/wavs_full/008751.wav|That will be shipped to zip code 26012.
+/data/wavs_full/021843.wav|Your ticket number is 905, dash, 429.
+/data/wavs_full/012194.wav|Your PIN is eight, two, five, three.
+/data/wavs_full/004402.wav|Let me repeat the confirmation number back: 880, 139.
+/data/wavs_full/014541.wav|Your appointment is confirmed for Wednesday, August the thirtieth, at five o'clock.
+/data/wavs_full/011311.wav|The last four digits of your card are six, two, six, seven.
+/data/wavs_full/003923.wav|Let me repeat the confirmation number back: 621, 185.
+/data/wavs_full/010837.wav|The last four digits of your card are nine, zero, seven, two.
+/data/wavs_full/014330.wav|Your appointment is confirmed for Thursday, July the second, at two thirty.
+/data/wavs_full/011174.wav|The last four digits of your card are seven, zero, nine, zero.
+/data/wavs_full/018289.wav|Your case ID is C S dash 8214.
+/data/wavs_full/009300.wav|That will be shipped to zip code 55610.
+/data/wavs_full/012227.wav|Your PIN is five, eight, five, nine.
+/data/wavs_full/005580.wav|One more confirmation, the callback number ends in seven, six, nine, one?
+/data/wavs_full/007382.wav|Repeating that back to you, the address is 546 Birch Court.
+/data/wavs_full/001681.wav|Let me read that back to you — your address is 244 Main Street, apartment 1D.
+/data/wavs_full/016627.wav|Your card ending in 7863 will be charged.
+/data/wavs_full/007728.wav|Repeating that back to you, the address is 735 Birch Court.
+/data/wavs_full/000524.wav|Alright, I have your email as stephanie dot lopez at example dot com — is that correct?
+/data/wavs_full/010762.wav|The last four digits of your card are nine, one, two, seven.
+/data/wavs_full/020648.wav|Your ticket number is 262, dash, 494.
+/data/wavs_full/007195.wav|Repeating that back to you, the address is 450 Birch Court.
+/data/wavs_full/005126.wav|One more confirmation, the callback number ends in four, three, eight, zero?
+/data/wavs_full/014587.wav|Your appointment is confirmed for Wednesday, July the second, at ten fifteen.
+/data/wavs_full/006070.wav|One more confirmation, the callback number ends in two, six, five, zero?
+/data/wavs_full/009156.wav|That will be shipped to zip code 48708.
+/data/wavs_full/017936.wav|Your case ID is C S dash 6340.
+/data/wavs_full/001079.wav|I have an opening Wednesday at two thirty, would that work?
+/data/wavs_full/012728.wav|Your PIN is one, five, five, four.
+/data/wavs_full/004296.wav|Let me repeat the confirmation number back: 824, 597.
+/data/wavs_full/005658.wav|One more confirmation, the callback number ends in six, five, four, five?
+/data/wavs_full/020179.wav|Your extension is 9411.
+/data/wavs_full/008935.wav|That will be shipped to zip code 37262.
+/data/wavs_full/006453.wav|Repeating back for accuracy, the pickup time is one o'clock, not one o'clock.
+/data/wavs_full/008783.wav|That will be shipped to zip code 27849.
+/data/wavs_full/021029.wav|Your ticket number is 478, dash, 722.
+/data/wavs_full/006261.wav|One more confirmation, the callback number ends in zero, three, five, six?
+/data/wavs_full/010369.wav|The last four digits of your card are five, five, four, two.
+/data/wavs_full/018360.wav|Your case ID is C S dash 8584.
+/data/wavs_full/007766.wav|Repeating that back to you, the address is 755 Oak Lane.
+/data/wavs_full/011565.wav|The last four digits of your card are two, one, six, five.
+/data/wavs_full/006936.wav|Repeating that back to you, the address is 305 Cedar Way.
+/data/wavs_full/017749.wav|Your case ID is C S dash 5338.
+/data/wavs_full/019602.wav|Your extension is 6172.
+/data/wavs_full/010911.wav|The last four digits of your card are one, nine, two, two.
+/data/wavs_full/016412.wav|Your card ending in 6628 will be charged.
+/data/wavs_full/011718.wav|The last four digits of your card are zero, nine, five, seven.
+/data/wavs_full/021079.wav|Your ticket number is 504, dash, 301.
+/data/wavs_full/006080.wav|One more confirmation, the callback number ends in two, three, eight, two?
+/data/wavs_full/017714.wav|Your case ID is C S dash 5128.
+/data/wavs_full/021735.wav|Your ticket number is 847, dash, 362.
+/data/wavs_full/014089.wav|Your appointment is confirmed for Saturday, October the twentieth, at three fifteen in the afternoon.
+/data/wavs_full/003945.wav|Let me repeat the confirmation number back: 634, 531.
+/data/wavs_full/013677.wav|Your PIN is zero, zero, three, four.
+/data/wavs_full/009243.wav|That will be shipped to zip code 52516.
+/data/wavs_full/000559.wav|Alright, I have your email as william dot wilson at example dot com — is that correct?
+/data/wavs_full/000385.wav|Alright, I have your email as matthew dot white at example dot com — is that correct?
+/data/wavs_full/016832.wav|Your card ending in 9156 will be charged.
+/data/wavs_full/012514.wav|Your PIN is four, two, seven, five.
+/data/wavs_full/012589.wav|Your PIN is nine, four, zero, seven.
+/data/wavs_full/017607.wav|Your case ID is C S dash 4586.
+/data/wavs_full/002506.wav|Let me read that back to you — your address is 707 Cedar Street, apartment 8A.
+/data/wavs_full/018634.wav|Your confirmation code is Bravo Whiskey 9 4 5.
+/data/wavs_full/007694.wav|Repeating that back to you, the address is 716 Cedar Way.
+/data/wavs_full/012610.wav|Your PIN is nine, one, five, four.
+/data/wavs_full/007975.wav|Repeating that back to you, the address is 877 Willow Drive.
+/data/wavs_full/005547.wav|One more confirmation, the callback number ends in seven, one, six, eight?
+/data/wavs_full/002570.wav|Let me read that back to you — your address is 746 Maple Street, apartment 9D.
+/data/wavs_full/008219.wav|So the total for both items comes to fifty-six ninety-nine, does that sound right?
+/data/wavs_full/018249.wav|Your case ID is C S dash 7998.
+/data/wavs_full/001355.wav|Just to confirm, is your appointment on next Monday at three o'clock?
+/data/wavs_full/006446.wav|Repeating back for accuracy, the pickup time is one o'clock, not eleven forty-five.
+/data/wavs_full/016534.wav|Your card ending in 7316 will be charged.
+/data/wavs_full/020394.wav|Your ticket number is 121, dash, 659.
+/data/wavs_full/004682.wav|Nearly half of our support calls are resolved within the first five minutes.
+/data/wavs_full/002358.wav|Let me read that back to you — your address is 623 Main Street, apartment 2C.
+/data/wavs_full/018595.wav|Your case ID is C S dash 9805.
+/data/wavs_full/006270.wav|One more confirmation, the callback number ends in zero, two, eight, one?
+/data/wavs_full/006019.wav|One more confirmation, the callback number ends in two, nine, four, one?
+/data/wavs_full/013194.wav|Your PIN is six, zero, two, seven.
+/data/wavs_full/019418.wav|Your extension is 5104.
+/data/wavs_full/017467.wav|Your case ID is C S dash 3808.
+/data/wavs_full/020414.wav|Your ticket number is 129, dash, 589.
+/data/wavs_full/003357.wav|Let me repeat the confirmation number back: 303, 593.
+/data/wavs_full/017493.wav|Your case ID is C S dash 3965.
+/data/wavs_full/004895.wav|One more confirmation, the callback number ends in five, four, four, three?
+/data/wavs_full/019276.wav|Your extension is 4355.
+/data/wavs_full/006762.wav|Repeating that back to you, the address is 209 Birch Court.
+/data/wavs_full/000423.wav|Alright, I have your email as michael dot moore at example dot com — is that correct?
+/data/wavs_full/018012.wav|Your case ID is C S dash 6737.
+/data/wavs_full/005632.wav|One more confirmation, the callback number ends in seven, zero, one, seven?
+/data/wavs_full/015955.wav|Your card ending in 4223 will be charged.
+/data/wavs_full/001475.wav|Let me read that back to you — your address is 133 Main Street, apartment 5B.
+/data/wavs_full/016250.wav|Your card ending in 5770 will be charged.
+/data/wavs_full/007781.wav|Repeating that back to you, the address is 765 Birch Court.
+/data/wavs_full/021819.wav|Your ticket number is 890, dash, 800.
+/data/wavs_full/012323.wav|Your PIN is five, six, two, seven.
+/data/wavs_full/016170.wav|Your card ending in 5409 will be charged.
+/data/wavs_full/021808.wav|Your ticket number is 882, dash, 213.
+/data/wavs_full/011860.wav|The refund will be processed within 3 to 6 business days.
+/data/wavs_full/003656.wav|Let me repeat the confirmation number back: 479, 677.
+/data/wavs_full/004503.wav|Let me repeat the confirmation number back: 930, 240.
+/data/wavs_full/003527.wav|Let me repeat the confirmation number back: 407, 334.
+/data/wavs_full/018942.wav|Your extension is 2609.
+/data/wavs_full/006978.wav|Repeating that back to you, the address is 331 Birch Court.
+/data/wavs_full/000763.wav|How does Monday at ten o'clock sound?
+/data/wavs_full/020275.wav|Your extension is 9919.
+/data/wavs_full/006965.wav|Repeating that back to you, the address is 325 Cedar Way.
+/data/wavs_full/005565.wav|One more confirmation, the callback number ends in seven, seven, nine, one?
+/data/wavs_full/017947.wav|Your case ID is C S dash 6374.
+/data/wavs_full/019333.wav|Your extension is 4605.
+/data/wavs_full/020158.wav|Your extension is 9255.
+/data/wavs_full/018269.wav|Your case ID is C S dash 8106.
+/data/wavs_full/014815.wav|Your appointment is confirmed for next Monday, December the fifth, at two forty-five.
+/data/wavs_full/015777.wav|Your card ending in 3211 will be charged.
+/data/wavs_full/009339.wav|That will be shipped to zip code 57929.
+/data/wavs_full/017474.wav|Your case ID is C S dash 3849.
+/data/wavs_full/008995.wav|That will be shipped to zip code 40417.
+/data/wavs_full/010773.wav|The last four digits of your card are nine, seven, four, nine.
+/data/wavs_full/019732.wav|Your extension is 6841.
+/data/wavs_full/010153.wav|The appointment is scheduled for the twenty-second of next month.
+/data/wavs_full/018930.wav|Your extension is 2531.
+/data/wavs_full/020009.wav|Your extension is 8415.
+/data/wavs_full/013168.wav|Your PIN is six, two, three, one.
+/data/wavs_full/011817.wav|The last four digits of your card are zero, zero, four, one.
+/data/wavs_full/008569.wav|That will be shipped to zip code 15664.
+/data/wavs_full/015444.wav|Your card ending in 1417 will be charged.
+/data/wavs_full/008833.wav|That will be shipped to zip code 30547.
+/data/wavs_full/013291.wav|Your PIN is three, six, five, four.
+/data/wavs_full/006816.wav|Repeating that back to you, the address is 240 Birch Court.
+/data/wavs_full/016069.wav|Your card ending in 4829 will be charged.
+/data/wavs_full/002375.wav|Let me read that back to you — your address is 634 Elm Street, apartment 9D.
+/data/wavs_full/020205.wav|Your extension is 9534.
+/data/wavs_full/005335.wav|One more confirmation, the callback number ends in one, eight, two, six?
+/data/wavs_full/021531.wav|Your ticket number is 743, dash, 547.
+/data/wavs_full/001400.wav|Just to confirm, is your appointment on next next Thursday at two thirty?
+/data/wavs_full/006385.wav|Repeating back for accuracy, the pickup time is five o'clock, not twelve thirty.
+/data/wavs_full/017140.wav|Your case ID is C S dash 1971.
+/data/wavs_full/000090.wav|Alright, I have your email as anthony dot gonzalez at example dot com — is that correct?
+/data/wavs_full/005389.wav|One more confirmation, the callback number ends in one, one, seven, five?
+/data/wavs_full/013336.wav|Your PIN is three, two, one, two.
+/data/wavs_full/002965.wav|Let me read that back to you — your address is 980 Pine Street, apartment 9B.
+/data/wavs_full/015590.wav|Your card ending in 2176 will be charged.
+/data/wavs_full/017496.wav|Your case ID is C S dash 3993.
+/data/wavs_full/004222.wav|Let me repeat the confirmation number back: 782, 426.
+/data/wavs_full/020013.wav|Your extension is 8440.
+/data/wavs_full/013922.wav|Your appointment is confirmed for Monday, May the thirtieth, at seven thirty in the evening.
+/data/wavs_full/020125.wav|Your extension is 9117.
+/data/wavs_full/013293.wav|Your PIN is three, six, four, nine.
+/data/wavs_full/018528.wav|Your case ID is C S dash 9382.
+/data/wavs_full/017515.wav|Your case ID is C S dash 4108.
+/data/wavs_full/011279.wav|The last four digits of your card are six, six, seven, zero.
+/data/wavs_full/021670.wav|Your ticket number is 816, dash, 319.
+/data/wavs_full/017881.wav|Your case ID is C S dash 6071.
+/data/wavs_full/014940.wav|Your appointment is confirmed for next Thursday, April the twenty-second, at three o'clock.
