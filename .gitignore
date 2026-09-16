@@ -10,3 +10,4 @@ worker/models/
 # Bulk-generated TTS training audio - large, stored in S3, not git
 training-data/audio/
 training-data/manifest.jsonl
+training-data/pilot/wavs/

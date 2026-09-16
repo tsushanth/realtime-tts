@@ -1,0 +1,20 @@
+/pilot/wavs/000454.wav|Alright, I have your email as rachel dot johnson at example dot com — is that correct?
+/pilot/wavs/000792.wav|How does Thursday at nine in the morning sound?
+/pilot/wavs/003534.wav|Let me repeat the confirmation number back: 409, 612.
+/pilot/wavs/002575.wav|Let me read that back to you — your address is 751 Elm Street, apartment 6D.
+/pilot/wavs/001928.wav|Let me read that back to you — your address is 385 Pine Street, apartment 3C.
+/pilot/wavs/001385.wav|Just to confirm, is your appointment on next Tuesday at three o'clock?
+/pilot/wavs/002966.wav|Let me read that back to you — your address is 981 Elm Street, apartment 4C.
+/pilot/wavs/000577.wav|Before I let you go, let's confirm the spelling of your email one more time.
+/pilot/wavs/002389.wav|Let me read that back to you — your address is 639 Pine Street, apartment 4A.
+/pilot/wavs/002776.wav|Let me read that back to you — your address is 873 Oak Street, apartment 6D.
+/pilot/wavs/000073.wav|Alright, I have your email as angela dot johnson at example dot com — is that correct?
+/pilot/wavs/003617.wav|Let me repeat the confirmation number back: 450, 645.
+/pilot/wavs/000021.wav|After the discount, your new total is forty-eight dollars.
+/pilot/wavs/003790.wav|Let me repeat the confirmation number back: 545, 972.
+/pilot/wavs/004068.wav|Let me repeat the confirmation number back: 707, 355.
+/pilot/wavs/000363.wav|Alright, I have your email as mark dot hernandez at example dot com — is that correct?
+/pilot/wavs/003695.wav|Let me repeat the confirmation number back: 498, 587.
+/pilot/wavs/002584.wav|Let me read that back to you — your address is 756 Pine Street, apartment 8D.
+/pilot/wavs/003533.wav|Let me repeat the confirmation number back: 409, 489.
+/pilot/wavs/003662.wav|Let me repeat the confirmation number back: 481, 899.

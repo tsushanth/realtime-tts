@@ -1,0 +1,279 @@
+/pilot/wavs/002475.wav|Let me read that back to you — your address is 685 Oak Street, apartment 6B.
+/pilot/wavs/002788.wav|Let me read that back to you — your address is 881 Oak Street, apartment 6C.
+/pilot/wavs/003386.wav|Let me repeat the confirmation number back: 317, 583.
+/pilot/wavs/001384.wav|Just to confirm, is your appointment on next Tuesday at seven thirty in the evening?
+/pilot/wavs/002211.wav|Let me read that back to you — your address is 550 Pine Street, apartment 8B.
+/pilot/wavs/001378.wav|Just to confirm, is your appointment on next Tuesday at four o'clock?
+/pilot/wavs/000262.wav|Alright, I have your email as jessica dot martinez at example dot com — is that correct?
+/pilot/wavs/003593.wav|Let me repeat the confirmation number back: 441, 460.
+/pilot/wavs/001529.wav|Let me read that back to you — your address is 158 Oak Street, apartment 6B.
+/pilot/wavs/002064.wav|Let me read that back to you — your address is 462 Main Street, apartment 8B.
+/pilot/wavs/000314.wav|Alright, I have your email as kimberly dot anderson at example dot com — is that correct?
+/pilot/wavs/000572.wav|Basically, this means your order is still processing normally.
+/pilot/wavs/000961.wav|I can offer either next Friday or Saturday.
+/pilot/wavs/001503.wav|Let me read that back to you — your address is 147 Oak Street, apartment 6A.
+/pilot/wavs/002262.wav|Let me read that back to you — your address is 577 Cedar Street, apartment 3A.
+/pilot/wavs/000757.wav|How does Monday at five forty-five in the evening sound?
+/pilot/wavs/001269.wav|Just to confirm, is your appointment on Monday at twelve thirty?
+/pilot/wavs/000752.wav|How does Friday at nine thirty sound?
+/pilot/wavs/001531.wav|Let me read that back to you — your address is 159 Cedar Street, apartment 3A.
+/pilot/wavs/000982.wav|I can offer either next Tuesday or next Friday.
+/pilot/wavs/000909.wav|I can offer either Friday or Saturday.
+/pilot/wavs/000071.wav|Alright, I have your email as angela dot gonzalez at example dot com — is that correct?
+/pilot/wavs/003743.wav|Let me repeat the confirmation number back: 518, 829.
+/pilot/wavs/003396.wav|Let me repeat the confirmation number back: 323, 578.
+/pilot/wavs/001794.wav|Let me read that back to you — your address is 306 Oak Street, apartment 2A.
+/pilot/wavs/004051.wav|Let me repeat the confirmation number back: 698, 846.
+/pilot/wavs/001346.wav|Just to confirm, is your appointment on next Friday at three fifteen in the afternoon?
+/pilot/wavs/003522.wav|Let me repeat the confirmation number back: 404, 888.
+/pilot/wavs/000158.wav|Alright, I have your email as daniel dot wilson at example dot com — is that correct?
+/pilot/wavs/001261.wav|Just to confirm, is your appointment on Monday at nine thirty?
+/pilot/wavs/001424.wav|Let me read that back to you — your address is 100 Pine Street, apartment 6D.
+/pilot/wavs/001951.wav|Let me read that back to you — your address is 401 Pine Street, apartment 1B.
+/pilot/wavs/002491.wav|Let me read that back to you — your address is 695 Elm Street, apartment 8D.
+/pilot/wavs/003305.wav|Let me repeat the confirmation number back: 279, 113.
+/pilot/wavs/002014.wav|Let me read that back to you — your address is 441 Pine Street, apartment 5A.
+/pilot/wavs/003247.wav|Let me repeat the confirmation number back: 251, 698.
+/pilot/wavs/001954.wav|Let me read that back to you — your address is 403 Maple Street, apartment 1B.
+/pilot/wavs/003209.wav|Let me repeat the confirmation number back: 230, 511.
+/pilot/wavs/003221.wav|Let me repeat the confirmation number back: 240, 385.
+/pilot/wavs/000772.wav|How does Saturday at one fifteen in the afternoon sound?
+/pilot/wavs/002426.wav|Let me read that back to you — your address is 659 Main Street, apartment 9A.
+/pilot/wavs/001739.wav|Let me read that back to you — your address is 275 Elm Street, apartment 4A.
+/pilot/wavs/000072.wav|Alright, I have your email as angela dot jackson at example dot com — is that correct?
+/pilot/wavs/002909.wav|Let me read that back to you — your address is 954 Oak Street, apartment 4D.
+/pilot/wavs/000169.wav|Alright, I have your email as david dot rodriguez at example dot com — is that correct?
+/pilot/wavs/002595.wav|Let me read that back to you — your address is 763 Elm Street, apartment 6D.
+/pilot/wavs/000846.wav|How does next Saturday at ten o'clock sound?
+/pilot/wavs/000882.wav|How does next Wednesday at seven thirty in the evening sound?
+/pilot/wavs/001759.wav|Let me read that back to you — your address is 286 Maple Street, apartment 8B.
+/pilot/wavs/000274.wav|Alright, I have your email as john dot hernandez at example dot com — is that correct?
+/pilot/wavs/003365.wav|Let me repeat the confirmation number back: 305, 332.
+/pilot/wavs/003070.wav|Let me repeat the confirmation number back: 139, 599.
+/pilot/wavs/000373.wav|Alright, I have your email as mark dot smith at example dot com — is that correct?
+/pilot/wavs/001925.wav|Let me read that back to you — your address is 384 Cedar Street, apartment 9D.
+/pilot/wavs/004043.wav|Let me repeat the confirmation number back: 692, 841.
+/pilot/wavs/002900.wav|Let me read that back to you — your address is 950 Elm Street, apartment 7A.
+/pilot/wavs/001000.wav|I have an opening Friday at eleven in the morning, would that work?
+/pilot/wavs/004067.wav|Let me repeat the confirmation number back: 707, 142.
+/pilot/wavs/001048.wav|I have an opening Sunday at two forty-five, would that work?
+/pilot/wavs/003279.wav|Let me repeat the confirmation number back: 265, 188.
+/pilot/wavs/001516.wav|Let me read that back to you — your address is 152 Maple Street, apartment 5C.
+/pilot/wavs/001495.wav|Let me read that back to you — your address is 142 Maple Street, apartment 6D.
+/pilot/wavs/003520.wav|Let me repeat the confirmation number back: 403, 874.
+/pilot/wavs/002553.wav|Let me read that back to you — your address is 737 Cedar Street, apartment 7D.
+/pilot/wavs/001871.wav|Let me read that back to you — your address is 351 Elm Street, apartment 4C.
+/pilot/wavs/000343.wav|Alright, I have your email as laura dot williams at example dot com — is that correct?
+/pilot/wavs/002902.wav|Let me read that back to you — your address is 950 Maple Street, apartment 9A.
+/pilot/wavs/000785.wav|How does Sunday at four thirty in the afternoon sound?
+/pilot/wavs/000616.wav|Customer satisfaction scores improved by nearly 25 percent since last quarter.
+/pilot/wavs/002587.wav|Let me read that back to you — your address is 758 Elm Street, apartment 7D.
+/pilot/wavs/000243.wav|Alright, I have your email as jennifer dot lee at example dot com — is that correct?
+/pilot/wavs/003318.wav|Let me repeat the confirmation number back: 286, 558.
+/pilot/wavs/000464.wav|Alright, I have your email as rachel dot white at example dot com — is that correct?
+/pilot/wavs/003991.wav|Let me repeat the confirmation number back: 657, 384.
+/pilot/wavs/000865.wav|How does next Tuesday at four thirty in the afternoon sound?
+/pilot/wavs/001439.wav|Let me read that back to you — your address is 111 Oak Street, apartment 4A.
+/pilot/wavs/003477.wav|Let me repeat the confirmation number back: 379, 376.
+/pilot/wavs/002353.wav|Let me read that back to you — your address is 622 Cedar Street, apartment 2B.
+/pilot/wavs/003708.wav|Let me repeat the confirmation number back: 503, 835.
+/pilot/wavs/000592.wav|Cancellations made within 12 hours are eligible for a full refund.
+/pilot/wavs/003810.wav|Let me repeat the confirmation number back: 555, 490.
+/pilot/wavs/000347.wav|Alright, I have your email as lisa dot gonzalez at example dot com — is that correct?
+/pilot/wavs/002408.wav|Let me read that back to you — your address is 651 Oak Street, apartment 2D.
+/pilot/wavs/002339.wav|Let me read that back to you — your address is 615 Oak Street, apartment 8B.
+/pilot/wavs/002385.wav|Let me read that back to you — your address is 638 Main Street, apartment 2D.
+/pilot/wavs/001817.wav|Let me read that back to you — your address is 318 Maple Street, apartment 7D.
+/pilot/wavs/003064.wav|Let me repeat the confirmation number back: 135, 852.
+/pilot/wavs/000559.wav|Alright, I have your email as william dot wilson at example dot com — is that correct?
+/pilot/wavs/000351.wav|Alright, I have your email as lisa dot martin at example dot com — is that correct?
+/pilot/wavs/003507.wav|Let me repeat the confirmation number back: 392, 914.
+/pilot/wavs/001962.wav|Let me read that back to you — your address is 406 Pine Street, apartment 6A.
+/pilot/wavs/002589.wav|Let me read that back to you — your address is 758 Oak Street, apartment 7D.
+/pilot/wavs/003132.wav|Let me repeat the confirmation number back: 178, 434.
+/pilot/wavs/001886.wav|Let me read that back to you — your address is 360 Elm Street, apartment 3B.
+/pilot/wavs/002472.wav|Let me read that back to you — your address is 682 Oak Street, apartment 8C.
+/pilot/wavs/000250.wav|Alright, I have your email as jennifer dot smith at example dot com — is that correct?
+/pilot/wavs/000848.wav|How does next Sunday at eleven in the morning sound?
+/pilot/wavs/000364.wav|Alright, I have your email as mark dot jackson at example dot com — is that correct?
+/pilot/wavs/003876.wav|Let me repeat the confirmation number back: 599, 359.
+/pilot/wavs/001522.wav|Let me read that back to you — your address is 155 Pine Street, apartment 7C.
+/pilot/wavs/003550.wav|Let me repeat the confirmation number back: 421, 635.
+/pilot/wavs/002313.wav|Let me read that back to you — your address is 605 Elm Street, apartment 1D.
+/pilot/wavs/000110.wav|Alright, I have your email as ashley dot martin at example dot com — is that correct?
+/pilot/wavs/003126.wav|Let me repeat the confirmation number back: 175, 120.
+/pilot/wavs/000872.wav|How does next Tuesday at two forty-five sound?
+/pilot/wavs/003630.wav|Let me repeat the confirmation number back: 460, 673.
+/pilot/wavs/000516.wav|Alright, I have your email as stephanie dot clark at example dot com — is that correct?
+/pilot/wavs/003289.wav|Let me repeat the confirmation number back: 270, 633.
+/pilot/wavs/003727.wav|Let me repeat the confirmation number back: 512, 360.
+/pilot/wavs/001979.wav|Let me read that back to you — your address is 418 Pine Street, apartment 2C.
+/pilot/wavs/003041.wav|Let me repeat the confirmation number back: 124, 549.
+/pilot/wavs/003780.wav|Let me repeat the confirmation number back: 540, 981.
+/pilot/wavs/003011.wav|Let me repeat the confirmation number back: 105, 588.
+/pilot/wavs/000805.wav|How does Tuesday at ten o'clock sound?
+/pilot/wavs/000583.wav|Can I get your date of birth for verification, please?
+/pilot/wavs/002907.wav|Let me read that back to you — your address is 954 Elm Street, apartment 9A.
+/pilot/wavs/002644.wav|Let me read that back to you — your address is 797 Maple Street, apartment 3C.
+/pilot/wavs/001087.wav|I have an opening next Friday at three fifteen in the afternoon, would that work?
+/pilot/wavs/003622.wav|Let me repeat the confirmation number back: 455, 516.
+/pilot/wavs/001734.wav|Let me read that back to you — your address is 273 Maple Street, apartment 6A.
+/pilot/wavs/003134.wav|Let me repeat the confirmation number back: 179, 715.
+/pilot/wavs/001233.wav|It's fairly humid out there today, so dress accordingly.
+/pilot/wavs/002850.wav|Let me read that back to you — your address is 919 Pine Street, apartment 1D.
+/pilot/wavs/001220.wav|Is there anything else I can help you with today?
+/pilot/wavs/000593.wav|Cancellations made within 24 hours are eligible for a full refund.
+/pilot/wavs/002075.wav|Let me read that back to you — your address is 466 Pine Street, apartment 5A.
+/pilot/wavs/002292.wav|Let me read that back to you — your address is 594 Oak Street, apartment 9B.
+/pilot/wavs/003049.wav|Let me repeat the confirmation number back: 126, 478.
+/pilot/wavs/003355.wav|Let me repeat the confirmation number back: 303, 260.
+/pilot/wavs/000879.wav|How does next Wednesday at nine thirty sound?
+/pilot/wavs/003898.wav|Let me repeat the confirmation number back: 607, 247.
+/pilot/wavs/000384.wav|Alright, I have your email as matthew dot sanchez at example dot com — is that correct?
+/pilot/wavs/002746.wav|Let me read that back to you — your address is 854 Main Street, apartment 3D.
+/pilot/wavs/001626.wav|Let me read that back to you — your address is 209 Elm Street, apartment 7C.
+/pilot/wavs/001255.wav|Just to confirm, is your appointment on Monday at eleven forty-five?
+/pilot/wavs/003367.wav|Let me repeat the confirmation number back: 307, 179.
+/pilot/wavs/003861.wav|Let me repeat the confirmation number back: 587, 278.
+/pilot/wavs/002188.wav|Let me read that back to you — your address is 539 Oak Street, apartment 2B.
+/pilot/wavs/000869.wav|How does next Tuesday at three fifteen in the afternoon sound?
+/pilot/wavs/003103.wav|Let me repeat the confirmation number back: 162, 166.
+/pilot/wavs/003497.wav|Let me repeat the confirmation number back: 386, 771.
+/pilot/wavs/000634.wav|Expect breezy conditions with gusts up to 40 miles per hour.
+/pilot/wavs/003651.wav|Let me repeat the confirmation number back: 478, 129.
+/pilot/wavs/000699.wav|Given that your appointment was originally for next Friday, would you rather push it to next Monday or skip ahead to next week entirely?
+/pilot/wavs/000030.wav|After the trial period ends, you'll be billed at the regular monthly rate.
+/pilot/wavs/001307.wav|Just to confirm, is your appointment on Tuesday at eleven in the morning?
+/pilot/wavs/002999.wav|Let me read that back to you — your address is 999 Cedar Street, apartment 1A.
+/pilot/wavs/003670.wav|Let me repeat the confirmation number back: 486, 130.
+/pilot/wavs/000237.wav|Alright, I have your email as jason dot wilson at example dot com — is that correct?
+/pilot/wavs/000602.wav|Combined with shipping, the final total is fifty-six ninety-nine.
+/pilot/wavs/002640.wav|Let me read that back to you — your address is 795 Pine Street, apartment 1B.
+/pilot/wavs/003495.wav|Let me repeat the confirmation number back: 386, 527.
+/pilot/wavs/000531.wav|Alright, I have your email as stephanie dot wilson at example dot com — is that correct?
+/pilot/wavs/001102.wav|I have an opening next Saturday at five forty-five in the evening, would that work?
+/pilot/wavs/000435.wav|Alright, I have your email as michelle dot thomas at example dot com — is that correct?
+/pilot/wavs/003457.wav|Let me repeat the confirmation number back: 366, 590.
+/pilot/wavs/002058.wav|Let me read that back to you — your address is 459 Maple Street, apartment 1C.
+/pilot/wavs/003211.wav|Let me repeat the confirmation number back: 231, 250.
+/pilot/wavs/002399.wav|Let me read that back to you — your address is 644 Pine Street, apartment 6A.
+/pilot/wavs/000107.wav|Alright, I have your email as ashley dot johnson at example dot com — is that correct?
+/pilot/wavs/000337.wav|Alright, I have your email as laura dot martinez at example dot com — is that correct?
+/pilot/wavs/002758.wav|Let me read that back to you — your address is 862 Oak Street, apartment 6D.
+/pilot/wavs/001213.wav|In the event of any delay, we'll notify you as soon as we know more.
+/pilot/wavs/003447.wav|Let me repeat the confirmation number back: 357, 388.
+/pilot/wavs/001504.wav|Let me read that back to you — your address is 147 Pine Street, apartment 1C.
+/pilot/wavs/003951.wav|Let me repeat the confirmation number back: 636, 363.
+/pilot/wavs/001030.wav|I have an opening Saturday at four thirty in the afternoon, would that work?
+/pilot/wavs/001131.wav|I have an opening next Tuesday at three fifteen in the afternoon, would that work?
+/pilot/wavs/000456.wav|Alright, I have your email as rachel dot lee at example dot com — is that correct?
+/pilot/wavs/003301.wav|Let me repeat the confirmation number back: 274, 885.
+/pilot/wavs/001682.wav|Let me read that back to you — your address is 244 Main Street, apartment 3A.
+/pilot/wavs/000031.wav|After this call, you'll get a text with a link to track your request.
+/pilot/wavs/003781.wav|Let me repeat the confirmation number back: 541, 124.
+/pilot/wavs/001859.wav|Let me read that back to you — your address is 345 Maple Street, apartment 7A.
+/pilot/wavs/003324.wav|Let me repeat the confirmation number back: 288, 322.
+/pilot/wavs/000883.wav|How does next Wednesday at six in the evening sound?
+/pilot/wavs/000276.wav|Alright, I have your email as john dot johnson at example dot com — is that correct?
+/pilot/wavs/003864.wav|Let me repeat the confirmation number back: 587, 685.
+/pilot/wavs/002771.wav|Let me read that back to you — your address is 868 Main Street, apartment 4C.
+/pilot/wavs/000256.wav|Alright, I have your email as jessica dot davis at example dot com — is that correct?
+/pilot/wavs/001311.wav|Just to confirm, is your appointment on Tuesday at nine thirty?
+/pilot/wavs/000825.wav|How does next Friday at three fifteen in the afternoon sound?
+/pilot/wavs/001520.wav|Let me read that back to you — your address is 155 Cedar Street, apartment 7C.
+/pilot/wavs/002046.wav|Let me read that back to you — your address is 456 Cedar Street, apartment 2D.
+/pilot/wavs/001610.wav|Let me read that back to you — your address is 202 Main Street, apartment 5D.
+/pilot/wavs/001188.wav|I'll patch you through to our technical team.
+/pilot/wavs/000874.wav|How does next Wednesday at eleven forty-five sound?
+/pilot/wavs/000134.wav|Alright, I have your email as christopher dot jackson at example dot com — is that correct?
+/pilot/wavs/002777.wav|Let me read that back to you — your address is 875 Main Street, apartment 4D.
+/pilot/wavs/001152.wav|I have an opening next next Monday at four thirty in the afternoon, would that work?
+/pilot/wavs/003697.wav|Let me repeat the confirmation number back: 498, 685.
+/pilot/wavs/000122.wav|Alright, I have your email as brian dot jackson at example dot com — is that correct?
+/pilot/wavs/003193.wav|Let me repeat the confirmation number back: 218, 718.
+/pilot/wavs/000406.wav|Alright, I have your email as melissa dot anderson at example dot com — is that correct?
+/pilot/wavs/003557.wav|Let me repeat the confirmation number back: 424, 948.
+/pilot/wavs/002719.wav|Let me read that back to you — your address is 836 Oak Street, apartment 7C.
+/pilot/wavs/003156.wav|Let me repeat the confirmation number back: 197, 116.
+/pilot/wavs/000512.wav|Alright, I have your email as sarah dot taylor at example dot com — is that correct?
+/pilot/wavs/002980.wav|Let me read that back to you — your address is 988 Pine Street, apartment 3B.
+/pilot/wavs/000877.wav|How does next Wednesday at four o'clock sound?
+/pilot/wavs/000190.wav|Alright, I have your email as emily dot martin at example dot com — is that correct?
+/pilot/wavs/001217.wav|Is the product still under warranty, or has that time period already passed?
+/pilot/wavs/003661.wav|Let me repeat the confirmation number back: 481, 677.
+/pilot/wavs/000329.wav|Alright, I have your email as laura dot anderson at example dot com — is that correct?
+/pilot/wavs/003254.wav|Let me repeat the confirmation number back: 254, 318.
+/pilot/wavs/000320.wav|Alright, I have your email as kimberly dot martin at example dot com — is that correct?
+/pilot/wavs/001601.wav|Let me read that back to you — your address is 198 Pine Street, apartment 7B.
+/pilot/wavs/002793.wav|Let me read that back to you — your address is 882 Oak Street, apartment 7D.
+/pilot/wavs/001787.wav|Let me read that back to you — your address is 304 Cedar Street, apartment 8D.
+/pilot/wavs/002994.wav|Let me read that back to you — your address is 994 Oak Street, apartment 5A.
+/pilot/wavs/002405.wav|Let me read that back to you — your address is 649 Main Street, apartment 5D.
+/pilot/wavs/000761.wav|How does Monday at one o'clock sound?
+/pilot/wavs/000521.wav|Alright, I have your email as stephanie dot johnson at example dot com — is that correct?
+/pilot/wavs/003691.wav|Let me repeat the confirmation number back: 496, 874.
+/pilot/wavs/001689.wav|Let me read that back to you — your address is 249 Main Street, apartment 6A.
+/pilot/wavs/004035.wav|Let me repeat the confirmation number back: 686, 996.
+/pilot/wavs/003958.wav|Let me repeat the confirmation number back: 642, 388.
+/pilot/wavs/000767.wav|How does Monday at two thirty sound?
+/pilot/wavs/003911.wav|Let me repeat the confirmation number back: 615, 885.
+/pilot/wavs/000652.wav|Given that your appointment was originally for Friday, would you rather push it to next Wednesday or skip ahead to next week entirely?
+/pilot/wavs/000099.wav|Alright, I have your email as anthony dot moore at example dot com — is that correct?
+/pilot/wavs/003018.wav|Let me repeat the confirmation number back: 110, 300.
+/pilot/wavs/001090.wav|I have an opening next Monday at eleven in the morning, would that work?
+/pilot/wavs/000469.wav|Alright, I have your email as robert dot davis at example dot com — is that correct?
+/pilot/wavs/000966.wav|I can offer either next Monday or Saturday.
+/pilot/wavs/002157.wav|Let me read that back to you — your address is 516 Elm Street, apartment 1C.
+/pilot/wavs/002258.wav|Let me read that back to you — your address is 575 Elm Street, apartment 9B.
+/pilot/wavs/003347.wav|Let me repeat the confirmation number back: 297, 787.
+/pilot/wavs/001180.wav|I'll escalate this to our technical team if it continues.
+/pilot/wavs/001426.wav|Let me read that back to you — your address is 103 Elm Street, apartment 1B.
+/pilot/wavs/002536.wav|Let me read that back to you — your address is 726 Oak Street, apartment 4D.
+/pilot/wavs/000686.wav|Given that your appointment was originally for Tuesday, would you rather push it to Tuesday or skip ahead to next week entirely?
+/pilot/wavs/002839.wav|Let me read that back to you — your address is 913 Maple Street, apartment 8A.
+/pilot/wavs/002791.wav|Let me read that back to you — your address is 882 Elm Street, apartment 7C.
+/pilot/wavs/001585.wav|Let me read that back to you — your address is 188 Main Street, apartment 6A.
+/pilot/wavs/002647.wav|Let me read that back to you — your address is 797 Pine Street, apartment 7B.
+/pilot/wavs/002872.wav|Let me read that back to you — your address is 935 Maple Street, apartment 6B.
+/pilot/wavs/002723.wav|Let me read that back to you — your address is 839 Main Street, apartment 9B.
+/pilot/wavs/002012.wav|Let me read that back to you — your address is 441 Main Street, apartment 3C.
+/pilot/wavs/001470.wav|Let me read that back to you — your address is 130 Elm Street, apartment 2C.
+/pilot/wavs/000850.wav|How does next Thursday at five forty-five in the evening sound?
+/pilot/wavs/001624.wav|Let me read that back to you — your address is 208 Pine Street, apartment 2D.
+/pilot/wavs/000051.wav|Alright, I have your email as amanda dot williams at example dot com — is that correct?
+/pilot/wavs/002971.wav|Let me read that back to you — your address is 983 Main Street, apartment 1C.
+/pilot/wavs/001625.wav|Let me read that back to you — your address is 209 Cedar Street, apartment 2A.
+/pilot/wavs/002760.wav|Let me read that back to you — your address is 863 Elm Street, apartment 5D.
+/pilot/wavs/002543.wav|Let me read that back to you — your address is 729 Elm Street, apartment 3B.
+/pilot/wavs/002411.wav|Let me read that back to you — your address is 654 Oak Street, apartment 8B.
+/pilot/wavs/001841.wav|Let me read that back to you — your address is 333 Maple Street, apartment 4D.
+/pilot/wavs/003245.wav|Let me repeat the confirmation number back: 251, 165.
+/pilot/wavs/003888.wav|Let me repeat the confirmation number back: 603, 107.
+/pilot/wavs/000328.wav|Alright, I have your email as kimberly dot white at example dot com — is that correct?
+/pilot/wavs/002717.wav|Let me read that back to you — your address is 835 Oak Street, apartment 2B.
+/pilot/wavs/001742.wav|Let me read that back to you — your address is 277 Oak Street, apartment 1B.
+/pilot/wavs/001297.wav|Just to confirm, is your appointment on Thursday at five forty-five in the evening?
+/pilot/wavs/002288.wav|Let me read that back to you — your address is 592 Maple Street, apartment 8C.
+/pilot/wavs/003969.wav|Let me repeat the confirmation number back: 645, 462.
+/pilot/wavs/002614.wav|Let me read that back to you — your address is 781 Elm Street, apartment 7D.
+/pilot/wavs/002266.wav|Let me read that back to you — your address is 582 Main Street, apartment 1A.
+/pilot/wavs/002061.wav|Let me read that back to you — your address is 462 Cedar Street, apartment 9D.
+/pilot/wavs/002541.wav|Let me read that back to you — your address is 728 Main Street, apartment 9C.
+/pilot/wavs/001843.wav|Let me read that back to you — your address is 336 Main Street, apartment 7D.
+/pilot/wavs/003623.wav|Let me repeat the confirmation number back: 455, 813.
+/pilot/wavs/002436.wav|Let me read that back to you — your address is 665 Oak Street, apartment 6C.
+/pilot/wavs/000697.wav|Given that your appointment was originally for next Friday, would you rather push it to Tuesday or skip ahead to next week entirely?
+/pilot/wavs/002147.wav|Let me read that back to you — your address is 508 Main Street, apartment 1B.
+/pilot/wavs/000576.wav|Because you're a returning customer, I'm able to waive the sixty-three ninety-nine reactivation fee this time around.
+/pilot/wavs/003116.wav|Let me repeat the confirmation number back: 168, 287.
+/pilot/wavs/000227.wav|Alright, I have your email as jason dot garcia at example dot com — is that correct?
+/pilot/wavs/001299.wav|Just to confirm, is your appointment on Thursday at four o'clock?
+/pilot/wavs/002568.wav|Let me read that back to you — your address is 746 Cedar Street, apartment 7C.
+/pilot/wavs/003794.wav|Let me repeat the confirmation number back: 547, 908.
+/pilot/wavs/003201.wav|Let me repeat the confirmation number back: 222, 504.
+/pilot/wavs/004036.wav|Let me repeat the confirmation number back: 687, 119.
+/pilot/wavs/001575.wav|Let me read that back to you — your address is 184 Main Street, apartment 6D.
+/pilot/wavs/001442.wav|Let me read that back to you — your address is 113 Elm Street, apartment 9B.
+/pilot/wavs/000473.wav|Alright, I have your email as robert dot jackson at example dot com — is that correct?
+/pilot/wavs/003627.wav|Let me repeat the confirmation number back: 457, 799.
+/pilot/wavs/001458.wav|Let me read that back to you — your address is 123 Oak Street, apartment 2B.
