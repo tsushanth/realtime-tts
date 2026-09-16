@@ -1,0 +1,643 @@
+Congratulations, your application has been approved.
+Unfortunately, we're not able to approve that request at this time.
+Great news, your refund has already been issued.
+I'm sorry to say that item is permanently out of stock.
+Good news, we found an even better rate for you.
+I regret to inform you that we can't extend the deadline this time.
+Wonderful, everything is confirmed and ready to go.
+I'm afraid the warranty on that item expired last month.
+Fantastic, that discount has been applied successfully.
+Sadly, that promotion ended over the weekend.
+Zero, one, two, three, four, five, six, seven, eight, nine.
+Your PIN is seven, three, six, zero.
+Your PIN is two, six, zero, six.
+Your PIN is four, seven, four, six.
+Your PIN is eight, seven, two, three.
+Your PIN is four, three, zero, nine.
+Your PIN is eight, zero, five, zero.
+Your PIN is zero, nine, seven, eight.
+Your PIN is eight, two, zero, eight.
+Your PIN is one, two, one, nine.
+Your PIN is one, three, six, one.
+Your PIN is nine, three, nine, nine.
+Your PIN is zero, nine, one, six.
+Your PIN is nine, nine, eight, five.
+Your PIN is four, three, five, three.
+Your PIN is four, six, two, four.
+Your PIN is seven, five, one, zero.
+Your PIN is seven, nine, nine, one.
+Your PIN is one, eight, three, eight.
+Your PIN is four, two, five, one.
+Your PIN is three, five, four, two.
+Your PIN is seven, eight, four, nine.
+Your PIN is eight, zero, eight, four.
+Your PIN is one, two, four, one.
+Your PIN is one, eight, two, four.
+Your PIN is four, nine, three, five.
+Your PIN is three, four, eight, seven.
+Your PIN is four, zero, one, six.
+Your PIN is four, zero, zero, five.
+Your PIN is two, four, two, seven.
+Your PIN is eight, six, eight, zero.
+Your PIN is one, one, two, eight.
+Your PIN is zero, five, nine, eight.
+Your PIN is two, six, two, zero.
+Your PIN is four, five, zero, five.
+Your PIN is three, three, one, five.
+Your PIN is eight, six, nine, two.
+Your PIN is three, two, two, six.
+Your PIN is zero, two, five, six.
+Your PIN is three, four, two, one.
+Your PIN is six, zero, seven, three.
+Your PIN is three, seven, five, four.
+Your PIN is three, three, zero, three.
+Your PIN is six, five, four, one.
+Your PIN is four, five, eight, six.
+Your PIN is eight, five, zero, one.
+Your PIN is four, two, nine, four.
+Your PIN is zero, one, nine, six.
+Your PIN is five, five, six, nine.
+Your PIN is eight, one, six, nine.
+Your PIN is three, four, zero, six.
+Your PIN is zero, eight, eight, three.
+Your PIN is five, six, one, five.
+Your PIN is nine, five, one, four.
+Your PIN is eight, four, six, five.
+Your PIN is six, four, eight, two.
+Your PIN is three, six, six, two.
+Your PIN is nine, nine, four, six.
+Your PIN is eight, zero, four, four.
+Your PIN is three, six, nine, nine.
+Your PIN is five, seven, seven, seven.
+Please enter your six digit verification code now.
+The last four digits of your card are three, eight, seven, two.
+The last four digits of your card are one, four, eight, nine.
+The last four digits of your card are five, one, three, four.
+The last four digits of your card are three, three, two, zero.
+The last four digits of your card are zero, three, seven, nine.
+The last four digits of your card are one, seven, six, nine.
+The last four digits of your card are three, six, seven, six.
+The last four digits of your card are three, two, zero, one.
+The last four digits of your card are six, three, two, eight.
+The last four digits of your card are seven, zero, eight, three.
+The last four digits of your card are one, seven, two, seven.
+The last four digits of your card are eight, eight, nine, five.
+The last four digits of your card are seven, nine, eight, six.
+The last four digits of your card are eight, seven, two, seven.
+The last four digits of your card are seven, four, three, four.
+The last four digits of your card are eight, seven, three, four.
+The last four digits of your card are seven, one, four, three.
+The last four digits of your card are four, five, five, eight.
+The last four digits of your card are one, two, two, three.
+The last four digits of your card are six, two, three, one.
+The last four digits of your card are six, six, five, eight.
+The last four digits of your card are seven, six, zero, three.
+The last four digits of your card are six, six, nine, zero.
+The last four digits of your card are nine, six, seven, zero.
+The last four digits of your card are five, four, six, six.
+The last four digits of your card are eight, eight, nine, three.
+The last four digits of your card are seven, three, four, six.
+The last four digits of your card are seven, zero, six, five.
+The last four digits of your card are six, two, seven, two.
+The last four digits of your card are nine, eight, zero, six.
+The last four digits of your card are nine, nine, zero, one.
+The last four digits of your card are zero, four, six, five.
+The last four digits of your card are three, seven, five, five.
+The last four digits of your card are six, four, six, four.
+The last four digits of your card are one, seven, zero, eight.
+The last four digits of your card are zero, five, three, one.
+The last four digits of your card are zero, zero, three, three.
+The last four digits of your card are zero, nine, two, three.
+The last four digits of your card are two, seven, one, nine.
+The last four digits of your card are three, seven, four, five.
+The last four digits of your card are two, nine, nine, one.
+The last four digits of your card are two, four, one, nine.
+The last four digits of your card are zero, four, nine, six.
+The last four digits of your card are six, three, one, nine.
+The last four digits of your card are three, one, four, nine.
+The last four digits of your card are one, nine, zero, five.
+The last four digits of your card are eight, six, five, one.
+The last four digits of your card are eight, five, zero, six.
+The last four digits of your card are seven, one, six, five.
+The last four digits of your card are seven, two, six, two.
+The last four digits of your card are eight, four, nine, eight.
+The last four digits of your card are seven, seven, six, nine.
+The last four digits of your card are four, five, three, one.
+The last four digits of your card are four, seven, three, seven.
+The last four digits of your card are nine, nine, six, five.
+The last four digits of your card are zero, seven, five, two.
+The last four digits of your card are seven, three, five, four.
+The last four digits of your card are five, four, nine, four.
+The last four digits of your card are eight, zero, eight, three.
+The last four digits of your card are one, three, six, seven.
+Your ticket number is 668, dash, 876.
+Your ticket number is 346, dash, 807.
+Your ticket number is 587, dash, 761.
+Your ticket number is 828, dash, 602.
+Your ticket number is 558, dash, 911.
+Your ticket number is 117, dash, 195.
+Your ticket number is 401, dash, 326.
+Your ticket number is 514, dash, 808.
+Your ticket number is 349, dash, 413.
+Your ticket number is 779, dash, 695.
+Your ticket number is 477, dash, 584.
+Your ticket number is 666, dash, 643.
+Your ticket number is 452, dash, 535.
+Your ticket number is 863, dash, 663.
+Your ticket number is 438, dash, 460.
+Your ticket number is 819, dash, 564.
+Your ticket number is 377, dash, 413.
+Your ticket number is 357, dash, 336.
+Your ticket number is 223, dash, 838.
+Your ticket number is 297, dash, 423.
+Your ticket number is 222, dash, 860.
+Your ticket number is 648, dash, 880.
+Your ticket number is 806, dash, 289.
+Your ticket number is 296, dash, 321.
+Your ticket number is 856, dash, 595.
+Your ticket number is 383, dash, 841.
+Your ticket number is 703, dash, 878.
+Your ticket number is 637, dash, 711.
+Your ticket number is 389, dash, 202.
+Your ticket number is 952, dash, 298.
+Your ticket number is 403, dash, 332.
+Your ticket number is 469, dash, 283.
+Your ticket number is 409, dash, 114.
+Your ticket number is 825, dash, 646.
+Your ticket number is 229, dash, 380.
+Your ticket number is 146, dash, 155.
+Your ticket number is 666, dash, 399.
+Your ticket number is 814, dash, 229.
+Your ticket number is 753, dash, 989.
+Your ticket number is 870, dash, 602.
+Your ticket number is 205, dash, 993.
+Your ticket number is 112, dash, 687.
+Your ticket number is 391, dash, 580.
+Your ticket number is 590, dash, 551.
+Your ticket number is 448, dash, 288.
+Your ticket number is 152, dash, 358.
+Your ticket number is 982, dash, 589.
+Your ticket number is 216, dash, 941.
+Your ticket number is 166, dash, 510.
+Your ticket number is 603, dash, 175.
+Your ticket number is 690, dash, 744.
+Your ticket number is 802, dash, 154.
+Your ticket number is 255, dash, 252.
+Your ticket number is 930, dash, 676.
+Your ticket number is 411, dash, 187.
+Your ticket number is 354, dash, 221.
+Your ticket number is 671, dash, 882.
+Your ticket number is 526, dash, 720.
+Your ticket number is 710, dash, 909.
+Your ticket number is 733, dash, 331.
+That will be shipped to zip code 78494.
+That will be shipped to zip code 59856.
+That will be shipped to zip code 69049.
+That will be shipped to zip code 68028.
+That will be shipped to zip code 48974.
+That will be shipped to zip code 87139.
+That will be shipped to zip code 66207.
+That will be shipped to zip code 50026.
+That will be shipped to zip code 84531.
+That will be shipped to zip code 91399.
+That will be shipped to zip code 17894.
+That will be shipped to zip code 89905.
+That will be shipped to zip code 23006.
+That will be shipped to zip code 37235.
+That will be shipped to zip code 91987.
+That will be shipped to zip code 37659.
+That will be shipped to zip code 44687.
+That will be shipped to zip code 96563.
+That will be shipped to zip code 20641.
+That will be shipped to zip code 30585.
+That will be shipped to zip code 41439.
+That will be shipped to zip code 32782.
+That will be shipped to zip code 82350.
+That will be shipped to zip code 19838.
+That will be shipped to zip code 30517.
+That will be shipped to zip code 10350.
+That will be shipped to zip code 63545.
+That will be shipped to zip code 69048.
+That will be shipped to zip code 87832.
+That will be shipped to zip code 71592.
+That will be shipped to zip code 48175.
+That will be shipped to zip code 14278.
+That will be shipped to zip code 40340.
+That will be shipped to zip code 47762.
+That will be shipped to zip code 47056.
+That will be shipped to zip code 69510.
+That will be shipped to zip code 19329.
+That will be shipped to zip code 40595.
+That will be shipped to zip code 44675.
+That will be shipped to zip code 91927.
+That will be shipped to zip code 87304.
+That will be shipped to zip code 96662.
+That will be shipped to zip code 35928.
+That will be shipped to zip code 65723.
+That will be shipped to zip code 25043.
+That will be shipped to zip code 81376.
+That will be shipped to zip code 39466.
+That will be shipped to zip code 94886.
+That will be shipped to zip code 29528.
+That will be shipped to zip code 44816.
+That will be shipped to zip code 28643.
+That will be shipped to zip code 19359.
+That will be shipped to zip code 17816.
+That will be shipped to zip code 31747.
+That will be shipped to zip code 50319.
+That will be shipped to zip code 87993.
+That will be shipped to zip code 84607.
+That will be shipped to zip code 47828.
+That will be shipped to zip code 67560.
+That will be shipped to zip code 26299.
+Your extension is 8679.
+Your extension is 5982.
+Your extension is 7594.
+Your extension is 5460.
+Your extension is 9199.
+Your extension is 9847.
+Your extension is 9090.
+Your extension is 8172.
+Your extension is 2317.
+Your extension is 1653.
+Your extension is 8078.
+Your extension is 6280.
+Your extension is 5102.
+Your extension is 1423.
+Your extension is 2496.
+Your extension is 4750.
+Your extension is 1339.
+Your extension is 5415.
+Your extension is 1659.
+Your extension is 3870.
+Your extension is 8708.
+Your extension is 9502.
+Your extension is 8245.
+Your extension is 5557.
+Your extension is 3973.
+Your extension is 8141.
+Your extension is 9056.
+Your extension is 2494.
+Your extension is 8700.
+Your extension is 6700.
+Your extension is 7690.
+Your extension is 6460.
+Your extension is 6260.
+Your extension is 2713.
+Your extension is 3634.
+Your extension is 6403.
+Your extension is 7744.
+Your extension is 9117.
+Your extension is 5722.
+Your extension is 7561.
+Your extension is 1601.
+Your extension is 8451.
+Your extension is 2442.
+Your extension is 6153.
+Your extension is 5135.
+Your extension is 6296.
+Your extension is 2899.
+Your extension is 7622.
+Your extension is 9431.
+Your extension is 1018.
+Your extension is 9889.
+Your extension is 8569.
+Your extension is 7770.
+Your extension is 1888.
+Your extension is 4073.
+Your extension is 9494.
+Your extension is 6927.
+Your extension is 9167.
+Your extension is 8242.
+Your extension is 1845.
+The tracking number begins with one Z, nine nine nine.
+Your case ID is C S dash 4335.
+Your case ID is C S dash 5375.
+Your case ID is C S dash 9998.
+Your case ID is C S dash 3146.
+Your case ID is C S dash 5719.
+Your case ID is C S dash 8178.
+Your case ID is C S dash 8941.
+Your case ID is C S dash 2989.
+Your case ID is C S dash 1472.
+Your case ID is C S dash 4920.
+Your case ID is C S dash 3594.
+Your case ID is C S dash 6091.
+Your case ID is C S dash 1224.
+Your case ID is C S dash 7684.
+Your case ID is C S dash 2527.
+Your case ID is C S dash 4681.
+Your case ID is C S dash 2858.
+Your case ID is C S dash 8560.
+Your case ID is C S dash 2924.
+Your case ID is C S dash 3522.
+Your case ID is C S dash 9165.
+Your case ID is C S dash 5781.
+Your case ID is C S dash 9337.
+Your case ID is C S dash 5479.
+Your case ID is C S dash 7807.
+Your case ID is C S dash 8905.
+Your case ID is C S dash 8736.
+Your case ID is C S dash 4993.
+Your case ID is C S dash 8483.
+Your case ID is C S dash 3369.
+Your case ID is C S dash 7284.
+Your case ID is C S dash 4122.
+Your case ID is C S dash 9327.
+Your case ID is C S dash 3236.
+Your case ID is C S dash 2143.
+Your case ID is C S dash 5526.
+Your case ID is C S dash 7798.
+Your case ID is C S dash 6568.
+Your case ID is C S dash 9318.
+Your case ID is C S dash 5377.
+Your case ID is C S dash 1042.
+Your case ID is C S dash 5634.
+Your case ID is C S dash 5891.
+Your case ID is C S dash 9022.
+Your case ID is C S dash 3434.
+Your case ID is C S dash 8316.
+Your case ID is C S dash 9824.
+Your case ID is C S dash 8935.
+Your case ID is C S dash 6654.
+Your case ID is C S dash 6446.
+Your case ID is C S dash 9903.
+Your case ID is C S dash 7180.
+Your case ID is C S dash 8460.
+Your case ID is C S dash 6272.
+Your case ID is C S dash 4090.
+Your case ID is C S dash 4912.
+Your case ID is C S dash 7274.
+Your case ID is C S dash 4826.
+Your case ID is C S dash 7730.
+Your case ID is C S dash 1715.
+Please hold for just a moment while I connect you.
+You are caller number 6 in the queue.
+You are caller number 8 in the queue.
+You are caller number 7 in the queue.
+You are caller number 3 in the queue.
+You are caller number 1 in the queue.
+You are caller number 9 in the queue.
+You are caller number 2 in the queue.
+You are caller number 5 in the queue.
+You are caller number 4 in the queue.
+Estimated wait time is currently 10 minutes.
+Estimated wait time is currently 5 minutes.
+Estimated wait time is currently 15 minutes.
+Estimated wait time is currently 2 minutes.
+Estimated wait time is currently 7 minutes.
+Estimated wait time is currently 3 minutes.
+Please stay on the line, your call is important to us.
+All of our representatives are currently helping other customers.
+Thank you for your patience, someone will be with you shortly.
+Your call may be recorded for quality and training purposes.
+If you'd like a callback instead of waiting, press one now.
+The next available representative will be with you shortly.
+We appreciate you holding, thanks for your continued patience.
+Can you hear me okay? The connection seems a little unclear.
+Sorry, you're breaking up a little bit, could you repeat that?
+I think we got disconnected there for a second, are you still with me?
+The line seems to have some background noise, is that on your end?
+Let me know if my audio is coming through clearly.
+Apologies, there seems to be an echo on the line.
+Can you move to a quieter area if possible? It's a bit hard to hear.
+I'll try calling back if we get disconnected.
+Thanks for bearing with the audio issues today.
+That sounds much clearer now, thank you.
+Is English your preferred language for this call?
+Would you like me to switch to speaking more slowly?
+Let me know if you'd prefer a different representative.
+I want to make sure I'm explaining this in a way that makes sense.
+Please let me know if anything I've said needs more clarification.
+I realize this is a lot of information, so feel free to ask questions.
+Take your time, there's no rush on this call.
+I'm happy to go through this again if it helps.
+Let's slow down and go through this one piece at a time.
+Does that all make sense so far?
+The new policy takes effect starting the first of next month.
+Prices for this plan will increase slightly starting next quarter.
+This offer is only valid through the end of this week.
+Enrollment for the new program opens next Monday.
+The old system will be retired at the end of this year.
+This feature will be rolled out gradually over the next few weeks.
+The updated terms will be sent to your email for review.
+Support for the previous version ends in 45 days.
+Support for the previous version ends in 60 days.
+Support for the previous version ends in 90 days.
+Support for the previous version ends in 30 days.
+This limited time offer expires at midnight tonight.
+The new interface will become the default starting next update.
+I want to personally apologize for the trouble this has caused.
+On behalf of the team, I'm sorry this wasn't handled correctly the first time.
+We take feedback like this seriously, and I appreciate you sharing it.
+This isn't the experience we want our customers to have.
+I completely understand if this has shaken your confidence in us.
+We value your business and want to make this right.
+Thank you for giving us the chance to fix this.
+I know this has taken longer than it should have.
+We're committed to doing better going forward.
+I appreciate you giving us another chance here.
+Let's see, that comes out to twenty-three dollars in total.
+Let's see, that comes out to sixty-three ninety-nine in total.
+Let's see, that comes out to forty-eight dollars in total.
+Let's see, that comes out to thirty-four dollars and twenty cents in total.
+Let's see, that comes out to seventy-one dollars and ten cents in total.
+Let's see, that comes out to forty-two fifty in total.
+Let's see, that comes out to eighty-nine dollars in total.
+Let's see, that comes out to seventeen ninety-nine in total.
+Let's see, that comes out to twelve dollars and fifty cents in total.
+Let's see, that comes out to one hundred and fifty dollars and thirty cents in total.
+Let's see, that comes out to two hundred and eighty-nine ninety-nine in total.
+Let's see, that comes out to fifty-six ninety-nine in total.
+Let's see, that comes out to one hundred and eighteen dollars in total.
+Let's see, that comes out to two hundred and four dollars in total.
+Let's see, that comes out to ninety-four fifty in total.
+Let's see, that comes out to twenty-nine ninety-five in total.
+After the discount, your new total is fifty-six ninety-nine.
+After the discount, your new total is twenty-three dollars.
+After the discount, your new total is two hundred and four dollars.
+After the discount, your new total is ninety-four fifty.
+After the discount, your new total is twenty-nine ninety-five.
+After the discount, your new total is seventeen ninety-nine.
+After the discount, your new total is forty-eight dollars.
+After the discount, your new total is thirty-four dollars and twenty cents.
+After the discount, your new total is forty-two fifty.
+After the discount, your new total is eighty-nine dollars.
+After the discount, your new total is two hundred and eighty-nine ninety-nine.
+After the discount, your new total is one hundred and fifty dollars and thirty cents.
+After the discount, your new total is seventy-one dollars and ten cents.
+After the discount, your new total is twelve dollars and fifty cents.
+After the discount, your new total is one hundred and eighteen dollars.
+After the discount, your new total is sixty-three ninety-nine.
+With tax included, that brings it to twenty-three dollars.
+With tax included, that brings it to sixty-three ninety-nine.
+With tax included, that brings it to thirty-four dollars and twenty cents.
+With tax included, that brings it to one hundred and eighteen dollars.
+With tax included, that brings it to eighty-nine dollars.
+With tax included, that brings it to ninety-four fifty.
+With tax included, that brings it to twenty-nine ninety-five.
+With tax included, that brings it to twelve dollars and fifty cents.
+With tax included, that brings it to seventy-one dollars and ten cents.
+With tax included, that brings it to two hundred and four dollars.
+With tax included, that brings it to forty-two fifty.
+With tax included, that brings it to one hundred and fifty dollars and thirty cents.
+With tax included, that brings it to fifty-six ninety-nine.
+With tax included, that brings it to two hundred and eighty-nine ninety-nine.
+With tax included, that brings it to forty-eight dollars.
+With tax included, that brings it to seventeen ninety-nine.
+Split three ways, that's about one hundred and fifty dollars and thirty cents each.
+Split three ways, that's about one hundred and eighteen dollars each.
+Split three ways, that's about two hundred and four dollars each.
+Split three ways, that's about twenty-three dollars each.
+Split three ways, that's about sixty-three ninety-nine each.
+Split three ways, that's about ninety-four fifty each.
+Split three ways, that's about two hundred and eighty-nine ninety-nine each.
+Split three ways, that's about eighty-nine dollars each.
+Split three ways, that's about twelve dollars and fifty cents each.
+Split three ways, that's about forty-eight dollars each.
+Split three ways, that's about seventy-one dollars and ten cents each.
+Split three ways, that's about thirty-four dollars and twenty cents each.
+Split three ways, that's about seventeen ninety-nine each.
+Split three ways, that's about twenty-nine ninety-five each.
+Split three ways, that's about forty-two fifty each.
+Split three ways, that's about fifty-six ninety-nine each.
+After the coupon, you'd be paying just two hundred and four dollars.
+After the coupon, you'd be paying just seventy-one dollars and ten cents.
+After the coupon, you'd be paying just sixty-three ninety-nine.
+After the coupon, you'd be paying just twenty-nine ninety-five.
+After the coupon, you'd be paying just twenty-three dollars.
+After the coupon, you'd be paying just forty-two fifty.
+After the coupon, you'd be paying just seventeen ninety-nine.
+After the coupon, you'd be paying just forty-eight dollars.
+After the coupon, you'd be paying just eighty-nine dollars.
+After the coupon, you'd be paying just thirty-four dollars and twenty cents.
+After the coupon, you'd be paying just fifty-six ninety-nine.
+After the coupon, you'd be paying just ninety-four fifty.
+After the coupon, you'd be paying just one hundred and eighteen dollars.
+After the coupon, you'd be paying just twelve dollars and fifty cents.
+After the coupon, you'd be paying just one hundred and fifty dollars and thirty cents.
+After the coupon, you'd be paying just two hundred and eighty-nine ninety-nine.
+The monthly cost works out to roughly seventeen ninety-nine.
+The monthly cost works out to roughly one hundred and fifty dollars and thirty cents.
+The monthly cost works out to roughly twenty-three dollars.
+The monthly cost works out to roughly forty-eight dollars.
+The monthly cost works out to roughly thirty-four dollars and twenty cents.
+The monthly cost works out to roughly sixty-three ninety-nine.
+The monthly cost works out to roughly eighty-nine dollars.
+The monthly cost works out to roughly one hundred and eighteen dollars.
+The monthly cost works out to roughly two hundred and four dollars.
+The monthly cost works out to roughly twelve dollars and fifty cents.
+The monthly cost works out to roughly twenty-nine ninety-five.
+The monthly cost works out to roughly seventy-one dollars and ten cents.
+The monthly cost works out to roughly ninety-four fifty.
+The monthly cost works out to roughly two hundred and eighty-nine ninety-nine.
+The monthly cost works out to roughly forty-two fifty.
+The monthly cost works out to roughly fifty-six ninety-nine.
+Combined with shipping, the final total is forty-eight dollars.
+Combined with shipping, the final total is ninety-four fifty.
+Combined with shipping, the final total is one hundred and fifty dollars and thirty cents.
+Combined with shipping, the final total is seventy-one dollars and ten cents.
+Combined with shipping, the final total is forty-two fifty.
+Combined with shipping, the final total is seventeen ninety-nine.
+Combined with shipping, the final total is two hundred and eighty-nine ninety-nine.
+Combined with shipping, the final total is eighty-nine dollars.
+Combined with shipping, the final total is fifty-six ninety-nine.
+Combined with shipping, the final total is twelve dollars and fifty cents.
+Combined with shipping, the final total is twenty-three dollars.
+Combined with shipping, the final total is twenty-nine ninety-five.
+Combined with shipping, the final total is thirty-four dollars and twenty cents.
+Combined with shipping, the final total is sixty-three ninety-nine.
+Combined with shipping, the final total is two hundred and four dollars.
+Combined with shipping, the final total is one hundred and eighteen dollars.
+After applying your credit, the remaining balance is ninety-four fifty.
+After applying your credit, the remaining balance is two hundred and four dollars.
+After applying your credit, the remaining balance is two hundred and eighty-nine ninety-nine.
+After applying your credit, the remaining balance is seventeen ninety-nine.
+After applying your credit, the remaining balance is seventy-one dollars and ten cents.
+After applying your credit, the remaining balance is forty-eight dollars.
+After applying your credit, the remaining balance is eighty-nine dollars.
+After applying your credit, the remaining balance is twenty-three dollars.
+After applying your credit, the remaining balance is twenty-nine ninety-five.
+After applying your credit, the remaining balance is forty-two fifty.
+After applying your credit, the remaining balance is twelve dollars and fifty cents.
+After applying your credit, the remaining balance is one hundred and fifty dollars and thirty cents.
+After applying your credit, the remaining balance is thirty-four dollars and twenty cents.
+After applying your credit, the remaining balance is sixty-three ninety-nine.
+After applying your credit, the remaining balance is fifty-six ninety-nine.
+After applying your credit, the remaining balance is one hundred and eighteen dollars.
+The annual plan comes out to about one hundred and fifty dollars and thirty cents a month.
+The annual plan comes out to about ninety-four fifty a month.
+The annual plan comes out to about sixty-three ninety-nine a month.
+The annual plan comes out to about one hundred and eighteen dollars a month.
+The annual plan comes out to about forty-eight dollars a month.
+The annual plan comes out to about two hundred and eighty-nine ninety-nine a month.
+The annual plan comes out to about forty-two fifty a month.
+The annual plan comes out to about seventy-one dollars and ten cents a month.
+The annual plan comes out to about thirty-four dollars and twenty cents a month.
+The annual plan comes out to about twenty-nine ninety-five a month.
+The annual plan comes out to about fifty-six ninety-nine a month.
+The annual plan comes out to about two hundred and four dollars a month.
+The annual plan comes out to about eighty-nine dollars a month.
+The annual plan comes out to about seventeen ninety-nine a month.
+The annual plan comes out to about twelve dollars and fifty cents a month.
+The annual plan comes out to about twenty-three dollars a month.
+With the bundle discount, you're saving almost ninety-four fifty overall.
+With the bundle discount, you're saving almost two hundred and eighty-nine ninety-nine overall.
+With the bundle discount, you're saving almost fifty-six ninety-nine overall.
+With the bundle discount, you're saving almost twenty-three dollars overall.
+With the bundle discount, you're saving almost two hundred and four dollars overall.
+With the bundle discount, you're saving almost seventy-one dollars and ten cents overall.
+With the bundle discount, you're saving almost one hundred and fifty dollars and thirty cents overall.
+With the bundle discount, you're saving almost sixty-three ninety-nine overall.
+With the bundle discount, you're saving almost thirty-four dollars and twenty cents overall.
+With the bundle discount, you're saving almost twelve dollars and fifty cents overall.
+With the bundle discount, you're saving almost forty-eight dollars overall.
+With the bundle discount, you're saving almost one hundred and eighteen dollars overall.
+With the bundle discount, you're saving almost forty-two fifty overall.
+With the bundle discount, you're saving almost twenty-nine ninety-five overall.
+With the bundle discount, you're saving almost eighty-nine dollars overall.
+With the bundle discount, you're saving almost seventeen ninety-nine overall.
+Let me pull up the store locator for you.
+The nearest location to you is on Fifth Avenue, about 3 miles away.
+The nearest location to you is on Oak Boulevard, about 5 miles away.
+The nearest location to you is on Second Street, about 1 miles away.
+The nearest location to you is on Main Street, about 1 miles away.
+The nearest location to you is on Oak Boulevard, about 1 miles away.
+The nearest location to you is on Oak Boulevard, about 2 miles away.
+The nearest location to you is on Second Street, about 5 miles away.
+The nearest location to you is on Fifth Avenue, about 2 miles away.
+The nearest location to you is on Second Street, about 3 miles away.
+The nearest location to you is on Second Street, about 2 miles away.
+The nearest location to you is on Main Street, about 3 miles away.
+The nearest location to you is on Fifth Avenue, about 5 miles away.
+The nearest location to you is on Main Street, about 2 miles away.
+The nearest location to you is on Oak Boulevard, about 3 miles away.
+The nearest location to you is on Fifth Avenue, about 1 miles away.
+The nearest location to you is on Main Street, about 5 miles away.
+That branch is open until two forty-five.
+That branch is open until ten o'clock.
+That branch is open until six in the evening.
+That branch is open until nine in the morning.
+That branch is open until seven thirty in the evening.
+That branch is open until five o'clock.
+That branch is open until three o'clock.
+That branch is open until eleven in the morning.
+That branch is open until one fifteen in the afternoon.
+That branch is open until nine thirty.
+That branch is open until five forty-five in the evening.
+That branch is open until ten fifteen.
+That branch is open until twelve thirty.
+That branch is open until three fifteen in the afternoon.
+That branch is open until two thirty.
+That branch is open until noon.
+That branch is open until eleven forty-five.
+That branch is open until four thirty in the afternoon.
+That branch is open until four o'clock.
+That branch is open until one o'clock.
+The downtown location has a longer wait time than the uptown one.
+There's a drive-through option available at that location.
+Parking is available directly behind the building.
+That store just underwent a renovation and reopened last week.
+The mall location closes earlier on Sundays.
+You can also access this service through our kiosk in the lobby.
+That location doesn't currently offer curbside pickup.

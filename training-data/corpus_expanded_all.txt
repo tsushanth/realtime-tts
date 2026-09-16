@@ -1,9 +1,59 @@
+According to our records, the original request was submitted through the mobile app, not the website.
 After I transfer you, the next representative will already have the notes from our conversation.
+After applying your credit, the remaining balance is eighty-nine dollars.
+After applying your credit, the remaining balance is fifty-six ninety-nine.
+After applying your credit, the remaining balance is forty-eight dollars.
+After applying your credit, the remaining balance is forty-two fifty.
+After applying your credit, the remaining balance is ninety-four fifty.
+After applying your credit, the remaining balance is one hundred and eighteen dollars.
+After applying your credit, the remaining balance is one hundred and fifty dollars and thirty cents.
+After applying your credit, the remaining balance is seventeen ninety-nine.
+After applying your credit, the remaining balance is seventy-one dollars and ten cents.
+After applying your credit, the remaining balance is sixty-three ninety-nine.
+After applying your credit, the remaining balance is thirty-four dollars and twenty cents.
+After applying your credit, the remaining balance is twelve dollars and fifty cents.
+After applying your credit, the remaining balance is twenty-nine ninety-five.
+After applying your credit, the remaining balance is twenty-three dollars.
+After applying your credit, the remaining balance is two hundred and eighty-nine ninety-nine.
+After applying your credit, the remaining balance is two hundred and four dollars.
+After the coupon, you'd be paying just eighty-nine dollars.
+After the coupon, you'd be paying just fifty-six ninety-nine.
+After the coupon, you'd be paying just forty-eight dollars.
+After the coupon, you'd be paying just forty-two fifty.
+After the coupon, you'd be paying just ninety-four fifty.
+After the coupon, you'd be paying just one hundred and eighteen dollars.
+After the coupon, you'd be paying just one hundred and fifty dollars and thirty cents.
+After the coupon, you'd be paying just seventeen ninety-nine.
+After the coupon, you'd be paying just seventy-one dollars and ten cents.
+After the coupon, you'd be paying just sixty-three ninety-nine.
+After the coupon, you'd be paying just thirty-four dollars and twenty cents.
+After the coupon, you'd be paying just twelve dollars and fifty cents.
+After the coupon, you'd be paying just twenty-nine ninety-five.
+After the coupon, you'd be paying just twenty-three dollars.
+After the coupon, you'd be paying just two hundred and eighty-nine ninety-nine.
+After the coupon, you'd be paying just two hundred and four dollars.
+After the discount, your new total is eighty-nine dollars.
+After the discount, your new total is fifty-six ninety-nine.
+After the discount, your new total is forty-eight dollars.
+After the discount, your new total is forty-two fifty.
+After the discount, your new total is ninety-four fifty.
+After the discount, your new total is one hundred and eighteen dollars.
+After the discount, your new total is one hundred and fifty dollars and thirty cents.
+After the discount, your new total is seventeen ninety-nine.
+After the discount, your new total is seventy-one dollars and ten cents.
+After the discount, your new total is sixty-three ninety-nine.
+After the discount, your new total is thirty-four dollars and twenty cents.
+After the discount, your new total is twelve dollars and fifty cents.
+After the discount, your new total is twenty-nine ninety-five.
+After the discount, your new total is twenty-three dollars.
+After the discount, your new total is two hundred and eighty-nine ninety-nine.
+After the discount, your new total is two hundred and four dollars.
 After the technician's visit, you'll receive a summary report by email.
 After the trial period ends, you'll be billed at the regular monthly rate.
 After this call, you'll get a text with a link to track your request.
 After we confirm the address, the shipment will go out the same day.
 After we update your account, everything should sync up correctly.
+All of our representatives are currently helping other customers.
 Alright, I have your email as amanda dot miller at example dot com — is that correct?
 Alright, I have your email as andrew dot taylor at example dot com — is that correct?
 Alright, I have your email as angela dot lopez at example dot com — is that correct?
@@ -68,6 +118,11 @@ Alright, give me a second to confirm.
 Alright, here's what I found.
 Alright, that wraps things up. Talk soon.
 Although I can't issue a full refund from here, I can absolutely get you a partial credit today.
+Apologies, there seems to be an echo on the line.
+Appointments longer than an hour usually need to be scheduled at least a week out.
+Appointments longer than thirty minutes usually need to be scheduled at least a week out.
+Appointments longer than two hours usually need to be scheduled at least a week out.
+Are you able to see the network name in your list of available Wi-Fi connections?
 Are you calling from the number associated with the account?
 Are you connected to Wi-Fi or using mobile data?
 Are you trying to reach billing, technical support, or general questions today?
@@ -90,7 +145,11 @@ Before anything else, let's make sure I have your correct information.
 Before we wrap up, is there anything else from today's call you'd like me to follow up on?
 Can I get your date of birth for verification, please?
 Can I get your name and phone number, please?
+Can you check if there's a small red light blinking on the front of the router?
+Can you check whether the app shows you're logged in, or does it ask you to sign in again?
 Can you confirm the last four digits of your account number?
+Can you hear me okay? The connection seems a little unclear.
+Can you move to a quieter area if possible? It's a bit hard to hear.
 Can you provide a valid email address for the account?
 Can you spell that last name for me?
 Can you tell me a bit more about the issue you're experiencing?
@@ -101,6 +160,23 @@ Cancellations made within 24 hours are eligible for a full refund.
 Cancellations made within 36 hours are eligible for a full refund.
 Cancellations made within 48 hours are eligible for a full refund.
 Cancellations made within 72 hours are eligible for a full refund.
+Combined with shipping, the final total is eighty-nine dollars.
+Combined with shipping, the final total is fifty-six ninety-nine.
+Combined with shipping, the final total is forty-eight dollars.
+Combined with shipping, the final total is forty-two fifty.
+Combined with shipping, the final total is ninety-four fifty.
+Combined with shipping, the final total is one hundred and eighteen dollars.
+Combined with shipping, the final total is one hundred and fifty dollars and thirty cents.
+Combined with shipping, the final total is seventeen ninety-nine.
+Combined with shipping, the final total is seventy-one dollars and ten cents.
+Combined with shipping, the final total is sixty-three ninety-nine.
+Combined with shipping, the final total is thirty-four dollars and twenty cents.
+Combined with shipping, the final total is twelve dollars and fifty cents.
+Combined with shipping, the final total is twenty-nine ninety-five.
+Combined with shipping, the final total is twenty-three dollars.
+Combined with shipping, the final total is two hundred and eighty-nine ninety-nine.
+Combined with shipping, the final total is two hundred and four dollars.
+Congratulations, your application has been approved.
 Could you say that one more time, please?
 Could you tell me whether you're calling about a new order or an existing one?
 Do you already have an account with us, or would this be a new signup?
@@ -108,14 +184,29 @@ Do you have a promo code you'd like to apply?
 Do you have your order number handy?
 Do you prefer we call you back, or would you like to hold?
 Do you want me to go ahead and book that time slot?
+Does that all make sense so far?
 Does the issue happen every time, or only sometimes?
+Does the screen show any error code, or does it just freeze completely?
+Does this happen only on your phone, or also on your laptop or tablet?
+Enrollment for the new program opens next Monday.
+Estimated wait time is currently 10 minutes.
+Estimated wait time is currently 15 minutes.
+Estimated wait time is currently 2 minutes.
+Estimated wait time is currently 3 minutes.
+Estimated wait time is currently 5 minutes.
+Estimated wait time is currently 7 minutes.
 Even though the item shows as backordered online, I can see three units available at our regional warehouse.
 Everything checks out on our end.
+Fantastic, that discount has been applied successfully.
 First things first, let's get your account pulled up.
 First, try restarting the app and see if that helps.
 For security, can you confirm the zip code on the account?
 For your security, I won't be able to share that information over the phone.
+From there, select forget this network, then reconnect using your password.
 From what I can tell, the charge you're asking about is actually a pending authorization, not a final charge.
+Generally speaking, most customers see results within a couple of weeks.
+Generally speaking, most customers see results within a few days.
+Generally speaking, most customers see results within about a month.
 Given that your appointment was originally for Friday, would you rather push it to Monday or skip ahead to next week entirely?
 Given that your appointment was originally for Friday, would you rather push it to Saturday or skip ahead to next week entirely?
 Given that your appointment was originally for Monday, would you rather push it to Friday or skip ahead to next week entirely?
@@ -176,21 +267,32 @@ Given that your appointment was originally for next Wednesday, would you rather 
 Given that your appointment was originally for next Wednesday, would you rather push it to Thursday or skip ahead to next week entirely?
 Given that your appointment was originally for next Wednesday, would you rather push it to next Thursday or skip ahead to next week entirely?
 Given that your appointment was originally for next Wednesday, would you rather push it to next Tuesday or skip ahead to next week entirely?
+Go ahead and hold down the power button for about 10 seconds until it shuts off completely.
+Go ahead and hold down the power button for about 15 seconds until it shuts off completely.
+Go ahead and hold down the power button for about 20 seconds until it shuts off completely.
+Go ahead and hold down the power button for about 5 seconds until it shuts off completely.
+Going forward, you shouldn't need to call in about this specific issue.
 Good afternoon, you've reached our support line. What can I do for you?
 Good evening, I appreciate you calling at this hour.
 Good morning, thanks for calling in so early.
 Good news — that's already been resolved on our end.
+Good news, we found an even better rate for you.
 Got it — let me see what I can do.
 Got it, one moment please.
+Great news, your refund has already been issued.
 Great question, give me one moment to look that up.
 Great, glad that worked. Anything else I can check?
 Hang on just a second while I verify that.
 Happy to help again today.
 Has this happened before, or is this the first time?
 Have you already tried restarting the device since the issue started?
+Have you tried turning the device off and back on again to see if that clears the error?
+Head into your account settings and look for the security tab near the top.
 Hello again, good to hear from you.
 Hello and thank you for calling, let's get you taken care of.
 Hello, thanks for waiting. I'm here to help.
+Here's a quick rundown of what happens next.
+Here's how the trial period works, step by step.
 Hi there, I'll be helping you out today.
 Hi there, thanks for calling — how can I help you today?
 Hi, I'm the virtual assistant for this line. What brings you in today?
@@ -258,6 +360,7 @@ How does next Wednesday at twelve thirty sound?
 How does next Wednesday at two forty-five sound?
 I apologize for the wait — thanks for holding.
 I apologize, that shouldn't have happened.
+I appreciate you giving us another chance here.
 I appreciate you walking me through that.
 I can also help you reset your password if needed.
 I can apply that discount to your order now.
@@ -324,6 +427,7 @@ I can offer either next Wednesday or next Thursday.
 I can offer either next Wednesday or next Wednesday.
 I can only imagine how annoying that must have been, and I'm sorry you had to deal with it.
 I can tell this has been a frustrating experience, and I appreciate you staying on the line.
+I completely understand if this has shaken your confidence in us.
 I completely understand the frustration — let's get this fixed.
 I completely understand why that would be frustrating, especially after waiting this long.
 I completely understand, let's find a solution together.
@@ -395,38 +499,62 @@ I have some good news for you.
 I hear you, and I want to make sure we get this right.
 I hear you, and honestly, you're right to be upset about this.
 I just need to verify a couple of details before we continue.
+I know this has taken longer than it should have.
 I know this isn't the answer you were hoping for, and I'm sorry about that.
+I noticed there are two accounts associated with this phone number — do you know which one you'd like to use?
 I noticed there's a note on your account from your last call.
+I realize this is a lot of information, so feel free to ask questions.
 I really appreciate you explaining that so clearly, it helps a lot.
+I regret to inform you that we can't extend the deadline this time.
+I see a note here from a previous call mentioning a similar issue — did that ever get resolved?
+I see an open support ticket from a few days ago, let me pull that up alongside this call.
+I see that a credit was already issued last week, so let me check if this is a separate issue.
 I see you've called before — let's get this sorted quickly.
+I think we got disconnected there for a second, are you still with me?
 I want to be upfront with you, this might take a little longer than usual to resolve.
 I want to let you know there might be a short delay.
 I want to make sure I understand correctly — you're saying the app crashed after you logged in?
+I want to make sure I'm explaining this in a way that makes sense.
+I want to make sure this doesn't happen again going forward.
+I want to make sure you understand exactly what you're agreeing to.
+I want to personally apologize for the trouble this has caused.
 I want to set the right expectations here — this usually takes a day or two.
 I wasn't able to find an account under that number.
 I'll be honest, that's not something we can guarantee, but we'll do our best.
 I'll escalate this to our technical team if it continues.
+I'll explain both scenarios so you can choose what's best for you.
+I'll explain each charge on your statement one at a time.
+I'll flag this account so future agents are aware of the history.
+I'll follow up personally to make sure this stays resolved.
 I'll get that sorted for you right away.
 I'll go ahead and update your billing address.
+I'll make a note so this is resolved automatically next time.
+I'll need a few pieces of information before we lock in the appointment.
 I'll need your full name to get started.
 I'll patch you through to our technical team.
 I'll send a verification link to that email shortly.
+I'll try calling back if we get disconnected.
+I'm afraid the warranty on that item expired last month.
 I'm afraid there's been a small delay with your order.
 I'm going to connect you with a specialist now.
+I'm happy to go through this again if it helps.
 I'm happy to say that's already taken care of.
 I'm not able to help with that directly, but I can transfer you.
 I'm not totally sure, but let me check and get back to you.
 I'm really sorry for the inconvenience.
+I'm sorry to say that item is permanently out of stock.
 I'm sorry, I didn't get that — could you say it again?
 I'm sorry, that particular option isn't available at this time.
 I'm sorry, we don't currently offer that service in your area.
 I've added a note to waive that fee this time.
 I've booked that in for you — you're all set.
+I've escalated this so it gets extra attention moving forward.
 I've got your details pulled up now.
 If something feels off after the update, just give us a call.
 If the problem comes back, feel free to call this same number.
 If the tracking doesn't update by tomorrow, please give us a call back.
 If you need anything else, don't hesitate to reach back out.
+If you'd like a callback instead of waiting, press one now.
 If you'd like a written summary, I can email that over as well.
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 3 to 6 business days.
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 3 to 7 business days.
@@ -440,13 +568,20 @@ If you'd like, I can go ahead and process that refund right now, and it should l
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 5 to 7 business days.
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 5 to 8 business days.
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 5 to 9 business days.
+If you're running late, just give us a call and we'll do our best to accommodate you.
+If your schedule changes, you can reschedule directly through the app.
 In case you have further questions, this reference number will help our team find your case quickly.
+In most cases, yes, but it can vary by region.
+In rare cases, this can take a bit longer if extra verification is needed.
 In the event of any delay, we'll notify you as soon as we know more.
 International orders may be subject to additional customs fees upon delivery.
+Is English your preferred language for this call?
+Is the cable firmly plugged into both the wall outlet and the back of the unit?
 Is the error message still showing on your screen?
 Is the product still under warranty, or has that time period already passed?
 Is there a specific date you had in mind?
 Is there a specific error code showing up when this happens?
+Is there a subscription icon next to your username, or does it look blank?
 Is there anything else I can help you with today?
 Is this regarding an order you placed recently?
 Is this your first time contacting us about this particular issue?
@@ -455,10 +590,12 @@ It appears there was a duplicate charge processed in error.
 It appears your subscription lapsed last month due to a failed payment.
 It looks like everything is in order.
 It looks like the discount code wasn't applied at checkout.
+It looks like the subscription was paused rather than cancelled, which might explain the confusion.
 It looks like the wrong item was shipped by mistake.
 It looks like there was a small glitch when the order was submitted.
 It looks like this ticket was never properly closed out on our end.
 It looks like you have a few open items — would you like me to go through them?
+It really comes down to how often you plan to use the service.
 It seems the payment didn't go through due to an expired card on file.
 It seems the previous agent didn't finish updating your account.
 It seems there was a mix-up with the delivery address.
@@ -532,14 +669,21 @@ Just to confirm, is your appointment on next Wednesday at ten o'clock?
 Just to confirm, is your appointment on next Wednesday at twelve thirty?
 Just to make sure I heard you right, that's a return, not an exchange?
 Just to manage expectations, results can vary depending on your specific situation.
+Keep in mind that same-day appointments fill up quickly, so it's best to book early.
 Let me be clear about what this plan does and doesn't include.
 Let me break this down into a couple of simple steps for you.
+Let me clarify the difference between the two plans you're considering.
 Let me double check that before I confirm.
 Let me explain how the billing cycle works so this makes more sense going forward.
 Let me get you over to billing — please hold.
+Let me go over the terms one more time just to be safe.
 Let me go over your options one at a time so you can decide what works best.
+Let me know if my audio is coming through clearly.
 Let me know if that email doesn't come through.
+Let me know if you'd prefer a different representative.
 Let me loop in someone from that department.
+Let me outline the three options available to you right now.
+Let me pull up the store locator for you.
 Let me read that back to you — your address is 107 Elm Street, apartment 6C.
 Let me read that back to you — your address is 120 Cedar Street, apartment 5C.
 Let me read that back to you — your address is 133 Pine Street, apartment 1C.
@@ -605,12 +749,36 @@ Let me summarize what we've covered so far before we move on.
 Let me take a quick look at that for you.
 Let me transfer you to someone who can help with that.
 Let me walk you through exactly what happened with your order from start to finish.
+Let me walk you through the cancellation process before we proceed.
 Let's clear the cache and see if that resolves it.
 Let's find a time that works best for you.
 Let's get your account set up.
+Let's go ahead and get this scheduled for you.
 Let's go ahead and get you scheduled.
+Let's go through your account step by step so everything is crystal clear.
+Let's put a permanent fix in place instead of a temporary workaround.
+Let's see, that comes out to eighty-nine dollars in total.
+Let's see, that comes out to fifty-six ninety-nine in total.
+Let's see, that comes out to forty-eight dollars in total.
+Let's see, that comes out to forty-two fifty in total.
+Let's see, that comes out to ninety-four fifty in total.
+Let's see, that comes out to one hundred and eighteen dollars in total.
+Let's see, that comes out to one hundred and fifty dollars and thirty cents in total.
+Let's see, that comes out to seventeen ninety-nine in total.
+Let's see, that comes out to seventy-one dollars and ten cents in total.
+Let's see, that comes out to sixty-three ninety-nine in total.
+Let's see, that comes out to thirty-four dollars and twenty cents in total.
+Let's see, that comes out to twelve dollars and fifty cents in total.
+Let's see, that comes out to twenty-nine ninety-five in total.
+Let's see, that comes out to twenty-three dollars in total.
+Let's see, that comes out to two hundred and eighty-nine ninety-nine in total.
+Let's see, that comes out to two hundred and four dollars in total.
+Let's slow down and go through this one piece at a time.
 Let's troubleshoot this together, step by step.
 Let's try a different browser and see if it persists.
+Looking at the account history, it seems like this has come up twice in the past few months.
+Looking at the account history, it seems like this has come up twice in the past month.
+Looking at the account history, it seems like this has come up twice in the past week.
 Membership includes free shipping on all orders over eighty-nine dollars.
 Membership includes free shipping on all orders over fifty-six ninety-nine.
 Membership includes free shipping on all orders over forty-eight dollars.
@@ -627,19 +795,30 @@ Membership includes free shipping on all orders over twenty-nine ninety-five.
 Membership includes free shipping on all orders over twenty-three dollars.
 Membership includes free shipping on all orders over two hundred and eighty-nine ninety-nine.
 Membership includes free shipping on all orders over two hundred and four dollars.
+More often than not, this resolves itself after an app update.
 No problem, let me look that up.
 Noted, I'll pass that along to the team.
+Now wait about 15 seconds before turning it back on again.
+Now wait about 20 seconds before turning it back on again.
+Now wait about 30 seconds before turning it back on again.
+Now wait about 45 seconds before turning it back on again.
+Now wait about 60 seconds before turning it back on again.
 Okay, I found it. Here's what I see.
 Okay, let me check on that for you right now.
 Okay, that's confirmed on our end.
+On behalf of the team, I'm sorry this wasn't handled correctly the first time.
+Once it restarts, give it a minute or two to fully reconnect to the network.
 Once that's fixed, you shouldn't run into this issue again.
 Once the new part arrives, we'll schedule the installation right away.
 Once the payment clears, your service will be reactivated automatically.
+Once we pick a time, you'll get an automatic reminder the day before.
 Once you approve the estimate, we can schedule the repair.
 Once you confirm your shipping address, I can go ahead and finalize the order on my end.
+Once you're in that menu, choose the option to clear cached data.
 Once your identity is verified, we can proceed with the rest of the request.
 One moment while I transfer your call.
 One second — I'm looking into it.
+Open the settings menu and look for an option labeled network preferences.
 Our office hours are nine to five, Monday through Friday.
 Our price match guarantee applies to identical items from authorized retailers only.
 Our return policy allows exchanges within 14 days of the original purchase date.
@@ -663,11 +842,20 @@ Overnight shipping is available for an additional charge of twenty-nine ninety-f
 Overnight shipping is available for an additional charge of twenty-three dollars.
 Overnight shipping is available for an additional charge of two hundred and eighty-nine ninety-nine.
 Overnight shipping is available for an additional charge of two hundred and four dollars.
+Parking is available directly behind the building.
 Perfect, I can see your account here.
 Perfect, that's taken care of. Have a good one.
 Please check your inbox for a confirmation message.
+Please enter your six digit verification code now.
+Please hold for just a moment while I connect you.
+Please let me know if anything I've said needs more clarification.
 Please stay on the line while I connect you.
+Please stay on the line, your call is important to us.
+Prices for this plan will increase slightly starting next quarter.
 Response times can be longer during peak hours.
+Sadly, that promotion ended over the weekend.
+Sales tax varies depending on the state your order was shipped to.
+Scroll down to the bottom of that screen and tap on advanced settings.
 Shipping typically takes between three and five business days for standard delivery.
 Should I go ahead and save these changes?
 Should anything change, we'll reach out to you directly.
@@ -694,10 +882,37 @@ Sorry about that, let me try again.
 Sorry, could you repeat that? I didn't quite catch it.
 Sorry, that answer doesn't quite match — could you try again?
 Sorry, we're experiencing a delay on our end.
+Sorry, you're breaking up a little bit, could you repeat that?
+Split three ways, that's about eighty-nine dollars each.
+Split three ways, that's about fifty-six ninety-nine each.
+Split three ways, that's about forty-eight dollars each.
+Split three ways, that's about forty-two fifty each.
+Split three ways, that's about ninety-four fifty each.
+Split three ways, that's about one hundred and eighteen dollars each.
+Split three ways, that's about one hundred and fifty dollars and thirty cents each.
+Split three ways, that's about seventeen ninety-nine each.
+Split three ways, that's about seventy-one dollars and ten cents each.
+Split three ways, that's about sixty-three ninety-nine each.
+Split three ways, that's about thirty-four dollars and twenty cents each.
+Split three ways, that's about twelve dollars and fifty cents each.
+Split three ways, that's about twenty-nine ninety-five each.
+Split three ways, that's about twenty-three dollars each.
+Split three ways, that's about two hundred and eighty-nine ninety-nine each.
+Split three ways, that's about two hundred and four dollars each.
+Support for the previous version ends in 30 days.
+Support for the previous version ends in 45 days.
+Support for the previous version ends in 60 days.
+Support for the previous version ends in 90 days.
 Sure thing, one moment.
 Sure, I can help with that. Let me pull up your account details.
 Take care, and thanks again for your patience.
+Take your time, there's no rush on this call.
+Tap on the three dots in the top right corner to bring up more options.
+Technically it's possible, though we don't usually recommend it.
 Thank you for being so patient while we sorted through all of this.
+Thank you for giving us the chance to fix this.
+Thank you for your patience, someone will be with you shortly.
+Thanks for bearing with the audio issues today.
 Thanks for being a long-time customer, we appreciate your loyalty.
 Thanks for bringing that up — I'll note it down.
 Thanks for calling in. Give me just a second to pull things up.
@@ -746,10 +961,34 @@ Thanks for your time today, goodbye.
 Thanks so much for your patience.
 Thanks, that matches what we have on file.
 That account has now been created successfully.
+That branch is open until eleven forty-five.
+That branch is open until eleven in the morning.
+That branch is open until five forty-five in the evening.
+That branch is open until five o'clock.
+That branch is open until four o'clock.
+That branch is open until four thirty in the afternoon.
+That branch is open until nine in the morning.
+That branch is open until nine thirty.
+That branch is open until noon.
+That branch is open until one fifteen in the afternoon.
+That branch is open until one o'clock.
+That branch is open until seven thirty in the evening.
+That branch is open until six in the evening.
+That branch is open until ten fifteen.
+That branch is open until ten o'clock.
+That branch is open until three fifteen in the afternoon.
+That branch is open until three o'clock.
+That branch is open until twelve thirty.
+That branch is open until two forty-five.
+That branch is open until two thirty.
+That charge you're asking about was for last month's subscription renewal.
 That definitely sounds like a hassle, and I want to make this right for you.
 That department is open until six in the evening.
 That falls outside of what I'm able to assist with directly.
+That feature is still in early testing and isn't available to everyone yet.
 That item is currently out of stock, I'm afraid.
+That line item covers the shipping and handling for your last order.
+That location doesn't currently offer curbside pickup.
 That makes sense, thanks for explaining.
 That order should arrive within 1 to 4 business days.
 That order should arrive within 1 to 5 business days.
@@ -763,10 +1002,22 @@ That order should arrive within 3 to 4 business days.
 That order should arrive within 3 to 5 business days.
 That order should arrive within 3 to 6 business days.
 That order should arrive within 3 to 7 business days.
+That particular plan doesn't include international calling by default.
 That plan includes unlimited access for eighty-nine dollars a month.
 That plan includes unlimited access for fifty-six ninety-nine a month.
-That plan includes unlimited access for forty-eight dollars a month.
+That plan includes unlimited access for forty-eighty-nine dollars a month.
+That plan includes unlimited access for forty-forty-two fifty a month.
+That plan includes unlimited access for forty-ninety-four fifty a month.
+That plan includes unlimited access for forty-one hundred and eighteen dollars a month.
+That plan includes unlimited access for forty-one hundred and fifty dollars and thirty cents a month.
+That plan includes unlimited access for forty-seventeen ninety-nine a month.
+That plan includes unlimited access for forty-seventy-one dollars and ten cents a month.
+That plan includes unlimited access for forty-sixty-three ninety-nine a month.
+That plan includes unlimited access for forty-thirty-four dollars and twenty cents a month.
+That plan includes unlimited access for forty-twelve dollars and fifty cents a month.
+That plan includes unlimited access for forty-twenty-nine ninety-five a month.
 That plan includes unlimited access for forty-two fifty a month.
+That plan includes unlimited access for forty-two hundred and four dollars a month.
 That plan includes unlimited access for ninety-four fifty a month.
 That plan includes unlimited access for one hundred and eighteen dollars a month.
 That plan includes unlimited access for one hundred and fifty dollars and thirty cents a month.
@@ -779,9 +1030,74 @@ That plan includes unlimited access for twenty-nine ninety-five a month.
 That plan includes unlimited access for twenty-three dollars a month.
 That plan includes unlimited access for two hundred and eighty-nine ninety-nine a month.
 That plan includes unlimited access for two hundred and four dollars a month.
+That recurring charge corresponds to your annual membership renewal.
+That router only supports the two point four gigahertz band, not five gigahertz.
 That should do it — can you confirm it's working now?
 That should resolve the issue, but let me know if it happens again.
+That sounds much clearer now, thank you.
+That store just underwent a renovation and reopened last week.
 That team typically responds within one business day.
+That warranty only covers hardware issues, not accidental damage.
+That will be shipped to zip code 10350.
+That will be shipped to zip code 14278.
+That will be shipped to zip code 17816.
+That will be shipped to zip code 17894.
+That will be shipped to zip code 19329.
+That will be shipped to zip code 19359.
+That will be shipped to zip code 19838.
+That will be shipped to zip code 20641.
+That will be shipped to zip code 23006.
+That will be shipped to zip code 25043.
+That will be shipped to zip code 26299.
+That will be shipped to zip code 28643.
+That will be shipped to zip code 29528.
+That will be shipped to zip code 30517.
+That will be shipped to zip code 30585.
+That will be shipped to zip code 31747.
+That will be shipped to zip code 32782.
+That will be shipped to zip code 35928.
+That will be shipped to zip code 37235.
+That will be shipped to zip code 37659.
+That will be shipped to zip code 39466.
+That will be shipped to zip code 40340.
+That will be shipped to zip code 40595.
+That will be shipped to zip code 41439.
+That will be shipped to zip code 44675.
+That will be shipped to zip code 44687.
+That will be shipped to zip code 44816.
+That will be shipped to zip code 47056.
+That will be shipped to zip code 47762.
+That will be shipped to zip code 47828.
+That will be shipped to zip code 48175.
+That will be shipped to zip code 48974.
+That will be shipped to zip code 50026.
+That will be shipped to zip code 50319.
+That will be shipped to zip code 59856.
+That will be shipped to zip code 63545.
+That will be shipped to zip code 65723.
+That will be shipped to zip code 66207.
+That will be shipped to zip code 67560.
+That will be shipped to zip code 68028.
+That will be shipped to zip code 69048.
+That will be shipped to zip code 69049.
+That will be shipped to zip code 69510.
+That will be shipped to zip code 71592.
+That will be shipped to zip code 78494.
+That will be shipped to zip code 81376.
+That will be shipped to zip code 82350.
+That will be shipped to zip code 84531.
+That will be shipped to zip code 84607.
+That will be shipped to zip code 87139.
+That will be shipped to zip code 87304.
+That will be shipped to zip code 87832.
+That will be shipped to zip code 87993.
+That will be shipped to zip code 89905.
+That will be shipped to zip code 91399.
+That will be shipped to zip code 91927.
+That will be shipped to zip code 91987.
+That will be shipped to zip code 94886.
+That will be shipped to zip code 96563.
+That will be shipped to zip code 96662.
 That'll be eighty-nine dollars.
 That'll be fifty-six ninety-nine.
 That'll be forty-eight dollars.
@@ -800,9 +1116,27 @@ That'll be two hundred and eighty-nine ninety-nine.
 That'll be two hundred and four dollars.
 That's a fair point, let me see what we can do.
 That's a great question — let me find out for you.
+That's a great question, and the honest answer is it depends on your usage.
 That's a totally fair concern, and I want to address it properly.
+That's actually a prorated charge from when you upgraded partway through the month.
 That's all set — have a wonderful afternoon.
 That's outside my knowledge, but I'll connect you with someone who knows.
+The annual plan comes out to about eighty-nine dollars a month.
+The annual plan comes out to about fifty-six ninety-nine a month.
+The annual plan comes out to about forty-eight dollars a month.
+The annual plan comes out to about forty-two fifty a month.
+The annual plan comes out to about ninety-four fifty a month.
+The annual plan comes out to about one hundred and eighteen dollars a month.
+The annual plan comes out to about one hundred and fifty dollars and thirty cents a month.
+The annual plan comes out to about seventeen ninety-nine a month.
+The annual plan comes out to about seventy-one dollars and ten cents a month.
+The annual plan comes out to about sixty-three ninety-nine a month.
+The annual plan comes out to about thirty-four dollars and twenty cents a month.
+The annual plan comes out to about twelve dollars and fifty cents a month.
+The annual plan comes out to about twenty-nine ninety-five a month.
+The annual plan comes out to about twenty-three dollars a month.
+The annual plan comes out to about two hundred and eighty-nine ninety-nine a month.
+The annual plan comes out to about two hundred and four dollars a month.
 The appointment is scheduled for the eighteenth of next month.
 The appointment is scheduled for the eighth of next month.
 The appointment is scheduled for the fifteenth of next month.
@@ -818,17 +1152,120 @@ The appointment is scheduled for the twentieth of next month.
 The appointment is scheduled for the twenty-fifth of next month.
 The appointment is scheduled for the twenty-second of next month.
 The credit should reflect on your next billing statement.
+The discrepancy you're seeing is due to a currency conversion on an international purchase.
+The downtown location has a longer wait time than the uptown one.
 The extended warranty can be added within 120 days of your original purchase.
 The extended warranty can be added within 30 days of your original purchase.
 The extended warranty can be added within 60 days of your original purchase.
 The extended warranty can be added within 90 days of your original purchase.
+The extra fee on your bill is for the optional add-on you selected during signup.
 The good news is that this is a really common issue and it's usually a quick fix.
 The good news is your refund has already been processed.
 The issue you're describing usually happens when the app hasn't been updated in a while.
+The last four digits of your card are eight, eight, nine, five.
+The last four digits of your card are eight, eight, nine, three.
+The last four digits of your card are eight, five, zero, six.
+The last four digits of your card are eight, four, nine, eight.
+The last four digits of your card are eight, seven, three, four.
+The last four digits of your card are eight, seven, two, seven.
+The last four digits of your card are eight, six, five, one.
+The last four digits of your card are eight, zero, eight, three.
+The last four digits of your card are five, four, nine, four.
+The last four digits of your card are five, four, six, six.
+The last four digits of your card are five, one, three, four.
+The last four digits of your card are four, five, five, eight.
+The last four digits of your card are four, five, three, one.
+The last four digits of your card are four, seven, three, seven.
+The last four digits of your card are nine, eight, zero, six.
+The last four digits of your card are nine, nine, six, five.
+The last four digits of your card are nine, nine, zero, one.
+The last four digits of your card are nine, six, seven, zero.
+The last four digits of your card are one, four, eight, nine.
+The last four digits of your card are one, nine, zero, five.
+The last four digits of your card are one, seven, six, nine.
+The last four digits of your card are one, seven, two, seven.
+The last four digits of your card are one, seven, zero, eight.
+The last four digits of your card are one, three, six, seven.
+The last four digits of your card are one, two, two, three.
+The last four digits of your card are seven, four, three, four.
+The last four digits of your card are seven, nine, eight, six.
+The last four digits of your card are seven, one, four, three.
+The last four digits of your card are seven, one, six, five.
+The last four digits of your card are seven, seven, six, nine.
+The last four digits of your card are seven, six, zero, three.
+The last four digits of your card are seven, three, five, four.
+The last four digits of your card are seven, three, four, six.
+The last four digits of your card are seven, two, six, two.
+The last four digits of your card are seven, zero, eight, three.
+The last four digits of your card are seven, zero, six, five.
+The last four digits of your card are six, four, six, four.
+The last four digits of your card are six, six, five, eight.
+The last four digits of your card are six, six, nine, zero.
+The last four digits of your card are six, three, one, nine.
+The last four digits of your card are six, three, two, eight.
+The last four digits of your card are six, two, seven, two.
+The last four digits of your card are six, two, three, one.
+The last four digits of your card are three, eight, seven, two.
+The last four digits of your card are three, one, four, nine.
+The last four digits of your card are three, seven, five, five.
+The last four digits of your card are three, seven, four, five.
+The last four digits of your card are three, six, seven, six.
+The last four digits of your card are three, three, two, zero.
+The last four digits of your card are three, two, zero, one.
+The last four digits of your card are two, four, one, nine.
+The last four digits of your card are two, nine, nine, one.
+The last four digits of your card are two, seven, one, nine.
+The last four digits of your card are zero, five, three, one.
+The last four digits of your card are zero, four, nine, six.
+The last four digits of your card are zero, four, six, five.
+The last four digits of your card are zero, nine, two, three.
+The last four digits of your card are zero, seven, five, two.
+The last four digits of your card are zero, three, seven, nine.
+The last four digits of your card are zero, zero, three, three.
+The line seems to have some background noise, is that on your end?
+The mall location closes earlier on Sundays.
+The monthly cost works out to roughly eighty-nine dollars.
+The monthly cost works out to roughly fifty-six ninety-nine.
+The monthly cost works out to roughly forty-eight dollars.
+The monthly cost works out to roughly forty-two fifty.
+The monthly cost works out to roughly ninety-four fifty.
+The monthly cost works out to roughly one hundred and eighteen dollars.
+The monthly cost works out to roughly one hundred and fifty dollars and thirty cents.
+The monthly cost works out to roughly seventeen ninety-nine.
+The monthly cost works out to roughly seventy-one dollars and ten cents.
+The monthly cost works out to roughly sixty-three ninety-nine.
+The monthly cost works out to roughly thirty-four dollars and twenty cents.
+The monthly cost works out to roughly twelve dollars and fifty cents.
+The monthly cost works out to roughly twenty-nine ninety-five.
+The monthly cost works out to roughly twenty-three dollars.
+The monthly cost works out to roughly two hundred and eighty-nine ninety-nine.
+The monthly cost works out to roughly two hundred and four dollars.
+The nearest location to you is on Fifth Avenue, about 1 miles away.
+The nearest location to you is on Fifth Avenue, about 2 miles away.
+The nearest location to you is on Fifth Avenue, about 3 miles away.
+The nearest location to you is on Fifth Avenue, about 5 miles away.
+The nearest location to you is on Main Street, about 1 miles away.
+The nearest location to you is on Main Street, about 2 miles away.
+The nearest location to you is on Main Street, about 3 miles away.
+The nearest location to you is on Main Street, about 5 miles away.
+The nearest location to you is on Oak Boulevard, about 1 miles away.
+The nearest location to you is on Oak Boulevard, about 2 miles away.
+The nearest location to you is on Oak Boulevard, about 3 miles away.
+The nearest location to you is on Oak Boulevard, about 5 miles away.
+The nearest location to you is on Second Street, about 1 miles away.
+The nearest location to you is on Second Street, about 2 miles away.
+The nearest location to you is on Second Street, about 3 miles away.
+The nearest location to you is on Second Street, about 5 miles away.
+The new interface will become the default starting next update.
+The new policy takes effect starting the first of next month.
+The newer software update changes how notifications are grouped together.
+The next available representative will be with you shortly.
 The office reopens at eight thirty tomorrow morning.
+The old system will be retired at the end of this year.
 The premium plan includes priority support and unlimited storage.
 The reason for the delay is that the item is being shipped from an overseas warehouse.
 The reason your card was declined is that the billing address didn't match what's on file with your bank.
+The refund appears as a separate transaction rather than reversing the original charge.
 The refund will be processed within 3 to 6 business days.
 The refund will be processed within 3 to 7 business days.
 The refund will be processed within 3 to 8 business days.
@@ -842,6 +1279,9 @@ The refund will be processed within 5 to 7 business days.
 The refund will be processed within 5 to 8 business days.
 The refund will be processed within 5 to 9 business days.
 The replacement unit will ship out as soon as we receive the defective one back.
+The second charge is a temporary authorization hold, not an actual charge.
+The service fee only applies if payment is made after the due date.
+The short answer is yes, but there are a few conditions that apply.
 The technician is scheduled to arrive between eight and eleven in the morning.
 The technician is scheduled to arrive between eight and noon in the morning.
 The technician is scheduled to arrive between eight and ten in the morning.
@@ -872,7 +1312,9 @@ The total comes to twenty-nine ninety-five.
 The total comes to twenty-three dollars.
 The total comes to two hundred and eighty-nine ninety-nine.
 The total comes to two hundred and four dollars.
+The tracking number begins with one Z, nine nine nine.
 The update should install itself the next time you restart the app.
+The updated terms will be sent to your email for review.
 The wait time is usually under 10 minutes.
 The wait time is usually under 15 minutes.
 The wait time is usually under 20 minutes.
@@ -881,6 +1323,7 @@ The warranty on that product covers manufacturing defects for up to eighteen mon
 The warranty on that product covers manufacturing defects for up to one year.
 The warranty on that product covers manufacturing defects for up to six months.
 The warranty on that product covers manufacturing defects for up to two years.
+There are actually two shipping addresses on file, so let me confirm which one to use this time.
 There is a bit of a wait time right now, about 10 minutes.
 There is a bit of a wait time right now, about 15 minutes.
 There is a bit of a wait time right now, about 20 minutes.
@@ -888,14 +1331,46 @@ There is a bit of a wait time right now, about 25 minutes.
 There is a bit of a wait time right now, about 30 minutes.
 There is a bit of a wait time right now, about 45 minutes.
 There is a bit of a wait time right now, about 5 minutes.
+There is a small fee for rescheduling within 12 hours of the appointment.
+There is a small fee for rescheduling within 24 hours of the appointment.
+There is a small fee for rescheduling within 36 hours of the appointment.
+There is a small fee for rescheduling within 48 hours of the appointment.
+There is a small fee for rescheduling within 72 hours of the appointment.
+There seems to be a pending order and a completed order both showing the same items, let me clarify which is current.
+There's a drive-through option available at that location.
+There's a flag on the account suggesting a previous billing dispute, let me review that first.
 There's a small issue I want to flag before we continue.
+This feature will be rolled out gradually over the next few weeks.
+This isn't the experience we want our customers to have.
+This limited time offer expires at midnight tonight.
+This offer is only valid through the end of this week.
+This particular error usually clears up after the app finishes updating.
+This particular model uses a different charging cable than older versions.
+This promotion only applies to new customers, not existing accounts.
+This service is only available in select metropolitan areas right now.
+This should be the last time you need to deal with this particular issue.
+This version of the app requires at least 1 gigabytes of free storage.
+This version of the app requires at least 16 gigabytes of free storage.
+This version of the app requires at least 2 gigabytes of free storage.
+This version of the app requires at least 4 gigabytes of free storage.
+This version of the app requires at least 8 gigabytes of free storage.
 To avoid any confusion, let me clarify exactly what's included in this package.
 To be transparent, there is a small chance this won't be available in your area.
 To begin, could you tell me the reason for your call today?
+To prevent this in the future, I'd recommend enabling automatic updates.
 To start, I'll need to verify a couple of details on the account.
 To wrap things up, I'll send a summary of today's call to your email.
 Try checking your spam folder if you don't see it.
 Try refreshing the page one more time for me.
+Try unplugging the router, waiting 10 seconds, and plugging it back in.
+Try unplugging the router, waiting 15 seconds, and plugging it back in.
+Try unplugging the router, waiting 20 seconds, and plugging it back in.
+Try unplugging the router, waiting 5 seconds, and plugging it back in.
+Typically, this kind of request takes about 1 business days to process.
+Typically, this kind of request takes about 2 business days to process.
+Typically, this kind of request takes about 3 business days to process.
+Typically, this kind of request takes about 4 business days to process.
+Typically, this kind of request takes about 5 business days to process.
 Understood, let's take care of that now.
 Unfortunately I'm not able to process that request right now.
 Unfortunately that time isn't available, but I do have eleven forty-five open.
@@ -920,9 +1395,25 @@ Unfortunately that time isn't available, but I do have two forty-five open.
 Unfortunately that time isn't available, but I do have two thirty open.
 Unfortunately, I don't have great news on that front.
 Unfortunately, I don't see that order in our system.
+Unfortunately, we're not able to approve that request at this time.
+Usually, our team responds within 12 hours on weekdays.
+Usually, our team responds within 24 hours on weekdays.
+Usually, our team responds within 36 hours on weekdays.
+Usually, our team responds within 48 hours on weekdays.
+Usually, our team responds within 72 hours on weekdays.
+We appreciate you holding, thanks for your continued patience.
+We recommend arriving about 10 minutes early to fill out any paperwork.
+We recommend arriving about 15 minutes early to fill out any paperwork.
+We recommend arriving about 20 minutes early to fill out any paperwork.
+We recommend arriving about 5 minutes early to fill out any paperwork.
+We take feedback like this seriously, and I appreciate you sharing it.
+We value your business and want to make this right.
 We'll see you at your appointment. Bye for now.
 We're closed on public holidays, including this upcoming Monday.
+We're committed to doing better going forward.
 We're currently open, so I can help you right now.
+We've also adjusted your settings so this won't repeat next cycle.
+Weekend appointments tend to book up faster than weekday ones.
 Weekend hours are ten to two, Saturday only.
 Welcome back, it's good to hear from you again.
 Welcome, I'm one of our virtual assistants, what can I do for you?
@@ -931,19 +1422,65 @@ What you're seeing is actually a known issue that our engineering team is alread
 What's the best callback number for you?
 What's the make and model of your device?
 When did you first notice the problem?
+When the screen freezes, does it eventually recover on its own, or do you have to restart it?
+When you say it's not working, does that mean it won't turn on at all, or just won't connect?
 Whenever you're ready, just let me know and we can get started on the cancellation.
 Which browser are you using right now?
 Which location were you calling about?
 While I have you on the line, I want to double check that we have your correct phone number saved.
+With tax included, that brings it to eighty-nine dollars.
+With tax included, that brings it to fifty-six ninety-nine.
+With tax included, that brings it to forty-eight dollars.
+With tax included, that brings it to forty-two fifty.
+With tax included, that brings it to ninety-four fifty.
+With tax included, that brings it to one hundred and eighteen dollars.
+With tax included, that brings it to one hundred and fifty dollars and thirty cents.
+With tax included, that brings it to seventeen ninety-nine.
+With tax included, that brings it to seventy-one dollars and ten cents.
+With tax included, that brings it to sixty-three ninety-nine.
+With tax included, that brings it to thirty-four dollars and twenty cents.
+With tax included, that brings it to twelve dollars and fifty cents.
+With tax included, that brings it to twenty-nine ninety-five.
+With tax included, that brings it to twenty-three dollars.
+With tax included, that brings it to two hundred and eighty-nine ninety-nine.
+With tax included, that brings it to two hundred and four dollars.
+With the bundle discount, you're saving almost eighty-nine dollars overall.
+With the bundle discount, you're saving almost fifty-six ninety-nine overall.
+With the bundle discount, you're saving almost forty-eight dollars overall.
+With the bundle discount, you're saving almost forty-two fifty overall.
+With the bundle discount, you're saving almost ninety-four fifty overall.
+With the bundle discount, you're saving almost one hundred and eighteen dollars overall.
+With the bundle discount, you're saving almost one hundred and fifty dollars and thirty cents overall.
+With the bundle discount, you're saving almost seventeen ninety-nine overall.
+With the bundle discount, you're saving almost seventy-one dollars and ten cents overall.
+With the bundle discount, you're saving almost sixty-three ninety-nine overall.
+With the bundle discount, you're saving almost thirty-four dollars and twenty cents overall.
+With the bundle discount, you're saving almost twelve dollars and fifty cents overall.
+With the bundle discount, you're saving almost twenty-nine ninety-five overall.
+With the bundle discount, you're saving almost twenty-three dollars overall.
+With the bundle discount, you're saving almost two hundred and eighty-nine ninety-nine overall.
+With the bundle discount, you're saving almost two hundred and four dollars overall.
+Wonderful, everything is confirmed and ready to go.
 Would morning or afternoon work better for you?
 Would you like a reminder call the day before?
 Would you like a text message or an email confirmation?
 Would you like me to email you a copy of this conversation for your records?
 Would you like me to schedule that for next Thursday?
 Would you like me to send a confirmation text?
+Would you like me to switch to speaking more slowly?
 Would you like to add anything else to your order?
 Would you like to speak with a manager, or can I try to resolve this myself first?
 Would you like to use your saved payment method?
+You are caller number 1 in the queue.
+You are caller number 2 in the queue.
+You are caller number 3 in the queue.
+You are caller number 4 in the queue.
+You are caller number 5 in the queue.
+You are caller number 6 in the queue.
+You are caller number 7 in the queue.
+You are caller number 8 in the queue.
+You are caller number 9 in the queue.
+You can also access this service through our kiosk in the lobby.
 You can cancel anytime from your account settings.
 You can choose between expedited shipping or the standard free option.
 You can either keep the current plan or downgrade to the basic tier.
@@ -957,6 +1494,66 @@ You're able to cancel anytime without any penalty fees.
 You're all set. Is there anything else before we wrap up?
 You're free to change your appointment time as many times as you need.
 You're welcome to reschedule now or wait until closer to the date.
+Your PIN is eight, five, zero, one.
+Your PIN is eight, four, six, five.
+Your PIN is eight, one, six, nine.
+Your PIN is eight, seven, two, three.
+Your PIN is eight, six, eight, zero.
+Your PIN is eight, six, nine, two.
+Your PIN is eight, two, zero, eight.
+Your PIN is eight, zero, eight, four.
+Your PIN is eight, zero, five, zero.
+Your PIN is eight, zero, four, four.
+Your PIN is five, five, six, nine.
+Your PIN is five, seven, seven, seven.
+Your PIN is five, six, one, five.
+Your PIN is four, five, eight, six.
+Your PIN is four, five, zero, five.
+Your PIN is four, nine, three, five.
+Your PIN is four, seven, four, six.
+Your PIN is four, six, two, four.
+Your PIN is four, three, five, three.
+Your PIN is four, three, zero, nine.
+Your PIN is four, two, five, one.
+Your PIN is four, two, nine, four.
+Your PIN is four, zero, one, six.
+Your PIN is four, zero, zero, five.
+Your PIN is nine, five, one, four.
+Your PIN is nine, nine, eight, five.
+Your PIN is nine, nine, four, six.
+Your PIN is nine, three, nine, nine.
+Your PIN is one, eight, three, eight.
+Your PIN is one, eight, two, four.
+Your PIN is one, one, two, eight.
+Your PIN is one, three, six, one.
+Your PIN is one, two, four, one.
+Your PIN is one, two, one, nine.
+Your PIN is seven, eight, four, nine.
+Your PIN is seven, five, one, zero.
+Your PIN is seven, nine, nine, one.
+Your PIN is seven, three, six, zero.
+Your PIN is six, five, four, one.
+Your PIN is six, four, eight, two.
+Your PIN is six, zero, seven, three.
+Your PIN is three, five, four, two.
+Your PIN is three, four, eight, seven.
+Your PIN is three, four, two, one.
+Your PIN is three, four, zero, six.
+Your PIN is three, seven, five, four.
+Your PIN is three, six, nine, nine.
+Your PIN is three, six, six, two.
+Your PIN is three, three, one, five.
+Your PIN is three, three, zero, three.
+Your PIN is three, two, two, six.
+Your PIN is two, four, two, seven.
+Your PIN is two, six, two, zero.
+Your PIN is two, six, zero, six.
+Your PIN is zero, eight, eight, three.
+Your PIN is zero, five, nine, eight.
+Your PIN is zero, nine, one, six.
+Your PIN is zero, nine, seven, eight.
+Your PIN is zero, one, nine, six.
+Your PIN is zero, two, five, six.
 Your account will be reviewed within one to two business days.
 Your appointment is confirmed for Friday, April the fifth, at nine in the morning.
 Your appointment is confirmed for Friday, February the twenty-fifth, at one o'clock.
@@ -1039,6 +1636,7 @@ Your balance is twenty-nine ninety-five.
 Your balance is twenty-three dollars.
 Your balance is two hundred and eighty-nine ninety-nine.
 Your balance is two hundred and four dollars.
+Your call may be recorded for quality and training purposes.
 Your card ending in 1429 will be charged.
 Your card ending in 1482 will be charged.
 Your card ending in 1483 will be charged.
@@ -1099,6 +1697,66 @@ Your card ending in 9582 will be charged.
 Your card ending in 9732 will be charged.
 Your card ending in 9869 will be charged.
 Your card ending in 9883 will be charged.
+Your case ID is C S dash 1042.
+Your case ID is C S dash 1224.
+Your case ID is C S dash 1472.
+Your case ID is C S dash 1715.
+Your case ID is C S dash 2143.
+Your case ID is C S dash 2527.
+Your case ID is C S dash 2858.
+Your case ID is C S dash 2924.
+Your case ID is C S dash 2989.
+Your case ID is C S dash 3146.
+Your case ID is C S dash 3236.
+Your case ID is C S dash 3369.
+Your case ID is C S dash 3434.
+Your case ID is C S dash 3522.
+Your case ID is C S dash 3594.
+Your case ID is C S dash 4090.
+Your case ID is C S dash 4122.
+Your case ID is C S dash 4335.
+Your case ID is C S dash 4681.
+Your case ID is C S dash 4826.
+Your case ID is C S dash 4912.
+Your case ID is C S dash 4920.
+Your case ID is C S dash 4993.
+Your case ID is C S dash 5375.
+Your case ID is C S dash 5377.
+Your case ID is C S dash 5479.
+Your case ID is C S dash 5526.
+Your case ID is C S dash 5634.
+Your case ID is C S dash 5719.
+Your case ID is C S dash 5781.
+Your case ID is C S dash 5891.
+Your case ID is C S dash 6091.
+Your case ID is C S dash 6272.
+Your case ID is C S dash 6446.
+Your case ID is C S dash 6568.
+Your case ID is C S dash 6654.
+Your case ID is C S dash 7180.
+Your case ID is C S dash 7274.
+Your case ID is C S dash 7284.
+Your case ID is C S dash 7684.
+Your case ID is C S dash 7730.
+Your case ID is C S dash 7798.
+Your case ID is C S dash 7807.
+Your case ID is C S dash 8178.
+Your case ID is C S dash 8316.
+Your case ID is C S dash 8460.
+Your case ID is C S dash 8483.
+Your case ID is C S dash 8560.
+Your case ID is C S dash 8736.
+Your case ID is C S dash 8905.
+Your case ID is C S dash 8935.
+Your case ID is C S dash 8941.
+Your case ID is C S dash 9022.
+Your case ID is C S dash 9165.
+Your case ID is C S dash 9318.
+Your case ID is C S dash 9327.
+Your case ID is C S dash 9337.
+Your case ID is C S dash 9824.
+Your case ID is C S dash 9903.
+Your case ID is C S dash 9998.
 Your confirmation code is Alpha Oscar 8 4 9.
 Your confirmation code is Alpha Tango 3 6 3.
 Your confirmation code is Alpha Victor 1 6 2.
@@ -1139,6 +1797,66 @@ Your confirmation code is Hotel Romeo 1 5 9.
 Your confirmation code is Hotel Tango 3 7 8.
 Your confirmation code is Hotel Victor 2 4 4.
 Your confirmation code is Hotel Victor 2 9 3.
+Your extension is 1018.
+Your extension is 1339.
+Your extension is 1423.
+Your extension is 1601.
+Your extension is 1653.
+Your extension is 1659.
+Your extension is 1845.
+Your extension is 1888.
+Your extension is 2317.
+Your extension is 2442.
+Your extension is 2494.
+Your extension is 2496.
+Your extension is 2713.
+Your extension is 2899.
+Your extension is 3634.
+Your extension is 3870.
+Your extension is 3973.
+Your extension is 4073.
+Your extension is 4750.
+Your extension is 5102.
+Your extension is 5135.
+Your extension is 5415.
+Your extension is 5460.
+Your extension is 5557.
+Your extension is 5722.
+Your extension is 5982.
+Your extension is 6153.
+Your extension is 6260.
+Your extension is 6280.
+Your extension is 6296.
+Your extension is 6403.
+Your extension is 6460.
+Your extension is 6700.
+Your extension is 6927.
+Your extension is 7561.
+Your extension is 7594.
+Your extension is 7622.
+Your extension is 7690.
+Your extension is 7744.
+Your extension is 7770.
+Your extension is 8078.
+Your extension is 8141.
+Your extension is 8172.
+Your extension is 8242.
+Your extension is 8245.
+Your extension is 8451.
+Your extension is 8569.
+Your extension is 8679.
+Your extension is 8700.
+Your extension is 8708.
+Your extension is 9056.
+Your extension is 9090.
+Your extension is 9117.
+Your extension is 9167.
+Your extension is 9199.
+Your extension is 9431.
+Your extension is 9494.
+Your extension is 9502.
+Your extension is 9847.
+Your extension is 9889.
 Your flight departs at eleven forty-five.
 Your flight departs at eleven in the morning.
 Your flight departs at five forty-five in the evening.
@@ -1246,4 +1964,65 @@ Your service will be restored automatically within the next 2 hours.
 Your service will be restored automatically within the next 3 hours.
 Your service will be restored automatically within the next 4 hours.
 Your subscription renews automatically next month.
+Your ticket number is 112, dash, 687.
+Your ticket number is 117, dash, 195.
+Your ticket number is 146, dash, 155.
+Your ticket number is 152, dash, 358.
+Your ticket number is 166, dash, 510.
+Your ticket number is 205, dash, 993.
+Your ticket number is 216, dash, 941.
+Your ticket number is 222, dash, 860.
+Your ticket number is 223, dash, 838.
+Your ticket number is 229, dash, 380.
+Your ticket number is 255, dash, 252.
+Your ticket number is 296, dash, 321.
+Your ticket number is 297, dash, 423.
+Your ticket number is 346, dash, 807.
+Your ticket number is 349, dash, 413.
+Your ticket number is 354, dash, 221.
+Your ticket number is 357, dash, 336.
+Your ticket number is 377, dash, 413.
+Your ticket number is 383, dash, 841.
+Your ticket number is 389, dash, 202.
+Your ticket number is 391, dash, 580.
+Your ticket number is 401, dash, 326.
+Your ticket number is 403, dash, 332.
+Your ticket number is 409, dash, 114.
+Your ticket number is 411, dash, 187.
+Your ticket number is 438, dash, 460.
+Your ticket number is 448, dash, 288.
+Your ticket number is 452, dash, 535.
+Your ticket number is 469, dash, 283.
+Your ticket number is 477, dash, 584.
+Your ticket number is 514, dash, 808.
+Your ticket number is 526, dash, 720.
+Your ticket number is 558, dash, 911.
+Your ticket number is 587, dash, 761.
+Your ticket number is 590, dash, 551.
+Your ticket number is 603, dash, 175.
+Your ticket number is 637, dash, 711.
+Your ticket number is 648, dash, 880.
+Your ticket number is 666, dash, 399.
+Your ticket number is 666, dash, 643.
+Your ticket number is 668, dash, 876.
+Your ticket number is 671, dash, 882.
+Your ticket number is 690, dash, 744.
+Your ticket number is 703, dash, 878.
+Your ticket number is 710, dash, 909.
+Your ticket number is 733, dash, 331.
+Your ticket number is 753, dash, 989.
+Your ticket number is 779, dash, 695.
+Your ticket number is 802, dash, 154.
+Your ticket number is 806, dash, 289.
+Your ticket number is 814, dash, 229.
+Your ticket number is 819, dash, 564.
+Your ticket number is 825, dash, 646.
+Your ticket number is 828, dash, 602.
+Your ticket number is 856, dash, 595.
+Your ticket number is 863, dash, 663.
+Your ticket number is 870, dash, 602.
+Your ticket number is 930, dash, 676.
+Your ticket number is 952, dash, 298.
+Your ticket number is 982, dash, 589.
 Your username will be the email you just provided.
+Zero, one, two, three, four, five, six, seven, eight, nine.
