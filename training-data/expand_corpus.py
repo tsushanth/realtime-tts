@@ -180,6 +180,30 @@ SUBSTITUTIONS = [
     (r"\bfifteen years\b", lambda: f"{random.choice([5,8,10,15,20,25])} years"),
     (r"\babout five years ago\b", lambda: f"about {random.choice([2,3,5,7,10])} years ago"),
     (r"\bthree different time zones\b", lambda: f"{random.choice([2,3,4,5])} different time zones"),
+    # batch_007 additions
+    (r"\bseventy-five degrees\b", lambda: f"{random.choice([45,55,65,72,75,82,90])} degrees"),
+    (r"\btwenty miles per hour\b", lambda: f"{random.choice([10,15,20,25,30,40])} miles per hour"),
+    (r"\bgate twenty-two\b", lambda: f"gate {random.choice(['fourteen','twenty-two','thirty-one','C nine'])}"),
+    (r"\bforty-five minutes before\b", lambda: f"{random.choice([30,40,45,60])} minutes before"),
+    (r"\ban hour between\b", lambda: f"{random.choice(['forty minutes','an hour','ninety minutes'])} between"),
+    (r"\btwo hours before an international\b", lambda: f"{random.choice([2,3])} hours before an international"),
+    (r"\beighteen C\b", lambda: f"{random.choice([12,14,18,22,27])}{random.choice('ABCDEF')}"),
+    (r"\bunder three hours\b", lambda: f"under {random.choice([1,2,3,4,5])} hours"),
+    (r"\bcarousel five\b", lambda: f"carousel {random.choice([2,3,5,7,9])}"),
+    (r"\bthrough Denver\b", lambda: f"through {random.choice(['Denver','Chicago','Atlanta','Dallas'])}"),
+    (r"\bfifteen minutes\b", lambda: f"{random.choice([10,15,20,30])} minutes"),
+    (r"\btwo miles ahead\b", lambda: f"{random.choice([1,2,3,5])} miles ahead"),
+    (r"\bfour in the afternoon\b", lambda: random.choice(TIMES)),
+    (r"\btwenty minutes to get\b", lambda: f"{random.choice([10,15,20,30,45])} minutes to get"),
+    # batch_008 additions
+    (r"\bfour five six Oak Lane\b",
+     lambda: f"{random.randint(100,999)} {random.choice(['Oak Lane','Birch Court','Cedar Way','Willow Drive'])}"),
+    (r"\bfour seven two, one one nine\b", lambda: f"{random.randint(100,999)}, {random.randint(100,999)}"),
+    (r"\bM, A, R, T, I, N, E, Z\b", lambda: ", ".join(random.choice(LAST_NAMES).upper())),
+    (r"\bten thirty, not ten fifteen\b", lambda: f"{random.choice(TIMES)}, not {random.choice(TIMES)}"),
+    (r"\bseven, seven, zero, three\b",
+     lambda: ", ".join(random.choice(["zero","one","two","three","four","five","six","seven","eight","nine"]) for _ in range(4))),
+    (r"\bthirty minutes or so\b", lambda: f"{random.choice([10,15,30,45,60])} minutes or so"),
 ]
 
 COMPILED = [(re.compile(pat), fn) for pat, fn in SUBSTITUTIONS]

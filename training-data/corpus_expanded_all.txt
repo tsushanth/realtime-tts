@@ -1,3 +1,5 @@
+A fix has already been deployed, so this should be working again shortly.
+Absolutely, I can take care of that for you right now.
 According to our records, the original request was submitted through the mobile app, not the website.
 After I transfer you, the next representative will already have the notes from our conversation.
 After applying your credit, the remaining balance is eighty-nine dollars.
@@ -120,6 +122,7 @@ Alright, I think I've got a clear picture now.
 Alright, give me a second to confirm.
 Alright, here we go, let's take a look together.
 Alright, here's what I found.
+Alright, let's go over the three things we accomplished on this call.
 Alright, that wraps things up. Talk soon.
 Although I can't issue a full refund from here, I can absolutely get you a partial credit today.
 Apologies, there seems to be an echo on the line.
@@ -132,6 +135,11 @@ Are you connected to Wi-Fi or using mobile data?
 Are you trying to reach billing, technical support, or general questions today?
 As soon as I get the confirmation from our warehouse team, I'll send you a text letting you know it's on its way.
 At the end of this call, you'll have the option to rate your experience.
+Baggage claim for that flight is usually at carousel 2.
+Baggage claim for that flight is usually at carousel 3.
+Baggage claim for that flight is usually at carousel 5.
+Baggage claim for that flight is usually at carousel 7.
+Baggage claim for that flight is usually at carousel 9.
 Based on your call history, it looks like this keeps happening around the same time each month.
 Based on your usage, you might actually save money on our other plan.
 Basically, this means your order is still processing normally.
@@ -153,23 +161,36 @@ Before I let you go, let's confirm the spelling of your email one more time.
 Before anything else, let's make sure I have your correct information.
 Before we finish, is the phone number on file still the best way to reach you?
 Before we wrap up, is there anything else from today's call you'd like me to follow up on?
+Before you go, here's a quick recap of what happens next on our end.
+Boarding typically begins about 30 minutes before departure.
+Boarding typically begins about 40 minutes before departure.
+Boarding typically begins about 45 minutes before departure.
+Boarding typically begins about 60 minutes before departure.
 Can I get your date of birth for verification, please?
 Can I get your name and phone number, please?
 Can you check if there's a small red light blinking on the front of the router?
 Can you check whether the app shows you're logged in, or does it ask you to sign in again?
 Can you confirm the last four digits of your account number?
+Can you confirm the name currently listed on the account?
 Can you hear me okay? The connection seems a little unclear.
 Can you move to a quieter area if possible? It's a bit hard to hear.
 Can you provide a valid email address for the account?
 Can you spell that last name for me?
 Can you tell me a bit more about the issue you're experiencing?
 Can you try logging out and back in again?
+Can you verify the email address we have on file for you?
 Can you walk me through what happened step by step?
 Cancellations made within 12 hours are eligible for a full refund.
 Cancellations made within 24 hours are eligible for a full refund.
 Cancellations made within 36 hours are eligible for a full refund.
 Cancellations made within 48 hours are eligible for a full refund.
 Cancellations made within 72 hours are eligible for a full refund.
+Certainly, give me just a moment to process that.
+Check-in typically opens 12 hours before departure.
+Check-in typically opens 24 hours before departure.
+Check-in typically opens 36 hours before departure.
+Check-in typically opens 48 hours before departure.
+Check-in typically opens 72 hours before departure.
 Close to seventy percent of customers prefer text updates over phone calls.
 Combined with shipping, the final total is eighty-nine dollars.
 Combined with shipping, the final total is fifty-six ninety-nine.
@@ -187,6 +208,7 @@ Combined with shipping, the final total is twenty-nine ninety-five.
 Combined with shipping, the final total is twenty-three dollars.
 Combined with shipping, the final total is two hundred and eighty-nine ninety-nine.
 Combined with shipping, the final total is two hundred and four dollars.
+Conditions look clear for travel this weekend.
 Congratulations, your application has been approved.
 Could you say that one more time, please?
 Could you tell me whether you're calling about a new order or an existing one?
@@ -195,6 +217,7 @@ Customer satisfaction scores improved by nearly 15 percent since last quarter.
 Customer satisfaction scores improved by nearly 20 percent since last quarter.
 Customer satisfaction scores improved by nearly 25 percent since last quarter.
 Customer satisfaction scores improved by nearly 30 percent since last quarter.
+Definitely, let's get that sorted immediately.
 Do you already have an account with us, or would this be a new signup?
 Do you have a promo code you'd like to apply?
 Do you have your order number handy?
@@ -213,18 +236,30 @@ Estimated wait time is currently 5 minutes.
 Estimated wait time is currently 7 minutes.
 Even though the item shows as backordered online, I can see three units available at our regional warehouse.
 Everything checks out on our end.
+Expect breezy conditions with gusts up to 10 miles per hour.
+Expect breezy conditions with gusts up to 15 miles per hour.
+Expect breezy conditions with gusts up to 20 miles per hour.
+Expect breezy conditions with gusts up to 25 miles per hour.
+Expect breezy conditions with gusts up to 30 miles per hour.
+Expect breezy conditions with gusts up to 40 miles per hour.
+Fair enough, I'll make a note of that.
 Fantastic, that discount has been applied successfully.
+Feedback like yours helps us catch issues we might've missed.
 Feel free to skip the survey if you're short on time.
 Feel free to write this down if it's easier to follow that way.
 First things first, let's get your account pulled up.
 First, try restarting the app and see if that helps.
+For extra security, consider enabling two-factor authentication on your account.
+For security purposes, I'll need to ask you a couple of verification questions before we continue.
 For security, can you confirm the zip code on the account?
+For your protection, I'm not able to make changes without confirming your identity first.
 For your security, I won't be able to share that information over the phone.
 From there, select forget this network, then reconnect using your password.
 From what I can tell, the charge you're asking about is actually a pending authorization, not a final charge.
 Generally speaking, most customers see results within a couple of weeks.
 Generally speaking, most customers see results within a few days.
 Generally speaking, most customers see results within about a month.
+Give me one moment to consult with someone more senior on this.
 Given that your appointment was originally for Friday, would you rather push it to Monday or skip ahead to next week entirely?
 Given that your appointment was originally for Friday, would you rather push it to Saturday or skip ahead to next week entirely?
 Given that your appointment was originally for Monday, would you rather push it to Friday or skip ahead to next week entirely?
@@ -454,12 +489,14 @@ I can only imagine how annoying that must have been, and I'm sorry you had to de
 I can see you're paying for two overlapping features, let's simplify that.
 I can set up text alerts so you're notified before each renewal.
 I can tell this has been a frustrating experience, and I appreciate you staying on the line.
+I can't override that particular system restriction.
 I completely understand if this has shaken your confidence in us.
 I completely understand the frustration — let's get this fixed.
 I completely understand why that would be frustrating, especially after waiting this long.
 I completely understand, let's find a solution together.
 I don't have that information in front of me right now, sorry.
 I don't have the ability to cancel that from here, but I can transfer you.
+I don't have the authority to approve that, but my supervisor might.
 I don't want to promise something I can't deliver, so let me check first.
 I don't want to rush you through this decision.
 I don't want you to be surprised later, so let me explain the fees up front.
@@ -538,12 +575,14 @@ I noticed there's a note on your account from your last call.
 I noticed you haven't used the premium features much, would a lower tier make sense?
 I noticed you're close to your storage limit, would you like to add more space?
 I realize this is a lot of information, so feel free to ask questions.
+I really appreciate you calling to let us know about this.
 I really appreciate you explaining that so clearly, it helps a lot.
 I regret to inform you that we can't extend the deadline this time.
 I see a note here from a previous call mentioning a similar issue — did that ever get resolved?
 I see an open support ticket from a few days ago, let me pull that up alongside this call.
 I see that a credit was already issued last week, so let me check if this is a separate issue.
 I see you've called before — let's get this sorted quickly.
+I spoke with my manager, and we can go ahead and make that change.
 I think we got disconnected there for a second, are you still with me?
 I want to be upfront with you, this might take a little longer than usual to resolve.
 I want to confirm you're comfortable with the plan we just outlined.
@@ -559,6 +598,8 @@ I want to personally apologize for the trouble this has caused.
 I want to set the right expectations here — this usually takes a day or two.
 I want you to feel confident about this before we move forward.
 I wasn't able to find an account under that number.
+I wasn't able to verify that, could you try a different piece of information?
+I wish I could say yes, but that's against our current policy.
 I'd like to help you set up automatic payments so you never miss a due date again.
 I'll be honest, that's not something we can guarantee, but we'll do our best.
 I'll escalate this to our technical team if it continues.
@@ -571,19 +612,23 @@ I'll go ahead and flag this so it doesn't happen again.
 I'll go ahead and update your billing address.
 I'll make a note so this is resolved automatically next time.
 I'll need a few pieces of information before we lock in the appointment.
+I'll need to get a manager's approval before proceeding with that.
 I'll need your full name to get started.
 I'll patch you through to our technical team.
 I'll read back the changes we made just to be safe.
 I'll repeat the confirmation number just so you have it written down.
 I'll send a verification link to that email shortly.
 I'll try calling back if we get disconnected.
+I'm afraid I can't do that from my end, but let me see what else is possible.
 I'm afraid the warranty on that item expired last month.
 I'm afraid there's been a small delay with your order.
 I'm going to connect you with a specialist now.
 I'm going to escalate this so someone follows up directly.
 I'm going to go ahead and note this on your file.
+I'm going to loop in a specialist who handles this exact situation.
 I'm happy to go through this again if it helps.
 I'm happy to say that's already taken care of.
+I'm limited in what I can change on a first call, but let's try.
 I'm not able to help with that directly, but I can transfer you.
 I'm not totally sure, but let me check and get back to you.
 I'm really sorry for the inconvenience.
@@ -594,11 +639,15 @@ I'm sorry, we don't currently offer that service in your area.
 I've added a note to waive that fee this time.
 I've booked that in for you — you're all set.
 I've escalated this so it gets extra attention moving forward.
+I've got approval now, so let's move forward.
 I've got your details pulled up now.
+If something feels off about a call you receive, it's okay to hang up and call us back directly.
 If something feels off after the update, just give us a call.
 If the problem comes back, feel free to call this same number.
 If the tracking doesn't update by tomorrow, please give us a call back.
+If you didn't request this change, please let me know right away.
 If you need anything else, don't hesitate to reach back out.
+If you suspect fraudulent activity, we can freeze the account immediately.
 If you'd like a callback instead of waiting, press one now.
 If you'd like a written summary, I can email that over as well.
 If you'd like, I can go ahead and process that refund right now, and it should land back on your card within 3 to 6 business days.
@@ -620,6 +669,7 @@ In most cases, yes, but it can vary by region.
 In other words, this fee only shows up if you cancel early.
 In rare cases, this can take a bit longer if extra verification is needed.
 In short, everything on your end looks correctly set up.
+In summary, everything looks good and there's nothing further needed from you.
 In the event of any delay, we'll notify you as soon as we know more.
 International orders may be subject to additional customs fees upon delivery.
 Is English your preferred language for this call?
@@ -635,7 +685,9 @@ Is this your first time contacting us about this particular issue?
 It appears the tracking number hasn't updated since yesterday.
 It appears there was a duplicate charge processed in error.
 It appears your subscription lapsed last month due to a failed payment.
+It looks like a mostly cloudy day with a slight chance of showers.
 It looks like everything is in order.
+It looks like our systems are running a routine maintenance update right now.
 It looks like the discount code wasn't applied at checkout.
 It looks like the subscription was paused rather than cancelled, which might explain the confusion.
 It looks like the wrong item was shipped by mistake.
@@ -648,19 +700,29 @@ It seems the payment didn't go through due to an expired card on file.
 It seems the previous agent didn't finish updating your account.
 It seems there was a mix-up with the delivery address.
 It sounds like what you're describing is a connectivity issue rather than a problem with the device itself.
+It usually takes about 10 minutes to get there from downtown.
+It usually takes about 15 minutes to get there from downtown.
+It usually takes about 20 minutes to get there from downtown.
+It usually takes about 30 minutes to get there from downtown.
+It usually takes about 45 minutes to get there from downtown.
 It was great speaking with you — take care.
 It's completely okay to call back later if you think of more questions.
 It's currently three in the afternoon on the East Coast.
+It's fairly humid out there today, so dress accordingly.
 It's possible the issue is related to a recent update rather than the hardware itself.
+It's really helpful when customers point things out like this.
 It's totally fine to ask me to repeat any part of this.
 It's worth checking if a firewall or antivirus program is blocking the connection.
 Just a moment, I'm checking our system.
+Just double-checking, that's a size medium in blue, is that right?
 Just so we're on the same page, this only applies to future orders.
 Just so you know, this process typically takes about 10 minutes to complete.
 Just so you know, this process typically takes about 15 minutes to complete.
 Just so you know, this process typically takes about 20 minutes to complete.
 Just so you know, this process typically takes about 5 minutes to complete.
 Just to be clear, this change won't affect your existing plan.
+Just to close the loop, all three items are now resolved.
+Just to confirm one more time, the appointment is for two people, correct?
 Just to confirm, is your appointment on Friday at eleven forty-five?
 Just to confirm, is your appointment on Friday at eleven in the morning?
 Just to confirm, is your appointment on Friday at nine thirty?
@@ -724,11 +786,16 @@ Just to confirm, is your appointment on next Wednesday at twelve thirty?
 Just to double check, you want the refund issued to the original card, correct?
 Just to make sure I heard you right, that's a return, not an exchange?
 Just to manage expectations, results can vary depending on your specific situation.
+Just to summarize, we've updated your address, applied the discount, and confirmed the new plan.
 Just under ten percent of accounts opt into the premium tier.
 Keep in mind that same-day appointments fill up quickly, so it's best to book early.
+Legitimate calls from us will never pressure you to act immediately.
 Let me be clear about what this plan does and doesn't include.
 Let me break this down into a couple of simple steps for you.
+Let me check with my team lead and get right back to you.
 Let me clarify the difference between the two plans you're considering.
+Let me confirm once more, you'd like this shipped, not picked up in store?
+Let me connect you with my supervisor to discuss this further.
 Let me double check that before I confirm.
 Let me explain how the billing cycle works so this makes more sense going forward.
 Let me get you over to billing — please hold.
@@ -740,6 +807,7 @@ Let me know if you'd prefer a different representative.
 Let me loop in someone from that department.
 Let me outline the three options available to you right now.
 Let me pull up the store locator for you.
+Let me put you on a brief hold while I confirm this with my team.
 Let me read that back to you — your address is 107 Elm Street, apartment 6C.
 Let me read that back to you — your address is 120 Cedar Street, apartment 5C.
 Let me read that back to you — your address is 133 Pine Street, apartment 1C.
@@ -800,6 +868,66 @@ Let me read that back to you — your address is 982 Cedar Street, apartment 5C.
 Let me read that back to you — your address is 985 Main Street, apartment 1D.
 Let me read that back to you — your address is 991 Oak Street, apartment 3B.
 Let me read that back to you — your address is 991 Pine Street, apartment 9C.
+Let me repeat the confirmation number back: 125, 283.
+Let me repeat the confirmation number back: 139, 211.
+Let me repeat the confirmation number back: 140, 466.
+Let me repeat the confirmation number back: 145, 825.
+Let me repeat the confirmation number back: 171, 891.
+Let me repeat the confirmation number back: 205, 462.
+Let me repeat the confirmation number back: 210, 491.
+Let me repeat the confirmation number back: 218, 998.
+Let me repeat the confirmation number back: 230, 142.
+Let me repeat the confirmation number back: 251, 540.
+Let me repeat the confirmation number back: 258, 342.
+Let me repeat the confirmation number back: 281, 522.
+Let me repeat the confirmation number back: 294, 360.
+Let me repeat the confirmation number back: 315, 798.
+Let me repeat the confirmation number back: 327, 304.
+Let me repeat the confirmation number back: 328, 124.
+Let me repeat the confirmation number back: 355, 782.
+Let me repeat the confirmation number back: 367, 282.
+Let me repeat the confirmation number back: 373, 263.
+Let me repeat the confirmation number back: 385, 459.
+Let me repeat the confirmation number back: 385, 985.
+Let me repeat the confirmation number back: 415, 473.
+Let me repeat the confirmation number back: 439, 128.
+Let me repeat the confirmation number back: 453, 846.
+Let me repeat the confirmation number back: 458, 412.
+Let me repeat the confirmation number back: 494, 690.
+Let me repeat the confirmation number back: 508, 436.
+Let me repeat the confirmation number back: 509, 795.
+Let me repeat the confirmation number back: 546, 101.
+Let me repeat the confirmation number back: 546, 720.
+Let me repeat the confirmation number back: 623, 218.
+Let me repeat the confirmation number back: 632, 925.
+Let me repeat the confirmation number back: 651, 803.
+Let me repeat the confirmation number back: 658, 136.
+Let me repeat the confirmation number back: 694, 371.
+Let me repeat the confirmation number back: 696, 665.
+Let me repeat the confirmation number back: 710, 544.
+Let me repeat the confirmation number back: 735, 867.
+Let me repeat the confirmation number back: 756, 621.
+Let me repeat the confirmation number back: 775, 297.
+Let me repeat the confirmation number back: 807, 252.
+Let me repeat the confirmation number back: 854, 440.
+Let me repeat the confirmation number back: 898, 673.
+Let me repeat the confirmation number back: 901, 521.
+Let me repeat the confirmation number back: 905, 421.
+Let me repeat the confirmation number back: 906, 818.
+Let me repeat the confirmation number back: 915, 981.
+Let me repeat the confirmation number back: 919, 930.
+Let me repeat the confirmation number back: 921, 785.
+Let me repeat the confirmation number back: 930, 354.
+Let me repeat the confirmation number back: 936, 571.
+Let me repeat the confirmation number back: 940, 914.
+Let me repeat the confirmation number back: 954, 478.
+Let me repeat the confirmation number back: 963, 649.
+Let me repeat the confirmation number back: 979, 581.
+Let me repeat the confirmation number back: 984, 852.
+Let me repeat the confirmation number back: 985, 266.
+Let me repeat the confirmation number back: 992, 333.
+Let me repeat the confirmation number back: 993, 139.
+Let me repeat the confirmation number back: 995, 516.
 Let me see if I can find an answer for you.
 Let me summarize what we've covered so far before we move on.
 Let me take a quick look at that for you.
@@ -807,11 +935,13 @@ Let me transfer you to someone who can help with that.
 Let me walk you through exactly what happened with your order from start to finish.
 Let me walk you through the cancellation process before we proceed.
 Let's clear the cache and see if that resolves it.
+Let's do a final check: your appointment, your address, and your payment method — all set?
 Let's find a time that works best for you.
 Let's get your account set up.
 Let's go ahead and get this scheduled for you.
 Let's go ahead and get you scheduled.
 Let's go through your account step by step so everything is crystal clear.
+Let's make sure I have this right before moving forward.
 Let's make sure everything is in order before we close out this call.
 Let's make sure the new address has been saved correctly.
 Let's pause for a second if you need to check anything on your end.
@@ -836,6 +966,7 @@ Let's see, that comes out to twenty-three dollars in total.
 Let's see, that comes out to two hundred and eighty-nine ninety-nine in total.
 Let's see, that comes out to two hundred and four dollars in total.
 Let's slow down and go through this one piece at a time.
+Let's tie a bow on this — everything's been taken care of.
 Let's troubleshoot this together, step by step.
 Let's try a different browser and see if it persists.
 Let's verify the delivery instructions one final time.
@@ -843,6 +974,14 @@ Looking at the account history, it seems like this has come up twice in the past
 Looking at the account history, it seems like this has come up twice in the past month.
 Looking at the account history, it seems like this has come up twice in the past week.
 Looking at your account, you'd likely benefit from the annual plan instead of monthly.
+Looks like it's going to be sunny with a high near 45 degrees today.
+Looks like it's going to be sunny with a high near 55 degrees today.
+Looks like it's going to be sunny with a high near 65 degrees today.
+Looks like it's going to be sunny with a high near 72 degrees today.
+Looks like it's going to be sunny with a high near 75 degrees today.
+Looks like it's going to be sunny with a high near 82 degrees today.
+Looks like it's going to be sunny with a high near 90 degrees today.
+Makes sense, let me look into that for you.
 Membership includes free shipping on all orders over eighty-nine dollars.
 Membership includes free shipping on all orders over fifty-six ninety-nine.
 Membership includes free shipping on all orders over forty-eight dollars.
@@ -861,14 +1000,19 @@ Membership includes free shipping on all orders over two hundred and eighty-nine
 Membership includes free shipping on all orders over two hundred and four dollars.
 More often than not, this resolves itself after an app update.
 More than sixty percent of new signups come from referrals.
+My supervisor has approved the exception, so let's proceed.
 Nearly half of our support calls are resolved within the first five minutes.
+Never share your one-time verification code with anyone, including someone claiming to be from our company.
 No problem, let me look that up.
+No worries at all, these things happen.
+Not a problem, I'll fix that right away.
 Noted, I'll pass that along to the team.
 Now wait about 15 seconds before turning it back on again.
 Now wait about 20 seconds before turning it back on again.
 Now wait about 30 seconds before turning it back on again.
 Now wait about 45 seconds before turning it back on again.
 Now wait about 60 seconds before turning it back on again.
+Of course, that's no problem at all.
 Okay, I found it. Here's what I see.
 Okay, I see it, give me just a moment to read through it.
 Okay, got it, that clears things up on my end.
@@ -880,12 +1024,73 @@ Once it restarts, give it a minute or two to fully reconnect to the network.
 Once that's fixed, you shouldn't run into this issue again.
 Once the new part arrives, we'll schedule the installation right away.
 Once the payment clears, your service will be reactivated automatically.
+Once verified, I can go ahead and make the changes you requested.
 Once we pick a time, you'll get an automatic reminder the day before.
 Once you approve the estimate, we can schedule the repair.
 Once you confirm your shipping address, I can go ahead and finalize the order on my end.
 Once you're in that menu, choose the option to clear cached data.
 Once your identity is verified, we can proceed with the rest of the request.
 One moment while I transfer your call.
+One more confirmation, the callback number ends in eight, eight, six, seven?
+One more confirmation, the callback number ends in eight, four, six, seven?
+One more confirmation, the callback number ends in eight, four, two, seven?
+One more confirmation, the callback number ends in eight, nine, five, one?
+One more confirmation, the callback number ends in eight, one, two, zero?
+One more confirmation, the callback number ends in eight, seven, five, five?
+One more confirmation, the callback number ends in eight, seven, seven, one?
+One more confirmation, the callback number ends in eight, seven, six, zero?
+One more confirmation, the callback number ends in eight, six, seven, seven?
+One more confirmation, the callback number ends in eight, two, one, four?
+One more confirmation, the callback number ends in eight, zero, eight, six?
+One more confirmation, the callback number ends in five, five, one, two?
+One more confirmation, the callback number ends in five, seven, six, six?
+One more confirmation, the callback number ends in five, six, seven, four?
+One more confirmation, the callback number ends in five, three, three, nine?
+One more confirmation, the callback number ends in four, eight, two, four?
+One more confirmation, the callback number ends in four, nine, six, four?
+One more confirmation, the callback number ends in four, nine, three, six?
+One more confirmation, the callback number ends in four, nine, zero, two?
+One more confirmation, the callback number ends in four, seven, one, seven?
+One more confirmation, the callback number ends in four, seven, one, three?
+One more confirmation, the callback number ends in four, six, four, eight?
+One more confirmation, the callback number ends in four, two, one, zero?
+One more confirmation, the callback number ends in four, zero, three, four?
+One more confirmation, the callback number ends in nine, four, zero, one?
+One more confirmation, the callback number ends in nine, nine, nine, three?
+One more confirmation, the callback number ends in nine, nine, zero, nine?
+One more confirmation, the callback number ends in nine, seven, two, seven?
+One more confirmation, the callback number ends in nine, three, two, four?
+One more confirmation, the callback number ends in nine, zero, six, five?
+One more confirmation, the callback number ends in one, eight, three, two?
+One more confirmation, the callback number ends in one, five, four, five?
+One more confirmation, the callback number ends in one, nine, zero, two?
+One more confirmation, the callback number ends in one, one, six, seven?
+One more confirmation, the callback number ends in one, seven, five, six?
+One more confirmation, the callback number ends in one, six, eight, zero?
+One more confirmation, the callback number ends in one, three, one, seven?
+One more confirmation, the callback number ends in one, three, three, four?
+One more confirmation, the callback number ends in one, two, seven, four?
+One more confirmation, the callback number ends in one, two, three, two?
+One more confirmation, the callback number ends in one, zero, nine, four?
+One more confirmation, the callback number ends in seven, eight, seven, four?
+One more confirmation, the callback number ends in seven, seven, one, zero?
+One more confirmation, the callback number ends in seven, seven, seven, five?
+One more confirmation, the callback number ends in seven, seven, zero, three?
+One more confirmation, the callback number ends in seven, three, seven, eight?
+One more confirmation, the callback number ends in six, eight, zero, seven?
+One more confirmation, the callback number ends in six, five, eight, four?
+One more confirmation, the callback number ends in six, seven, nine, seven?
+One more confirmation, the callback number ends in six, three, six, zero?
+One more confirmation, the callback number ends in three, eight, five, nine?
+One more confirmation, the callback number ends in three, nine, nine, zero?
+One more confirmation, the callback number ends in three, one, eight, six?
+One more confirmation, the callback number ends in two, four, nine, nine?
+One more confirmation, the callback number ends in two, nine, four, one?
+One more confirmation, the callback number ends in two, nine, six, seven?
+One more confirmation, the callback number ends in two, seven, zero, two?
+One more confirmation, the callback number ends in two, six, three, nine?
+One more confirmation, the callback number ends in two, zero, four, seven?
+One more confirmation, the callback number ends in zero, four, four, nine?
 One second — I'm looking into it.
 Only about 10 percent of orders require any kind of return.
 Only about 2 percent of orders require any kind of return.
@@ -893,6 +1098,7 @@ Only about 3 percent of orders require any kind of return.
 Only about 5 percent of orders require any kind of return.
 Only about 8 percent of orders require any kind of return.
 Open the settings menu and look for an option labeled network preferences.
+Our engineering team is already aware and working on a fix.
 Our headquarters are located on the West Coast, though we have support teams nationwide.
 Our office hours are nine to five, Monday through Friday.
 Our price match guarantee applies to identical items from authorized retailers only.
@@ -928,8 +1134,11 @@ Overnight shipping is available for an additional charge of twenty-three dollars
 Overnight shipping is available for an additional charge of two hundred and eighty-nine ninety-nine.
 Overnight shipping is available for an additional charge of two hundred and four dollars.
 Parking is available directly behind the building.
+Parking near that location can get busy during lunch hours.
 Perfect, I can see your account here.
 Perfect, that's taken care of. Have a good one.
+Please arrive at the airport at least 2 hours before an international flight.
+Please arrive at the airport at least 3 hours before an international flight.
 Please check your inbox for a confirmation message.
 Please enter your six digit verification code now.
 Please hold for just a moment while I connect you.
@@ -937,11 +1146,159 @@ Please let me know if anything I've said needs more clarification.
 Please stay on the line while I connect you.
 Please stay on the line, your call is important to us.
 Prices for this plan will increase slightly starting next quarter.
+Public transit options include a bus that runs every 10 minutes.
+Public transit options include a bus that runs every 15 minutes.
+Public transit options include a bus that runs every 20 minutes.
+Public transit options include a bus that runs every 25 minutes.
+Public transit options include a bus that runs every 30 minutes.
+Public transit options include a bus that runs every 45 minutes.
+Public transit options include a bus that runs every 5 minutes.
 Put simply, your subscription will renew unless you cancel before the date shown.
+Quick recap: refund issued, account updated, and new appointment scheduled.
 Really appreciate you calling this in rather than letting it slide.
+Repeating back for accuracy, the pickup time is eleven forty-five, not noon.
+Repeating back for accuracy, the pickup time is eleven forty-five, not one fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is eleven in the morning, not one o'clock.
+Repeating back for accuracy, the pickup time is five forty-five in the evening, not nine in the morning.
+Repeating back for accuracy, the pickup time is five forty-five in the evening, not three fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is five forty-five in the evening, not twelve thirty.
+Repeating back for accuracy, the pickup time is five o'clock, not noon.
+Repeating back for accuracy, the pickup time is five o'clock, not one o'clock.
+Repeating back for accuracy, the pickup time is five o'clock, not seven thirty in the evening.
+Repeating back for accuracy, the pickup time is five o'clock, not two forty-five.
+Repeating back for accuracy, the pickup time is five o'clock, not two thirty.
+Repeating back for accuracy, the pickup time is four o'clock, not eleven in the morning.
+Repeating back for accuracy, the pickup time is four o'clock, not nine in the morning.
+Repeating back for accuracy, the pickup time is four o'clock, not one o'clock.
+Repeating back for accuracy, the pickup time is four thirty in the afternoon, not five forty-five in the evening.
+Repeating back for accuracy, the pickup time is four thirty in the afternoon, not four o'clock.
+Repeating back for accuracy, the pickup time is four thirty in the afternoon, not four thirty in the afternoon.
+Repeating back for accuracy, the pickup time is four thirty in the afternoon, not noon.
+Repeating back for accuracy, the pickup time is four thirty in the afternoon, not ten fifteen.
+Repeating back for accuracy, the pickup time is nine in the morning, not five forty-five in the evening.
+Repeating back for accuracy, the pickup time is nine in the morning, not four thirty in the afternoon.
+Repeating back for accuracy, the pickup time is nine in the morning, not three fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is nine thirty, not nine thirty.
+Repeating back for accuracy, the pickup time is nine thirty, not two forty-five.
+Repeating back for accuracy, the pickup time is noon, not four thirty in the afternoon.
+Repeating back for accuracy, the pickup time is noon, not one fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is noon, not two thirty.
+Repeating back for accuracy, the pickup time is one fifteen in the afternoon, not one o'clock.
+Repeating back for accuracy, the pickup time is one fifteen in the afternoon, not seven thirty in the evening.
+Repeating back for accuracy, the pickup time is one fifteen in the afternoon, not ten fifteen.
+Repeating back for accuracy, the pickup time is one o'clock, not four o'clock.
+Repeating back for accuracy, the pickup time is one o'clock, not six in the evening.
+Repeating back for accuracy, the pickup time is one o'clock, not two thirty.
+Repeating back for accuracy, the pickup time is seven thirty in the evening, not five forty-five in the evening.
+Repeating back for accuracy, the pickup time is seven thirty in the evening, not one o'clock.
+Repeating back for accuracy, the pickup time is six in the evening, not seven thirty in the evening.
+Repeating back for accuracy, the pickup time is six in the evening, not two forty-five.
+Repeating back for accuracy, the pickup time is ten fifteen, not five forty-five in the evening.
+Repeating back for accuracy, the pickup time is ten fifteen, not six in the evening.
+Repeating back for accuracy, the pickup time is ten o'clock, not one fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is ten o'clock, not six in the evening.
+Repeating back for accuracy, the pickup time is ten o'clock, not twelve thirty.
+Repeating back for accuracy, the pickup time is three fifteen in the afternoon, not eleven forty-five.
+Repeating back for accuracy, the pickup time is three fifteen in the afternoon, not five forty-five in the evening.
+Repeating back for accuracy, the pickup time is three fifteen in the afternoon, not four thirty in the afternoon.
+Repeating back for accuracy, the pickup time is three fifteen in the afternoon, not six in the evening.
+Repeating back for accuracy, the pickup time is three fifteen in the afternoon, not two forty-five.
+Repeating back for accuracy, the pickup time is three o'clock, not noon.
+Repeating back for accuracy, the pickup time is three o'clock, not two thirty.
+Repeating back for accuracy, the pickup time is twelve thirty, not four o'clock.
+Repeating back for accuracy, the pickup time is twelve thirty, not one fifteen in the afternoon.
+Repeating back for accuracy, the pickup time is twelve thirty, not ten fifteen.
+Repeating back for accuracy, the pickup time is twelve thirty, not ten o'clock.
+Repeating back for accuracy, the pickup time is twelve thirty, not three o'clock.
+Repeating back for accuracy, the pickup time is twelve thirty, not two forty-five.
+Repeating back for accuracy, the pickup time is two forty-five, not one o'clock.
+Repeating back for accuracy, the pickup time is two forty-five, not ten o'clock.
+Repeating back for accuracy, the pickup time is two thirty, not eleven forty-five.
+Repeating back for accuracy, the pickup time is two thirty, not one o'clock.
+Repeating back for accuracy, the pickup time is two thirty, not two forty-five.
+Repeating that back to you, the address is 109 Willow Drive.
+Repeating that back to you, the address is 145 Oak Lane.
+Repeating that back to you, the address is 158 Oak Lane.
+Repeating that back to you, the address is 159 Oak Lane.
+Repeating that back to you, the address is 160 Birch Court.
+Repeating that back to you, the address is 170 Birch Court.
+Repeating that back to you, the address is 170 Oak Lane.
+Repeating that back to you, the address is 175 Birch Court.
+Repeating that back to you, the address is 194 Willow Drive.
+Repeating that back to you, the address is 209 Birch Court.
+Repeating that back to you, the address is 214 Oak Lane.
+Repeating that back to you, the address is 235 Cedar Way.
+Repeating that back to you, the address is 258 Birch Court.
+Repeating that back to you, the address is 261 Willow Drive.
+Repeating that back to you, the address is 265 Willow Drive.
+Repeating that back to you, the address is 308 Cedar Way.
+Repeating that back to you, the address is 344 Cedar Way.
+Repeating that back to you, the address is 357 Oak Lane.
+Repeating that back to you, the address is 367 Birch Court.
+Repeating that back to you, the address is 370 Oak Lane.
+Repeating that back to you, the address is 378 Cedar Way.
+Repeating that back to you, the address is 392 Willow Drive.
+Repeating that back to you, the address is 403 Birch Court.
+Repeating that back to you, the address is 441 Birch Court.
+Repeating that back to you, the address is 478 Cedar Way.
+Repeating that back to you, the address is 488 Oak Lane.
+Repeating that back to you, the address is 499 Cedar Way.
+Repeating that back to you, the address is 505 Birch Court.
+Repeating that back to you, the address is 513 Oak Lane.
+Repeating that back to you, the address is 529 Cedar Way.
+Repeating that back to you, the address is 568 Cedar Way.
+Repeating that back to you, the address is 592 Birch Court.
+Repeating that back to you, the address is 614 Birch Court.
+Repeating that back to you, the address is 617 Willow Drive.
+Repeating that back to you, the address is 618 Cedar Way.
+Repeating that back to you, the address is 664 Willow Drive.
+Repeating that back to you, the address is 674 Oak Lane.
+Repeating that back to you, the address is 683 Birch Court.
+Repeating that back to you, the address is 692 Oak Lane.
+Repeating that back to you, the address is 698 Willow Drive.
+Repeating that back to you, the address is 719 Birch Court.
+Repeating that back to you, the address is 726 Oak Lane.
+Repeating that back to you, the address is 734 Oak Lane.
+Repeating that back to you, the address is 736 Oak Lane.
+Repeating that back to you, the address is 752 Cedar Way.
+Repeating that back to you, the address is 779 Oak Lane.
+Repeating that back to you, the address is 783 Cedar Way.
+Repeating that back to you, the address is 785 Cedar Way.
+Repeating that back to you, the address is 787 Cedar Way.
+Repeating that back to you, the address is 791 Birch Court.
+Repeating that back to you, the address is 813 Willow Drive.
+Repeating that back to you, the address is 834 Cedar Way.
+Repeating that back to you, the address is 865 Cedar Way.
+Repeating that back to you, the address is 869 Oak Lane.
+Repeating that back to you, the address is 902 Willow Drive.
+Repeating that back to you, the address is 949 Cedar Way.
+Repeating that back to you, the address is 953 Cedar Way.
+Repeating that back to you, the address is 971 Birch Court.
+Repeating that back to you, the address is 985 Willow Drive.
+Repeating that back to you, the address is 999 Birch Court.
 Response times can be longer during peak hours.
 Right, that makes sense given what you described earlier.
 Roughly eighty percent of users renew their subscription each year.
+Rush hour typically starts around eleven forty-five.
+Rush hour typically starts around eleven in the morning.
+Rush hour typically starts around five forty-five in the evening.
+Rush hour typically starts around five o'clock.
+Rush hour typically starts around four o'clock.
+Rush hour typically starts around four thirty in the afternoon.
+Rush hour typically starts around nine in the morning.
+Rush hour typically starts around nine thirty.
+Rush hour typically starts around noon.
+Rush hour typically starts around one fifteen in the afternoon.
+Rush hour typically starts around one o'clock.
+Rush hour typically starts around seven thirty in the evening.
+Rush hour typically starts around six in the evening.
+Rush hour typically starts around ten fifteen.
+Rush hour typically starts around ten o'clock.
+Rush hour typically starts around three fifteen in the afternoon.
+Rush hour typically starts around three o'clock.
+Rush hour typically starts around twelve thirty.
+Rush hour typically starts around two forty-five.
+Rush hour typically starts around two thirty.
 Sadly, that promotion ended over the weekend.
 Sales tax varies depending on the state your order was shipped to.
 Scroll down to the bottom of that screen and tap on advanced settings.
@@ -951,6 +1308,8 @@ Should anything change, we'll reach out to you directly.
 Should you need to cancel, you can do so anytime before the appointment.
 Since you call in fairly often, would you like priority support added to your account?
 Since your order hasn't shipped yet, we can still make changes to it, but once it leaves the warehouse we won't be able to modify it.
+Skies should clear up by early evening.
+So if I heard you correctly, you'd like the larger size, not the smaller one.
 So just to recap, you'd like to reschedule your Thursday appointment to next Monday, is that right?
 So the total for both items comes to eighty-nine dollars, does that sound right?
 So the total for both items comes to fifty-six ninety-nine, does that sound right?
@@ -1029,6 +1388,7 @@ So to summarize, we're moving your appointment to next Wednesday at ten fifteen.
 So to summarize, we're moving your appointment to next Wednesday at ten o'clock.
 So to summarize, we're moving your appointment to next Wednesday at twelve thirty.
 So what I'm going to do is update your account right now.
+So, to recap everything we covered today, we rescheduled your appointment and issued a partial refund.
 Sometimes older devices simply aren't compatible with the newest version.
 Sometimes this happens when the account was recently migrated to a new system.
 Sorry about that, let me try again.
@@ -1066,19 +1426,25 @@ Support for the previous version ends in 30 days.
 Support for the previous version ends in 45 days.
 Support for the previous version ends in 60 days.
 Support for the previous version ends in 90 days.
+Sure thing, consider it done.
 Sure thing, one moment.
 Sure, I can help with that. Let me pull up your account details.
 Take care, and thanks again for your patience.
 Take your time, there's no rush on this call.
 Tap on the three dots in the top right corner to bring up more options.
 Technically it's possible, though we don't usually recommend it.
+Temperatures are expected to drop significantly overnight.
+Temperatures should stay comfortable through the rest of the week.
 Thank you for being so patient while we sorted through all of this.
 Thank you for giving me the chance to look into this properly.
 Thank you for giving us the chance to fix this.
+Thank you for trusting us to make this right.
 Thank you for your patience, someone will be with you shortly.
 Thanks for bearing with the audio issues today.
 Thanks for being a long-time customer, we appreciate your loyalty.
+Thanks for being so understanding about the back and forth.
 Thanks for bringing that up — I'll note it down.
+Thanks for bringing this to our attention so quickly.
 Thanks for calling in. Give me just a second to pull things up.
 Thanks for calling, have a great day.
 Thanks for calling, my name is Amanda, how can I assist you today?
@@ -1122,12 +1488,15 @@ Thanks for flagging that, it's genuinely useful feedback for us.
 Thanks for holding, I appreciate you waiting through all of that.
 Thanks for reaching out, I'm ready to help however I can.
 Thanks for staying on the line through the verification steps.
+Thanks for your patience while I checked with my supervisor.
+Thanks for your patience while our team resolves this on the back end.
 Thanks for your patience — here's the update.
 Thanks for your time today, goodbye.
 Thanks for your understanding while we got this figured out.
 Thanks in advance if you do decide to fill it out.
 Thanks so much for your patience.
 Thanks, that matches what we have on file.
+Thanks, that matches what we have, you're verified.
 That account has now been created successfully.
 That branch is open until eleven forty-five.
 That branch is open until eleven in the morning.
@@ -1266,6 +1635,7 @@ That will be shipped to zip code 91987.
 That will be shipped to zip code 94886.
 That will be shipped to zip code 96563.
 That will be shipped to zip code 96662.
+That would require approval from a different department.
 That'll be eighty-nine dollars.
 That'll be fifty-six ninety-nine.
 That'll be forty-eight dollars.
@@ -1282,12 +1652,15 @@ That'll be twenty-nine ninety-five.
 That'll be twenty-three dollars.
 That'll be two hundred and eighty-nine ninety-nine.
 That'll be two hundred and four dollars.
+That's a bit outside what I can adjust directly, but I have another idea.
 That's a fair point, let me see what we can do.
 That's a great question — let me find out for you.
 That's a great question, and the honest answer is it depends on your usage.
+That's a limitation on our end, not something you're doing wrong.
 That's a totally fair concern, and I want to address it properly.
 That's actually a prorated charge from when you upgraded partway through the month.
 That's all set — have a wonderful afternoon.
+That's not typically allowed, though there might be an exception here.
 That's outside my knowledge, but I'll connect you with someone who knows.
 The annual plan comes out to about eighty-nine dollars a month.
 The annual plan comes out to about fifty-six ninety-nine a month.
@@ -1352,6 +1725,10 @@ The device measures about 8 inches by 4 inches and weighs under a pound.
 The device measures about 8 inches by 5 inches and weighs under a pound.
 The discrepancy you're seeing is due to a currency conversion on an international purchase.
 The downtown location has a longer wait time than the uptown one.
+The exit you're looking for is about 1 miles ahead.
+The exit you're looking for is about 2 miles ahead.
+The exit you're looking for is about 3 miles ahead.
+The exit you're looking for is about 5 miles ahead.
 The extended warranty can be added within 120 days of your original purchase.
 The extended warranty can be added within 30 days of your original purchase.
 The extended warranty can be added within 60 days of your original purchase.
@@ -1360,6 +1737,12 @@ The extra fee on your bill is for the optional add-on you selected during signup
 The failure rate on that part dropped to less than half a percent after the redesign.
 The failure rate on that part dropped to less than one percent after the redesign.
 The failure rate on that part dropped to less than two percent after the redesign.
+The fastest route right now avoids the downtown area entirely.
+The flight has a scheduled duration of just under 1 hours.
+The flight has a scheduled duration of just under 2 hours.
+The flight has a scheduled duration of just under 3 hours.
+The flight has a scheduled duration of just under 4 hours.
+The flight has a scheduled duration of just under 5 hours.
 The good news is that this is a really common issue and it's usually a quick fix.
 The good news is your refund has already been processed.
 The issue might be linked to an outdated browser version.
@@ -1490,6 +1873,7 @@ The refund will be processed within 5 to 7 business days.
 The refund will be processed within 5 to 8 business days.
 The refund will be processed within 5 to 9 business days.
 The replacement unit will ship out as soon as we receive the defective one back.
+The route along the coast tends to be quieter this time of day.
 The screen size on this model is five point five inches diagonally.
 The screen size on this model is six point one inches diagonally.
 The screen size on this model is six point seven inches diagonally.
@@ -1551,13 +1935,24 @@ There is a small fee for rescheduling within 36 hours of the appointment.
 There is a small fee for rescheduling within 48 hours of the appointment.
 There is a small fee for rescheduling within 72 hours of the appointment.
 There seems to be a pending order and a completed order both showing the same items, let me clarify which is current.
+There seems to be a temporary outage affecting a small number of users.
 There will be a brief pause before the survey begins.
+There's a chance of rain later this afternoon, so plan accordingly.
+There's a detour in place due to ongoing roadwork.
 There's a drive-through option available at that location.
 There's a flag on the account suggesting a previous billing dispute, let me review that first.
+There's a short layover of about an hour between your two flights.
+There's a short layover of about forty minutes between your two flights.
+There's a short layover of about ninety minutes between your two flights.
+There's a slight chance of delay due to weather along the route.
 There's a small issue I want to flag before we continue.
+There's a winter storm advisory in effect for your area.
+There's construction on the main road that might slow things down.
 There's no need to decide right now, take whatever time you need.
 There's no wrong question here, so please ask anything that comes to mind.
+This appears to be a widespread issue, not something specific to your account.
 This call may include a short customer satisfaction survey afterward.
+This call originated from our official support line, which you can verify on our website.
 This can also result from a temporary outage in your specific region.
 This can occur if the app wasn't fully closed before restarting the phone.
 This could also be caused by too many devices connected to the same network.
@@ -1586,6 +1981,11 @@ This service is currently available in over 20 countries.
 This service is currently available in over 30 countries.
 This service is currently available in over 50 countries.
 This service is only available in select metropolitan areas right now.
+This should be resolved within the next 10 minutes or so.
+This should be resolved within the next 15 minutes or so.
+This should be resolved within the next 20 minutes or so.
+This should be resolved within the next 30 minutes or so.
+This should be resolved within the next 45 minutes or so.
 This should be the last time you need to deal with this particular issue.
 This sometimes happens when the SIM card isn't seated properly.
 This survey takes less than a minute to complete.
@@ -1597,6 +1997,33 @@ This version of the app requires at least 4 gigabytes of free storage.
 This version of the app requires at least 8 gigabytes of free storage.
 This version supports both wireless and wired connections.
 To avoid any confusion, let me clarify exactly what's included in this package.
+To be sure I've got it right, that's spelled A, N, D, E, R, S, O, N?
+To be sure I've got it right, that's spelled B, R, O, W, N?
+To be sure I've got it right, that's spelled C, L, A, R, K?
+To be sure I've got it right, that's spelled D, A, V, I, S?
+To be sure I've got it right, that's spelled G, A, R, C, I, A?
+To be sure I've got it right, that's spelled G, O, N, Z, A, L, E, Z?
+To be sure I've got it right, that's spelled H, A, R, R, I, S?
+To be sure I've got it right, that's spelled H, E, R, N, A, N, D, E, Z?
+To be sure I've got it right, that's spelled J, A, C, K, S, O, N?
+To be sure I've got it right, that's spelled J, O, H, N, S, O, N?
+To be sure I've got it right, that's spelled J, O, N, E, S?
+To be sure I've got it right, that's spelled L, E, E?
+To be sure I've got it right, that's spelled L, O, P, E, Z?
+To be sure I've got it right, that's spelled M, A, R, T, I, N, E, Z?
+To be sure I've got it right, that's spelled M, A, R, T, I, N?
+To be sure I've got it right, that's spelled M, I, L, L, E, R?
+To be sure I've got it right, that's spelled M, O, O, R, E?
+To be sure I've got it right, that's spelled P, E, R, E, Z?
+To be sure I've got it right, that's spelled R, O, D, R, I, G, U, E, Z?
+To be sure I've got it right, that's spelled S, A, N, C, H, E, Z?
+To be sure I've got it right, that's spelled S, M, I, T, H?
+To be sure I've got it right, that's spelled T, A, Y, L, O, R?
+To be sure I've got it right, that's spelled T, H, O, M, A, S?
+To be sure I've got it right, that's spelled T, H, O, M, P, S, O, N?
+To be sure I've got it right, that's spelled W, H, I, T, E?
+To be sure I've got it right, that's spelled W, I, L, L, I, A, M, S?
+To be sure I've got it right, that's spelled W, I, L, S, O, N?
 To be transparent, there is a small chance this won't be available in your area.
 To begin, could you tell me the reason for your call today?
 To clarify, the discount is one-time only and won't repeat next month.
@@ -1604,6 +2031,9 @@ To prevent this in the future, I'd recommend enabling automatic updates.
 To put it another way, the delay is on the carrier's side, not ours.
 To start, I'll need to verify a couple of details on the account.
 To wrap things up, I'll send a summary of today's call to your email.
+To wrap up, here's what to expect over the next few days.
+Totally understandable, let's find a solution.
+Traffic on the highway is a bit heavier than usual this morning.
 Try checking your spam folder if you don't see it.
 Try refreshing the page one more time for me.
 Try unplugging the router, waiting 10 seconds, and plugging it back in.
@@ -1637,6 +2067,7 @@ Unfortunately that time isn't available, but I do have three o'clock open.
 Unfortunately that time isn't available, but I do have twelve thirty open.
 Unfortunately that time isn't available, but I do have two forty-five open.
 Unfortunately that time isn't available, but I do have two thirty open.
+Unfortunately that's not something I have access to change.
 Unfortunately, I don't have great news on that front.
 Unfortunately, I don't see that order in our system.
 Unfortunately, we're not able to approve that request at this time.
@@ -1645,6 +2076,8 @@ Usually, our team responds within 24 hours on weekdays.
 Usually, our team responds within 36 hours on weekdays.
 Usually, our team responds within 48 hours on weekdays.
 Usually, our team responds within 72 hours on weekdays.
+We apologize for any inconvenience this system issue may have caused.
+We appreciate customers like you who speak up.
 We appreciate you holding, thanks for your continued patience.
 We read every piece of feedback that comes through these surveys.
 We recently opened a new distribution center to speed up delivery times.
@@ -1652,12 +2085,19 @@ We recommend arriving about 10 minutes early to fill out any paperwork.
 We recommend arriving about 15 minutes early to fill out any paperwork.
 We recommend arriving about 20 minutes early to fill out any paperwork.
 We recommend arriving about 5 minutes early to fill out any paperwork.
+We recommend changing your password periodically for added security.
 We take feedback like this seriously, and I appreciate you sharing it.
+We take security seriously, which is why we ask these questions on every call.
 We value your business and want to make this right.
+We will never ask for your full password over the phone.
 We'll see you at your appointment. Bye for now.
+We'll send an update once the system is fully back to normal.
 We're closed on public holidays, including this upcoming Monday.
 We're committed to doing better going forward.
 We're currently open, so I can help you right now.
+We're grateful you took the time to reach out.
+We're lucky to have customers who give us the benefit of the doubt.
+We're seeing intermittent issues affecting some regions right now.
 We've also adjusted your settings so this won't repeat next cycle.
 We've been in business for a little over 10 years now.
 We've been in business for a little over 15 years now.
@@ -1676,6 +2116,7 @@ What happens next is our team will review the request within a day.
 What likely happened is that the payment went through twice due to a temporary system error.
 What you're seeing is actually a known issue that our engineering team is already working on.
 What's the best callback number for you?
+What's the billing zip code associated with this card?
 What's the make and model of your device?
 When did you first notice the problem?
 When the screen freezes, does it eventually recover on its own, or do you have to restart it?
@@ -1741,6 +2182,7 @@ You are caller number 7 in the queue.
 You are caller number 8 in the queue.
 You are caller number 9 in the queue.
 You can also access this service through our kiosk in the lobby.
+You can always verify a request by logging into your account directly.
 You can cancel anytime from your account settings.
 You can choose between expedited shipping or the standard free option.
 You can either keep the current plan or downgrade to the basic tier.
@@ -1816,6 +2258,7 @@ Your PIN is zero, nine, seven, eight.
 Your PIN is zero, one, nine, six.
 Your PIN is zero, two, five, six.
 Your account will be reviewed within one to two business days.
+Your account will be temporarily locked after several failed verification attempts.
 Your appointment is confirmed for Friday, April the fifth, at nine in the morning.
 Your appointment is confirmed for Friday, February the twenty-fifth, at one o'clock.
 Your appointment is confirmed for Friday, January the second, at seven thirty in the evening.
@@ -2140,6 +2583,14 @@ Your flight departs at three o'clock.
 Your flight departs at twelve thirty.
 Your flight departs at two forty-five.
 Your flight departs at two thirty.
+Your flight is scheduled to depart from gate C nine.
+Your flight is scheduled to depart from gate fourteen.
+Your flight is scheduled to depart from gate thirty-one.
+Your flight is scheduled to depart from gate twenty-two.
+Your itinerary includes one connecting flight through Atlanta.
+Your itinerary includes one connecting flight through Chicago.
+Your itinerary includes one connecting flight through Dallas.
+Your itinerary includes one connecting flight through Denver.
 Your new card should arrive within seven to ten business days.
 Your order number is 1 0 6 8 1 4.
 Your order number is 1 2 6 2 2 5.
@@ -2182,6 +2633,7 @@ Your order number is 8 9 5 6 6 7.
 Your order number is 9 4 4 9 6 2.
 Your order number is 9 4 8 7 4 9.
 Your package left the distribution center this morning and should arrive by Thursday.
+Your patience through this process really means a lot.
 Your reference number is 1 0 6 8 1 4.
 Your reference number is 1 2 6 2 2 5.
 Your reference number is 1 2 7 8 2 4.
@@ -2223,6 +2675,36 @@ Your reference number is 8 9 5 6 6 7.
 Your reference number is 9 4 4 9 6 2.
 Your reference number is 9 4 8 7 4 9.
 Your responses are completely anonymous unless you choose otherwise.
+Your seat assignment is 12A, which is a window seat.
+Your seat assignment is 12B, which is a window seat.
+Your seat assignment is 12C, which is a window seat.
+Your seat assignment is 12D, which is a window seat.
+Your seat assignment is 12E, which is a window seat.
+Your seat assignment is 12F, which is a window seat.
+Your seat assignment is 14A, which is a window seat.
+Your seat assignment is 14B, which is a window seat.
+Your seat assignment is 14C, which is a window seat.
+Your seat assignment is 14D, which is a window seat.
+Your seat assignment is 14E, which is a window seat.
+Your seat assignment is 14F, which is a window seat.
+Your seat assignment is 18A, which is a window seat.
+Your seat assignment is 18B, which is a window seat.
+Your seat assignment is 18C, which is a window seat.
+Your seat assignment is 18D, which is a window seat.
+Your seat assignment is 18E, which is a window seat.
+Your seat assignment is 18F, which is a window seat.
+Your seat assignment is 22A, which is a window seat.
+Your seat assignment is 22B, which is a window seat.
+Your seat assignment is 22C, which is a window seat.
+Your seat assignment is 22D, which is a window seat.
+Your seat assignment is 22E, which is a window seat.
+Your seat assignment is 22F, which is a window seat.
+Your seat assignment is 27A, which is a window seat.
+Your seat assignment is 27B, which is a window seat.
+Your seat assignment is 27C, which is a window seat.
+Your seat assignment is 27D, which is a window seat.
+Your seat assignment is 27E, which is a window seat.
+Your seat assignment is 27F, which is a window seat.
 Your service will be restored automatically within the next 1 hours.
 Your service will be restored automatically within the next 2 hours.
 Your service will be restored automatically within the next 3 hours.
