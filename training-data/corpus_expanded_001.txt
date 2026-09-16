@@ -570,8 +570,7 @@ Thanks, that matches what we have on file.
 Sorry, that answer doesn't quite match — could you try again?
 For your security, I won't be able to share that information over the phone.
 Let's go ahead and get you scheduled.
-How does next Thursday at noon sound?
-How does next Thursday at three fifteen in the afternoon sound?
+How does next next Thursday at three fifteen in the afternoon sound?
 How does Tuesday at noon sound?
 How does next Tuesday at three fifteen in the afternoon sound?
 How does next Thursday at ten o'clock sound?
@@ -630,7 +629,7 @@ How does Wednesday at nine in the morning sound?
 How does Saturday at twelve thirty sound?
 How does Wednesday at two thirty sound?
 How does next Monday at four o'clock sound?
-I have an opening Saturday at one fifteen in the afternoon, would that work?
+How does Saturday at one fifteen in the afternoon sound?
 I have an opening next Monday at five forty-five in the evening, would that work?
 I have an opening Tuesday at eleven forty-five, would that work?
 I have an opening next Thursday at seven thirty in the evening, would that work?
@@ -664,8 +663,7 @@ I have an opening Saturday at nine thirty, would that work?
 I have an opening Thursday at four thirty in the afternoon, would that work?
 I have an opening Thursday at ten o'clock, would that work?
 I have an opening Friday at two forty-five, would that work?
-I have an opening next Thursday at noon, would that work?
-I have an opening next Tuesday at two forty-five, would that work?
+I have an opening next next Tuesday at two forty-five, would that work?
 I have an opening Sunday at four thirty in the afternoon, would that work?
 I have an opening next Monday at nine thirty, would that work?
 I have an opening Monday at two thirty, would that work?
@@ -690,12 +688,14 @@ I have an opening next Monday at noon, would that work?
 I have an opening next Thursday at three fifteen in the afternoon, would that work?
 I have an opening Monday at twelve thirty, would that work?
 I have an opening Monday at eleven in the morning, would that work?
-Unfortunately that time isn't available, but I do have six in the evening open.
-Unfortunately that time isn't available, but I do have eleven forty-five open.
-Unfortunately that time isn't available, but I do have eleven in the morning open.
-Unfortunately that time isn't available, but I do have five o'clock open.
+I have an opening Wednesday at eleven in the morning, would that work?
+I have an opening next Thursday at five o'clock, would that work?
 Unfortunately that time isn't available, but I do have nine thirty open.
+Unfortunately that time isn't available, but I do have six in the evening open.
+Unfortunately that time isn't available, but I do have eleven in the morning open.
+Unfortunately that time isn't available, but I do have eleven forty-five open.
 Unfortunately that time isn't available, but I do have one o'clock open.
+Unfortunately that time isn't available, but I do have five o'clock open.
 Unfortunately that time isn't available, but I do have three o'clock open.
 Unfortunately that time isn't available, but I do have seven thirty in the evening open.
 Unfortunately that time isn't available, but I do have nine in the morning open.
@@ -713,66 +713,66 @@ Unfortunately that time isn't available, but I do have two forty-five open.
 Would you like a reminder call the day before?
 I've booked that in for you — you're all set.
 Let's find a time that works best for you.
-I can offer either next Tuesday or Friday.
-I can offer either Sunday or Thursday.
-I can offer either next Wednesday or Wednesday.
-I can offer either Monday or next Tuesday.
-I can offer either Sunday or next Monday.
-I can offer either next Tuesday or Monday.
-I can offer either next Tuesday or Saturday.
-I can offer either Sunday or next Thursday.
-I can offer either Wednesday or next Monday.
-I can offer either Tuesday or next Friday.
-I can offer either next Tuesday or next Monday.
-I can offer either Saturday or next Friday.
-I can offer either Monday or Monday.
-I can offer either next Thursday or Thursday.
-I can offer either Sunday or next Wednesday.
-I can offer either Tuesday or Saturday.
-I can offer either Saturday or next Wednesday.
-I can offer either Friday or Wednesday.
-I can offer either Thursday or Friday.
-I can offer either next Monday or next Wednesday.
-I can offer either Saturday or Saturday.
-I can offer either Sunday or next Friday.
-I can offer either Sunday or Friday.
-I can offer either next Monday or Wednesday.
-I can offer either next Wednesday or next Thursday.
-I can offer either Thursday or Tuesday.
-I can offer either next Friday or Friday.
-I can offer either Thursday or next Tuesday.
-I can offer either Sunday or Sunday.
-I can offer either Thursday or Wednesday.
-I can offer either next Friday or Wednesday.
-I can offer either next Monday or Monday.
-I can offer either Wednesday or Sunday.
-I can offer either next Thursday or next Tuesday.
-I can offer either next Tuesday or next Friday.
-I can offer either Saturday or next Monday.
-I can offer either Friday or Friday.
-I can offer either next Tuesday or next Wednesday.
-I can offer either Monday or Sunday.
 I can offer either Wednesday or Monday.
-I can offer either next Monday or next Thursday.
-I can offer either Tuesday or next Monday.
-I can offer either next Friday or Saturday.
-I can offer either Friday or Saturday.
-I can offer either Saturday or next Tuesday.
-I can offer either Saturday or Monday.
-I can offer either Sunday or Tuesday.
-I can offer either Saturday or next Thursday.
-I can offer either next Wednesday or Thursday.
-I can offer either next Wednesday or next Wednesday.
-I can offer either next Thursday or next Thursday.
-I can offer either next Tuesday or Wednesday.
-I can offer either next Friday or next Monday.
-I can offer either Tuesday or Sunday.
+I can offer either next Tuesday or Sunday.
+I can offer either next Monday or next Tuesday.
+I can offer either Monday or next Tuesday.
+I can offer either Saturday or Sunday.
+I can offer either next Thursday or Wednesday.
+I can offer either next Monday or Tuesday.
+I can offer either next Friday or next Tuesday.
+I can offer either next Monday or Saturday.
+I can offer either next Friday or Monday.
+I can offer either Monday or next Thursday.
+I can offer either Thursday or Sunday.
+I can offer either next Wednesday or Tuesday.
+I can offer either Saturday or Saturday.
 I can offer either next Wednesday or Friday.
-I can offer either Wednesday or Wednesday.
-I can offer either next Thursday or Saturday.
-I can offer either Tuesday or Wednesday.
-I can offer either Saturday or Thursday.
-I can offer either next Thursday or Friday.
+I can offer either Wednesday or next Tuesday.
+I can offer either Friday or Thursday.
+I can offer either Friday or next Monday.
+I can offer either next Wednesday or Saturday.
+I can offer either Saturday or Wednesday.
+I can offer either next Monday or Sunday.
+I can offer either next Friday or Saturday.
+I can offer either Wednesday or next Wednesday.
+I can offer either next Thursday or Thursday.
+I can offer either Tuesday or next Friday.
+I can offer either Sunday or Thursday.
+I can offer either Wednesday or next Friday.
+I can offer either Wednesday or next Monday.
+I can offer either Monday or Wednesday.
+I can offer either Sunday or next Monday.
+I can offer either Wednesday or next Thursday.
+I can offer either next Tuesday or next Tuesday.
+I can offer either next Monday or Friday.
+I can offer either Friday or next Tuesday.
+I can offer either next Wednesday or Monday.
+I can offer either Sunday or Tuesday.
+I can offer either next Friday or Wednesday.
+I can offer either Monday or Thursday.
+I can offer either next Thursday or Tuesday.
+I can offer either next Monday or next Friday.
+I can offer either Saturday or Friday.
+I can offer either Friday or Saturday.
+I can offer either Monday or Sunday.
+I can offer either Tuesday or Saturday.
+I can offer either next Thursday or next Wednesday.
+I can offer either Thursday or next Wednesday.
+I can offer either next Wednesday or next Thursday.
+I can offer either next Thursday or next Tuesday.
+I can offer either Wednesday or Friday.
+I can offer either Sunday or next Wednesday.
+I can offer either next Wednesday or Sunday.
+I can offer either Tuesday or Tuesday.
+I can offer either Wednesday or Saturday.
+I can offer either Thursday or Saturday.
+I can offer either Saturday or next Thursday.
+I can offer either Friday or next Friday.
+I can offer either Friday or next Wednesday.
+I can offer either next Thursday or Sunday.
+I can offer either Saturday or next Friday.
+I can offer either next Wednesday or next Tuesday.
 That's a great question — let me find out for you.
 I'm not totally sure, but let me check and get back to you.
 That's outside my knowledge, but I'll connect you with someone who knows.
@@ -793,13 +793,13 @@ Unfortunately, I don't have great news on that front.
 I'm afraid there's been a small delay with your order.
 The good news is your refund has already been processed.
 I'm happy to say that's already taken care of.
+There is a bit of a wait time right now, about 20 minutes.
+There is a bit of a wait time right now, about 10 minutes.
+There is a bit of a wait time right now, about 45 minutes.
+There is a bit of a wait time right now, about 5 minutes.
 There is a bit of a wait time right now, about 30 minutes.
 There is a bit of a wait time right now, about 15 minutes.
 There is a bit of a wait time right now, about 25 minutes.
-There is a bit of a wait time right now, about 20 minutes.
-There is a bit of a wait time right now, about 45 minutes.
-There is a bit of a wait time right now, about 10 minutes.
-There is a bit of a wait time right now, about 5 minutes.
 It looks like everything is in order.
 Everything checks out on our end.
 There's a small issue I want to flag before we continue.
@@ -812,23 +812,14 @@ Weekend hours are ten to two, Saturday only.
 That department is open until six in the evening.
 We're currently open, so I can help you right now.
 That team typically responds within one business day.
-The wait time is usually under 15 minutes.
 The wait time is usually under 5 minutes.
+The wait time is usually under 15 minutes.
 The wait time is usually under 10 minutes.
 The wait time is usually under 20 minutes.
 Response times can be longer during peak hours.
 Do you have a promo code you'd like to apply?
 Would you like to use your saved payment method?
 I can apply that discount to your order now.
-Your card ending in 5953 will be charged.
-Your card ending in 4869 will be charged.
-Your card ending in 9212 will be charged.
-Your card ending in 5519 will be charged.
-Your card ending in 2015 will be charged.
-Your card ending in 5221 will be charged.
-Your card ending in 7343 will be charged.
-Your card ending in 1482 will be charged.
-Your card ending in 5590 will be charged.
 Your card ending in 4695 will be charged.
 Your card ending in 3485 will be charged.
 Your card ending in 6599 will be charged.
@@ -880,37 +871,46 @@ Your card ending in 4026 will be charged.
 Your card ending in 1429 will be charged.
 Your card ending in 5372 will be charged.
 Your card ending in 4783 will be charged.
-The refund will be processed within 5 to 7 business days.
-The refund will be processed within 3 to 6 business days.
-The refund will be processed within 4 to 6 business days.
-The refund will be processed within 5 to 9 business days.
+Your card ending in 4804 will be charged.
+Your card ending in 1427 will be charged.
+Your card ending in 6886 will be charged.
+Your card ending in 2302 will be charged.
+Your card ending in 8808 will be charged.
+Your card ending in 3196 will be charged.
+Your card ending in 9230 will be charged.
+Your card ending in 8680 will be charged.
+Your card ending in 7126 will be charged.
 The refund will be processed within 3 to 9 business days.
-The refund will be processed within 5 to 8 business days.
 The refund will be processed within 4 to 9 business days.
 The refund will be processed within 3 to 7 business days.
 The refund will be processed within 3 to 8 business days.
 The refund will be processed within 4 to 7 business days.
+The refund will be processed within 5 to 7 business days.
+The refund will be processed within 3 to 6 business days.
+The refund will be processed within 5 to 9 business days.
+The refund will be processed within 5 to 8 business days.
+The refund will be processed within 4 to 6 business days.
 The refund will be processed within 5 to 6 business days.
 The refund will be processed within 4 to 8 business days.
 I'll go ahead and update your billing address.
 Your subscription renews automatically next month.
 You can cancel anytime from your account settings.
-That plan includes unlimited access for seventeen ninety-nine a month.
-That plan includes unlimited access for two hundred and eighty-nine ninety-nine a month.
-That plan includes unlimited access for forty-two fifty a month.
-That plan includes unlimited access for seventy-one dollars and ten cents a month.
-That plan includes unlimited access for twelve dollars and fifty cents a month.
 That plan includes unlimited access for twenty-three dollars a month.
 That plan includes unlimited access for thirty-four dollars and twenty cents a month.
 That plan includes unlimited access for sixty-three ninety-nine a month.
+That plan includes unlimited access for twelve dollars and fifty cents a month.
 That plan includes unlimited access for twenty-nine ninety-five a month.
+That plan includes unlimited access for forty-two fifty a month.
 That plan includes unlimited access for two hundred and four dollars a month.
 That plan includes unlimited access for ninety-four fifty a month.
 That plan includes unlimited access for fifty-six ninety-nine a month.
+That plan includes unlimited access for two hundred and eighty-nine ninety-nine a month.
+That plan includes unlimited access for seventeen ninety-nine a month.
 That plan includes unlimited access for eighty-nine dollars a month.
 That plan includes unlimited access for one hundred and fifty dollars and thirty cents a month.
 That plan includes unlimited access for one hundred and eighteen dollars a month.
 That plan includes unlimited access for forty-ninety-four fifty a month.
+That plan includes unlimited access for seventy-one dollars and ten cents a month.
 That plan includes unlimited access for forty-eighty-nine dollars a month.
 That plan includes unlimited access for forty-seventeen ninety-nine a month.
 That plan includes unlimited access for forty-twenty-nine ninety-five a month.

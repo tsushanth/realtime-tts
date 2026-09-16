@@ -157,6 +157,29 @@ SUBSTITUTIONS = [
     (r"\bFifth Avenue, about two miles away\b",
      lambda: f"{random.choice(['Fifth Avenue','Main Street','Oak Boulevard','Second Street'])}, about {random.choice([1,2,3,5])} miles away"),
     (r"\beight tonight\b", lambda: random.choice(TIMES)),
+    # batch_005 additions
+    (r"\bThursday at noon\b", lambda: f"{random.choice(DAYS)} at {random.choice(TIMES)}"),
+    # batch_006 additions
+    (r"\bfifteen percent\b", lambda: f"{random.choice([5,10,15,20,25,30,35,40])} percent"),
+    (r"\bnearly twenty percent\b", lambda: f"nearly {random.choice([10,15,20,25,30])} percent"),
+    (r"\broughly eighty percent\b", lambda: f"roughly {random.choice([60,70,75,80,85,90])} percent"),
+    (r"\babout five percent\b", lambda: f"about {random.choice([2,3,5,8,10])} percent"),
+    (r"\balmost ninety percent\b", lambda: f"almost {random.choice([80,85,90,95])} percent"),
+    (r"\bjust under ten percent\b", lambda: f"just under {random.choice([5,8,10,12,15])} percent"),
+    (r"\bclose to seventy percent\b", lambda: f"close to {random.choice([50,60,65,70,75])} percent"),
+    (r"\bless than one percent\b", lambda: f"less than {random.choice(['half a percent','one percent','two percent'])}"),
+    (r"\bmore than sixty percent\b", lambda: f"more than {random.choice([40,50,60,70])} percent"),
+    (r"\bsix inches by three inches\b", lambda: f"{random.choice([4,5,6,7,8])} inches by {random.choice([2,3,4,5])} inches"),
+    (r"\bten hours per charge\b", lambda: f"{random.choice([6,8,10,12,15,20])} hours per charge"),
+    (r"\bsix point one inches\b", lambda: f"{random.choice(['five point five','six point one','six point seven'])} inches"),
+    (r"\bsixty-four gigabytes up to five hundred twelve gigabytes\b",
+     lambda: f"{random.choice([32,64,128])} gigabytes up to {random.choice(['five hundred twelve','one terabyte','two terabytes'])} gigabytes"),
+    (r"\btwo hours to charge\b", lambda: f"{random.choice([1,2,3])} hours to charge"),
+    (r"\bfour times optical zoom\b", lambda: f"{random.choice([2,3,4,5,10])} times optical zoom"),
+    (r"\bover thirty countries\b", lambda: f"over {random.choice([15,20,30,50])} countries"),
+    (r"\bfifteen years\b", lambda: f"{random.choice([5,8,10,15,20,25])} years"),
+    (r"\babout five years ago\b", lambda: f"about {random.choice([2,3,5,7,10])} years ago"),
+    (r"\bthree different time zones\b", lambda: f"{random.choice([2,3,4,5])} different time zones"),
 ]
 
 COMPILED = [(re.compile(pat), fn) for pat, fn in SUBSTITUTIONS]
