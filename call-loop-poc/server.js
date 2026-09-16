@@ -1424,6 +1424,19 @@ class CallSession {
     if (node.extract) {
       const fields = Object.keys(node.extract);
       const hasTimeField = fields.some((f) => /time|date|when/i.test(f));
+      // Missing-fields tracking (cycle 18, MYSTERY_SHOPPER_PATTERNS.md):
+      // the prior wording asked the model to infer "don't re-ask anything
+      // already volunteered" from conversation history, with the actual
+      // captured state (collectedData) dumped separately, after the
+      // numbered steps, as a bare JSON fact with no directive tying it
+      // back to step 1. Reproduced live, twice in one day: the model
+      // re-asked for a field it had already correctly recorded via
+      // record_field two turns earlier. Computing the missing set in code
+      // and stating it as an explicit, closed list — instead of asking the
+      // model to infer it — removes the inference step entirely rather
+      // than adding yet another prose instruction on top (see the cycle
+      // 7-9 instruction-overload note this block already exists to avoid).
+      const missingFields = fields.filter((f) => !this.collectedData[f]);
       // Consolidated from what was 4 separately-appended paragraphs (see
       // MYSTERY_SHOPPER_PATTERNS.md's cycles 7-9 note on instruction
       // overload: each fix landed as one more paragraph stacked onto this
@@ -1436,7 +1449,11 @@ class CallSession {
       // suggestion: closes without ever confirming a booking looked
       // unfinished even when the data was actually correct.
       prompt += `For this step, in order:\n`;
-      prompt += `1. Ask for ALL of these together in ONE question: ${fields.join(', ')}. Don't ask one at a time, and don't re-ask anything the caller already volunteered earlier in the call.\n`;
+      if (missingFields.length > 0) {
+        prompt += `1. You still need: ${missingFields.join(', ')}. Ask for ALL of these together in ONE question, in the SAME turn — don't ask one at a time. Do not ask about anything not in this list — it's already been captured (see "Already collected" below).\n`;
+      } else {
+        prompt += `1. Every field for this step is already captured (see "Already collected" below) — do not ask for any of them again. Move straight to confirming/summarizing.\n`;
+      }
       prompt += `2. The moment the caller gives you a field, call record_field for it — but ALWAYS also say something out loud to the caller in that same turn. Calling record_field is a silent background action, never a substitute for actually replying — never let a turn consist of only a tool call with nothing spoken.\n`;
       if (hasTimeField) {
         prompt += `3. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
@@ -1445,7 +1462,7 @@ class CallSession {
       prompt += `${hasTimeField ? '5' : '4'}. Only once every field is recorded AND confirmed, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently or without ever stating the final summary.\n`;
     }
     if (Object.keys(this.collectedData).length > 0) {
-      prompt += `Already collected this call: ${JSON.stringify(this.collectedData)}\n`;
+      prompt += `Already collected this call (do NOT ask for these again): ${JSON.stringify(this.collectedData)}\n`;
     }
     if (node.edges.length > 0) {
       prompt +=
