@@ -311,3 +311,36 @@ closed, and the instruction is still present in the current prompt
 resolved cycle 17's open question, this needs a second reproduction before
 treating it as a real regression rather than one run's model variance,
 not an immediate patch.
+
+## Cycle 20 (2026-09-16, fourth run): vague-time finding did NOT reproduce; a different slot-filling gap did
+
+Reran specifically to get a second data point on cycle 19's vague-time
+finding before acting on it. Result: it did not reproduce. This round the
+agent correctly resolved "any time in the afternoon works for me" into a
+concrete proposed slot ("how about 2 PM tomorrow?") and got an explicit
+yes before closing — the exact behavior cycle 19 found missing. Per the
+same two-consistent-points bar used throughout this log: one run showing
+a symptom and the next run not showing it is not a confirmed regression.
+Logging it as inconclusive rather than either fixing it or clearing it.
+
+A different, new slot-filling failure showed up instead: the caller
+volunteered BOTH name and time preference unprompted, in their very first
+turn ("My name is Alex Morgan. And for the time, I'm flexible — any time
+in the afternoon works for me.") — before the flow had asked for either.
+The agent asked for both anyway ("What's your name?" / "and what time
+works best for you."), forcing the caller to repeat information they'd
+already given. This is a variant of Pattern 1 not previously logged
+precisely this way: prior cycles were about not re-asking a field given
+mid-flow after being asked; this is about not asking for a field the
+caller front-loaded before being asked at all. Same underlying class
+(missing-field tracking not matching what the caller actually already
+said), different trigger condition — the cycle-18 fix keys entirely off
+`collectedData`, which only updates via `record_field` tool calls, so a
+field volunteered before the model's first turn in this step depends on
+the model choosing to call `record_field` proactively from the caller's
+raw utterance in that very first response, with nothing yet computed to
+tell it that field is "already collected."
+
+One data point only. Not acting on it yet — next mystery-shopper run
+should specifically watch for whether this recurs before it's treated as
+a real, prioritized fix rather than one run's variance.
