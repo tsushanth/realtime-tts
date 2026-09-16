@@ -283,3 +283,31 @@ Not yet fixed — this is deliberately a stop-and-document point rather than
 a same-session patch, per the process gap flagged before cycle 16: two
 consistent data points now exist, which is the bar for treating this as a
 real, prioritized fix rather than one run's noise.
+
+## Cycle 19 (2026-09-16, third run): duplicate-name-ask fix confirmed, different old bug resurfaced
+
+**Fix applied**: `_buildNodeSystemPrompt` now computes the actual missing
+fields in code (`fields.filter((f) => !this.collectedData[f])`) and states
+them as an explicit closed list ("you still need: X — do not ask about
+anything not in this list"), instead of asking the model to infer
+already-volunteered fields from conversation history while the captured
+state sat in a separate, undirected JSON dump. Deployed, then reran.
+
+**Confirmed fixed**: this round's transcript asks name + time together in
+one question, records both, confirms once, and never re-asks — the judge
+raised no slot-filling or turn-efficiency issue this time. Two clean data
+points now exist for the fix (this run), versus two clean reproductions of
+the bug before it (cycles 17-18) — treating this as resolved, not just
+lucky, on the same "two consistent points" bar cycle 18 set.
+
+**New finding, not yet acted on**: Retell won again, this time because our
+agent accepted "tomorrow afternoon" as a complete, bookable slot and
+closed the call without ever resolving it to a specific time
+("We'll see you tomorrow afternoon" — no time given). This is Pattern 1
+from cycles 1-6, which the cycle-6/7 fix ("never accept a vague time as
+final — propose ONE concrete slot and get a yes") was supposed to have
+closed, and the instruction is still present in the current prompt
+(step 3). One data point only — per the same discipline that just
+resolved cycle 17's open question, this needs a second reproduction before
+treating it as a real regression rather than one run's model variance,
+not an immediate patch.
