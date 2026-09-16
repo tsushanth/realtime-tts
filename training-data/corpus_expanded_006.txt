@@ -7,64 +7,64 @@ The quarterly report shows a 25 percent increase in overall engagement.
 The quarterly report shows a 30 percent increase in overall engagement.
 The quarterly report shows a 10 percent increase in overall engagement.
 Customer satisfaction scores improved by nearly 20 percent since last quarter.
-Customer satisfaction scores improved by nearly 25 percent since last quarter.
 Customer satisfaction scores improved by nearly 10 percent since last quarter.
-Customer satisfaction scores improved by nearly 30 percent since last quarter.
 Customer satisfaction scores improved by nearly 15 percent since last quarter.
+Customer satisfaction scores improved by nearly 25 percent since last quarter.
+Customer satisfaction scores improved by nearly 30 percent since last quarter.
 Roughly eighty percent of users renew their subscription each year.
 Only about 10 percent of orders require any kind of return.
+Only about 5 percent of orders require any kind of return.
 Only about 2 percent of orders require any kind of return.
 Only about 8 percent of orders require any kind of return.
-Only about 5 percent of orders require any kind of return.
 Only about 3 percent of orders require any kind of return.
 Nearly half of our support calls are resolved within the first five minutes.
 Almost ninety percent of appointments are completed without any rescheduling.
 Just under ten percent of accounts opt into the premium tier.
 Close to seventy percent of customers prefer text updates over phone calls.
-The failure rate on that part dropped to less than two percent after the redesign.
-The failure rate on that part dropped to less than one percent after the redesign.
 The failure rate on that part dropped to less than half a percent after the redesign.
+The failure rate on that part dropped to less than one percent after the redesign.
+The failure rate on that part dropped to less than two percent after the redesign.
 More than sixty percent of new signups come from referrals.
-The device measures about 4 inches by 4 inches and weighs under a pound.
-The device measures about 5 inches by 5 inches and weighs under a pound.
-The device measures about 6 inches by 2 inches and weighs under a pound.
-The device measures about 7 inches by 2 inches and weighs under a pound.
-The device measures about 8 inches by 5 inches and weighs under a pound.
-The device measures about 8 inches by 2 inches and weighs under a pound.
-The device measures about 7 inches by 4 inches and weighs under a pound.
-The device measures about 6 inches by 3 inches and weighs under a pound.
-The device measures about 4 inches by 2 inches and weighs under a pound.
-The device measures about 8 inches by 3 inches and weighs under a pound.
-The device measures about 6 inches by 4 inches and weighs under a pound.
-The device measures about 5 inches by 3 inches and weighs under a pound.
-The device measures about 4 inches by 3 inches and weighs under a pound.
-The device measures about 7 inches by 5 inches and weighs under a pound.
-The device measures about 8 inches by 4 inches and weighs under a pound.
-The device measures about 6 inches by 5 inches and weighs under a pound.
-The device measures about 4 inches by 5 inches and weighs under a pound.
-The device measures about 7 inches by 3 inches and weighs under a pound.
 The device measures about 5 inches by 4 inches and weighs under a pound.
+The device measures about 7 inches by 5 inches and weighs under a pound.
+The device measures about 6 inches by 5 inches and weighs under a pound.
+The device measures about 6 inches by 2 inches and weighs under a pound.
+The device measures about 5 inches by 3 inches and weighs under a pound.
+The device measures about 4 inches by 2 inches and weighs under a pound.
+The device measures about 8 inches by 5 inches and weighs under a pound.
+The device measures about 8 inches by 3 inches and weighs under a pound.
+The device measures about 8 inches by 4 inches and weighs under a pound.
 The device measures about 5 inches by 2 inches and weighs under a pound.
-This model runs on a rechargeable battery that lasts roughly 6 hours per charge.
-This model runs on a rechargeable battery that lasts roughly 15 hours per charge.
-This model runs on a rechargeable battery that lasts roughly 20 hours per charge.
-This model runs on a rechargeable battery that lasts roughly 8 hours per charge.
-This model runs on a rechargeable battery that lasts roughly 12 hours per charge.
+The device measures about 6 inches by 4 inches and weighs under a pound.
+The device measures about 8 inches by 2 inches and weighs under a pound.
+The device measures about 6 inches by 3 inches and weighs under a pound.
+The device measures about 7 inches by 2 inches and weighs under a pound.
+The device measures about 5 inches by 5 inches and weighs under a pound.
+The device measures about 4 inches by 4 inches and weighs under a pound.
+The device measures about 7 inches by 4 inches and weighs under a pound.
+The device measures about 4 inches by 5 inches and weighs under a pound.
+The device measures about 4 inches by 3 inches and weighs under a pound.
+The device measures about 7 inches by 3 inches and weighs under a pound.
 This model runs on a rechargeable battery that lasts roughly 10 hours per charge.
+This model runs on a rechargeable battery that lasts roughly 20 hours per charge.
+This model runs on a rechargeable battery that lasts roughly 15 hours per charge.
+This model runs on a rechargeable battery that lasts roughly 8 hours per charge.
+This model runs on a rechargeable battery that lasts roughly 6 hours per charge.
+This model runs on a rechargeable battery that lasts roughly 12 hours per charge.
 The package includes the main unit, a charging cable, and a quick start guide.
 This version supports both wireless and wired connections.
 The screen size on this model is six point seven inches diagonally.
-The screen size on this model is five point five inches diagonally.
 The screen size on this model is six point one inches diagonally.
-Storage options range from 128 gigabytes up to one terabyte gigabytes.
+The screen size on this model is five point five inches diagonally.
+Storage options range from 128 gigabytes up to two terabytes gigabytes.
 Storage options range from 64 gigabytes up to one terabyte gigabytes.
 Storage options range from 64 gigabytes up to five hundred twelve gigabytes.
-Storage options range from 64 gigabytes up to two terabytes gigabytes.
-Storage options range from 32 gigabytes up to two terabytes gigabytes.
-Storage options range from 32 gigabytes up to one terabyte gigabytes.
-Storage options range from 128 gigabytes up to five hundred twelve gigabytes.
-Storage options range from 128 gigabytes up to two terabytes gigabytes.
 Storage options range from 32 gigabytes up to five hundred twelve gigabytes.
+Storage options range from 32 gigabytes up to one terabyte gigabytes.
+Storage options range from 32 gigabytes up to two terabytes gigabytes.
+Storage options range from 128 gigabytes up to five hundred twelve gigabytes.
+Storage options range from 128 gigabytes up to one terabyte gigabytes.
+Storage options range from 64 gigabytes up to two terabytes gigabytes.
 This unit is water resistant but not fully waterproof.
 The battery typically takes about 1 hours to charge fully from empty.
 The battery typically takes about 3 hours to charge fully from empty.
@@ -72,36 +72,36 @@ The battery typically takes about 2 hours to charge fully from empty.
 This model is compatible with most standard mounting brackets.
 The camera on this device supports up to 10 times optical zoom.
 The camera on this device supports up to 2 times optical zoom.
-The camera on this device supports up to 5 times optical zoom.
 The camera on this device supports up to 4 times optical zoom.
+The camera on this device supports up to 5 times optical zoom.
 The camera on this device supports up to 3 times optical zoom.
 Our headquarters are located on the West Coast, though we have support teams nationwide.
 This service is currently available in over 15 countries.
 This service is currently available in over 50 countries.
-This service is currently available in over 20 countries.
 This service is currently available in over 30 countries.
-Our warehouse operates 36 hours a day to keep up with demand.
+This service is currently available in over 20 countries.
 Our warehouse operates 12 hours a day to keep up with demand.
 Our warehouse operates 48 hours a day to keep up with demand.
-Our warehouse operates 24 hours a day to keep up with demand.
+Our warehouse operates 36 hours a day to keep up with demand.
 Our warehouse operates 72 hours a day to keep up with demand.
-We've been in business for a little over 5 years now.
+Our warehouse operates 24 hours a day to keep up with demand.
 We've been in business for a little over 15 years now.
-We've been in business for a little over 20 years now.
-We've been in business for a little over 25 years now.
 We've been in business for a little over 10 years now.
+We've been in business for a little over 5 years now.
 We've been in business for a little over 8 years now.
+We've been in business for a little over 25 years now.
+We've been in business for a little over 20 years now.
 The company was originally founded as a small local shop before expanding online.
+Our support team spans 5 different time zones to provide continuous coverage.
+Our support team spans 4 different time zones to provide continuous coverage.
 Our support team spans 3 different time zones to provide continuous coverage.
 Our support team spans 2 different time zones to provide continuous coverage.
-Our support team spans 4 different time zones to provide continuous coverage.
-Our support team spans 5 different time zones to provide continuous coverage.
 We recently opened a new distribution center to speed up delivery times.
 This product line was first introduced about 7 years ago.
-This product line was first introduced about 3 years ago.
 This product line was first introduced about 5 years ago.
 This product line was first introduced about 2 years ago.
 This product line was first introduced about 10 years ago.
+This product line was first introduced about 3 years ago.
 Our return center processes thousands of packages every single day.
 The company has grown significantly since its early days as a small startup.
 Let's see here, pulling that up now, one second.

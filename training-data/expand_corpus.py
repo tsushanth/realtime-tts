@@ -234,7 +234,7 @@ def main():
             # Templated sentence: generate many varied, de-duplicated instances.
             variants = 0
             attempts = 0
-            while variants < 60 and attempts < 300:
+            while variants < 3000 and attempts < 15000:
                 attempts += 1
                 candidate = expand_line(line)
                 if candidate not in seen:

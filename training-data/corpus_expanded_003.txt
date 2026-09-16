@@ -13,14 +13,14 @@ Go ahead and hold down the power button for about 10 seconds until it shuts off 
 Go ahead and hold down the power button for about 5 seconds until it shuts off completely.
 Go ahead and hold down the power button for about 15 seconds until it shuts off completely.
 Now wait about 30 seconds before turning it back on again.
-Now wait about 45 seconds before turning it back on again.
 Now wait about 15 seconds before turning it back on again.
-Now wait about 60 seconds before turning it back on again.
 Now wait about 20 seconds before turning it back on again.
+Now wait about 45 seconds before turning it back on again.
+Now wait about 60 seconds before turning it back on again.
 Once it restarts, give it a minute or two to fully reconnect to the network.
+Try unplugging the router, waiting 15 seconds, and plugging it back in.
 Try unplugging the router, waiting 5 seconds, and plugging it back in.
 Try unplugging the router, waiting 20 seconds, and plugging it back in.
-Try unplugging the router, waiting 15 seconds, and plugging it back in.
 Try unplugging the router, waiting 10 seconds, and plugging it back in.
 Open the settings menu and look for an option labeled network preferences.
 Scroll down to the bottom of that screen and tap on advanced settings.
@@ -33,8 +33,8 @@ The newer software update changes how notifications are grouped together.
 That particular plan doesn't include international calling by default.
 This version of the app requires at least 8 gigabytes of free storage.
 This version of the app requires at least 1 gigabytes of free storage.
-This version of the app requires at least 4 gigabytes of free storage.
 This version of the app requires at least 16 gigabytes of free storage.
+This version of the app requires at least 4 gigabytes of free storage.
 This version of the app requires at least 2 gigabytes of free storage.
 That router only supports the two point four gigahertz band, not five gigahertz.
 This service is only available in select metropolitan areas right now.
@@ -45,9 +45,9 @@ This particular error usually clears up after the app finishes updating.
 I noticed there are two accounts associated with this phone number — do you know which one you'd like to use?
 There seems to be a pending order and a completed order both showing the same items, let me clarify which is current.
 I see a note here from a previous call mentioning a similar issue — did that ever get resolved?
-Looking at the account history, it seems like this has come up twice in the past month.
 Looking at the account history, it seems like this has come up twice in the past few months.
 Looking at the account history, it seems like this has come up twice in the past week.
+Looking at the account history, it seems like this has come up twice in the past month.
 I see that a credit was already issued last week, so let me check if this is a separate issue.
 There are actually two shipping addresses on file, so let me confirm which one to use this time.
 It looks like the subscription was paused rather than cancelled, which might explain the confusion.
@@ -60,19 +60,19 @@ Once we pick a time, you'll get an automatic reminder the day before.
 If your schedule changes, you can reschedule directly through the app.
 Keep in mind that same-day appointments fill up quickly, so it's best to book early.
 There is a small fee for rescheduling within 24 hours of the appointment.
-There is a small fee for rescheduling within 48 hours of the appointment.
 There is a small fee for rescheduling within 36 hours of the appointment.
-There is a small fee for rescheduling within 12 hours of the appointment.
 There is a small fee for rescheduling within 72 hours of the appointment.
+There is a small fee for rescheduling within 12 hours of the appointment.
+There is a small fee for rescheduling within 48 hours of the appointment.
 Weekend appointments tend to book up faster than weekday ones.
 If you're running late, just give us a call and we'll do our best to accommodate you.
 Appointments longer than an hour usually need to be scheduled at least a week out.
 Appointments longer than two hours usually need to be scheduled at least a week out.
 Appointments longer than thirty minutes usually need to be scheduled at least a week out.
-We recommend arriving about 10 minutes early to fill out any paperwork.
-We recommend arriving about 20 minutes early to fill out any paperwork.
-We recommend arriving about 5 minutes early to fill out any paperwork.
 We recommend arriving about 15 minutes early to fill out any paperwork.
+We recommend arriving about 5 minutes early to fill out any paperwork.
+We recommend arriving about 20 minutes early to fill out any paperwork.
+We recommend arriving about 10 minutes early to fill out any paperwork.
 That charge you're asking about was for last month's subscription renewal.
 The extra fee on your bill is for the optional add-on you selected during signup.
 That's actually a prorated charge from when you upgraded partway through the month.
@@ -98,13 +98,13 @@ It really comes down to how often you plan to use the service.
 The short answer is yes, but there are a few conditions that apply.
 Technically it's possible, though we don't usually recommend it.
 In most cases, yes, but it can vary by region.
+Generally speaking, most customers see results within about a month.
 Generally speaking, most customers see results within a couple of weeks.
 Generally speaking, most customers see results within a few days.
-Generally speaking, most customers see results within about a month.
-Typically, this kind of request takes about 5 business days to process.
 Typically, this kind of request takes about 2 business days to process.
 Typically, this kind of request takes about 4 business days to process.
 Typically, this kind of request takes about 3 business days to process.
+Typically, this kind of request takes about 5 business days to process.
 Typically, this kind of request takes about 1 business days to process.
 Usually, our team responds within 12 hours on weekdays.
 Usually, our team responds within 36 hours on weekdays.
