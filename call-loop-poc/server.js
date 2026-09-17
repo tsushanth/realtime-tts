@@ -282,6 +282,10 @@ const VALID_LLM_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-
 // browser calls (there's nothing to redirect) or flows with no transfer node.
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+// Needed to build absolute URLs (Pay's action callback, the reconnect
+// TwiML's Stream url) from code paths with no live request to read a host
+// from (_executePayment runs from _maybeRetireTurn, not an Express handler).
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'call-loop-poc.fly.dev';
 // Shared secret guarding the GET /active-calls admin endpoint (see below).
 // Same shape as the gateway's ADMIN_SECRET (Bearer token, 401 when unset or
 // mismatched) — this only exposes read-only live-call state, no control.
@@ -499,6 +503,41 @@ app.post('/twilio/voice', async (req, res) => {
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response><Connect><Stream url="wss://${req.headers.host}/twilio-stream" /></Connect></Response>`;
+  res.type('text/xml').send(twiml);
+});
+
+// <Pay>'s action callback — Twilio POSTs here once a payment session ends
+// (success, failure, or the caller pressed * to cancel). Writes ONLY the
+// outcome into the paused session's stashed collectedData — Result, last
+// four digits, card brand — never PaymentCardNumber or any other raw
+// cardholder field, even though Twilio's webhook payload can include one
+// for certain transaction types (see CreatePayments' own Input field note:
+// digits are redacted from Twilio's LOGS, which is a different guarantee
+// than "never appears in this webhook body" — the responsibility not to
+// let it into OUR history/logs/DB is on this handler, not Twilio).
+// Reconnects the call into a fresh <Connect><Stream> either way; the
+// payment node's own outgoing edges (flow-author-defined, e.g. "payment
+// succeeded" / "payment failed or was canceled") take it from there once
+// _tryResumeFromCallSid rehydrates and _runNodeTurn re-evaluates.
+app.post('/twilio/pay-result', (req, res) => {
+  const callSid = req.query.callSid || req.body.CallSid;
+  const stashed = callSid ? pendingResumeSessions.get(callSid) : null;
+  if (stashed) {
+    stashed.collectedData.payment_status = req.body.Result || 'unknown';
+    if (req.body.PaymentCardNumber) {
+      // Last-resort guard: this field is meant to already be masked
+      // ("XXXXXXXXXXXX1234") per Twilio's redaction guarantee, but never
+      // trust that blindly — only ever keep a trailing run of <=4 digits,
+      // regardless of what actually arrives here.
+      const digitsOnly = String(req.body.PaymentCardNumber).replace(/\D/g, '');
+      stashed.collectedData.payment_last4 = digitsOnly.slice(-4);
+    }
+    if (req.body.PaymentConfirmationCode) stashed.collectedData.payment_confirmation = req.body.PaymentConfirmationCode;
+    console.log(`[call-loop] pay-result for ${callSid}: ${stashed.collectedData.payment_status}`);
+  } else {
+    console.warn(`[call-loop] pay-result for ${callSid} — no stashed session found (expired or never redirected from here)`);
+  }
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${req.headers.host}/twilio-stream" /></Connect></Response>`;
   res.type('text/xml').send(twiml);
 });
 
@@ -1719,7 +1758,7 @@ class CallSession {
     // These node types act as soon as the flow enters them (run a webhook,
     // look something up, say goodbye and hang up, transfer the call) rather
     // than waiting for the caller to speak first.
-    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer']);
+    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment']);
     if (AUTO_ADVANCE_TYPES.has(nextNode.type)) {
       this._runNodeTurn(next_node_id);
     } else {
@@ -1870,6 +1909,41 @@ class CallSession {
     }
   }
 
+  // Real finding (2026-09-17, MYSTERY_SHOPPER-adjacent research via the
+  // Twilio MCP): tried triggering Payments purely via REST
+  // (POST .../Calls/{CallSid}/Payments.json) against a call already
+  // connected via <Connect><Stream>, hoping to skip a TwiML detour
+  // entirely — got error 21220 ("call not in the expected state") even
+  // against a genuinely in-progress call. The REST Payments resource
+  // appears to control/update a Pay session already running because the
+  // call's TwiML is actively executing <Pay>, not to cold-start one
+  // independent of TwiML. So this goes through _redirectForDetour after
+  // all, same as a real <Pay> verb would need.
+  //
+  // chargeAmount omitted/0 tokenizes only (see CreatePayments' own
+  // description) — a real charge needs params.amount set explicitly by
+  // whoever authors this flow node, not a default.
+  async _executePayment(params) {
+    const callSid = this.clientWs?.callSid;
+    if (!callSid) {
+      console.warn('[call-loop] payment node requires a Twilio call (no callSid) — skipping');
+      return;
+    }
+    const amount = params?.amount ? Number(params.amount) : 0;
+    const connector = params?.paymentConnector || 'Default';
+    const description = params?.description || '';
+    const payTwiml =
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Pay ` +
+      `chargeAmount="${amount}" paymentConnector="${connector}" ` +
+      `${description ? `description="${description}" ` : ''}` +
+      `action="https://${PUBLIC_HOST}/twilio/pay-result?callSid=${callSid}" /></Response>`;
+    const ok = await this._redirectForDetour(payTwiml);
+    if (!ok) {
+      console.error(`[call-loop] payment redirect failed for ${callSid} — hanging up rather than leaving the call stuck`);
+      this.close();
+    }
+  }
+
   // Captures everything a resumed session needs to continue the same
   // conversation rather than start fresh — stored as live object
   // references (this Map never leaves process memory) so there's no
@@ -1957,6 +2031,10 @@ class CallSession {
       }
       if (this.turnState.nodeType === 'transfer') {
         this._executeTransfer(this.turnState.nodeParams);
+        return;
+      }
+      if (this.turnState.nodeType === 'payment') {
+        this._executePayment(this.turnState.nodeParams);
         return;
       }
       if (this.turnState.transition) {
