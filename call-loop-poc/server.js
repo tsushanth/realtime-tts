@@ -319,6 +319,13 @@ const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
 // wasn't enough; this is deliberately small so a model that's genuinely
 // stuck doesn't nudge indefinitely before falling back.
 const MAX_NUDGE_ATTEMPTS = 2;
+// How long to wait after the last keypad digit before treating a DTMF
+// entry as complete (see CallSession._onDtmfDigit) — long enough that a
+// caller dialing a multi-digit code at a normal pace doesn't get cut off
+// between digits, short enough that a single menu-selection digit ("press
+// 1 for sales") doesn't leave a caller waiting a full second-plus for a
+// response with no feedback that their press registered.
+const DTMF_DEBOUNCE_MS = 1200;
 // Shared by both the shopper's own reply (server.js's assistant-turn
 // handling) and the check on what it just heard from the other party (see
 // _onUserTurnComplete below) — see MYSTERY_SHOPPER_PATTERNS.md pattern 2
@@ -627,6 +634,7 @@ twilioWss.on('connection', (twilioWs) => {
   adapter.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   adapter.on('close', () => session.close());
   adapter.on('error', (err) => console.error('[call-loop] twilio adapter error', err));
+  adapter.on('dtmf', (digit) => session._onDtmfDigit(digit));
   // Per-tenant routing resolved back in /twilio/voice (see tenantLookup.js)
   // — handed to the session the same way a browser client does it, via a
   // synthesized 'context' message, rather than duplicating that parsing
@@ -726,6 +734,8 @@ class CallSession {
     this._closing = false;
     this._nudgeAttempts = new Map(); // nodeId -> count, see _maybeRetireTurn's deadlock-nudge fix
     this._queuedUserText = null; // see _onUserTurnComplete's in-flight-turn guard
+    this._dtmfBuffer = ''; // see _onDtmfDigit — buffered keypad digits not yet flushed into a turn
+    this._dtmfTimer = null;
     // Live-monitoring metadata — which tenant owns this call and the phone
     // number involved, both set from the {"type":"context"} message (see
     // onClientMessage). Null for anonymous browser demo calls, which carry no
@@ -928,6 +938,52 @@ class CallSession {
       }
       console.log(`[call-loop] context set — prompt: ${this.systemPrompt.length} chars, voice: ${this.voice}, ttsBackend: ${this.ttsBackend}, model: ${this.llmModel}`);
     }
+  }
+
+  // Real Twilio keypad input (see twilioAdapter.js's 'dtmf' event) — a
+  // caller navigating an IVR-style menu ("press 1 for sales") or entering a
+  // multi-digit code. Deliberately NOT a new flow-node type: a flow's edges
+  // already get evaluated by the model against whatever the caller's last
+  // turn said, so feeding a digit sequence in as a synthetic user turn
+  // ("[Caller pressed 1 on the keypad]") lets a flow author write an edge
+  // condition like "caller pressed 1" using the exact same mechanism as any
+  // spoken condition — no schema change, no separate menu-node concept to
+  // keep in sync with the real one.
+  //
+  // Buffered, not fired per-keypress: entering "1234#" for a 4-digit code
+  // would otherwise trigger four separate conversational turns (one per
+  // digit) before the caller finishes, which is wrong — a real IVR either
+  // waits for a terminator key or a short pause. '#' flushes immediately
+  // (the universal "I'm done entering" key); otherwise a short debounce
+  // covers the common single-digit menu-selection case (a lone "1" with no
+  // more coming) without needing the caller to also press '#' for that.
+  _onDtmfDigit(digit) {
+    if (this._closing) return;
+    if (digit === '#') {
+      this._flushDtmfBuffer();
+      return;
+    }
+    if (digit === '*') {
+      // No real meaning defined yet (Retell's own IVR templates use it for
+      // "start over" in some flows) — drop rather than buffer garbage into
+      // what the model sees as caller input.
+      return;
+    }
+    this._dtmfBuffer += digit;
+    if (this._dtmfTimer) clearTimeout(this._dtmfTimer);
+    this._dtmfTimer = setTimeout(() => this._flushDtmfBuffer(), DTMF_DEBOUNCE_MS);
+  }
+
+  _flushDtmfBuffer() {
+    if (this._dtmfTimer) {
+      clearTimeout(this._dtmfTimer);
+      this._dtmfTimer = null;
+    }
+    if (!this._dtmfBuffer) return;
+    const digits = this._dtmfBuffer;
+    this._dtmfBuffer = '';
+    console.log(`[call-loop] [call ${this.callSid || this.id}] dtmf: "${digits}"`);
+    this._onUserTurnComplete(`[Caller pressed ${digits} on the keypad]`);
   }
 
   async _onUserTurnComplete(userText) {

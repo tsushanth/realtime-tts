@@ -95,6 +95,13 @@ export class TwilioCallAdapter extends EventEmitter {
       // entirely instead of trying to compensate for our own resample.
       const mulaw = Buffer.from(msg.media.payload, 'base64');
       this.emit('message', mulaw, true);
+    } else if (msg.event === 'dtmf') {
+      // Sent automatically on an active <Connect><Stream> call the moment a
+      // caller presses a touch-tone key — no special TwiML config needed
+      // beyond the stream already being connected. Shape:
+      // { event: "dtmf", streamSid, dtmf: { track: "inbound_track", digit: "5" } }.
+      const digit = msg.dtmf?.digit;
+      if (digit) this.emit('dtmf', digit);
     } else if (msg.event === 'stop') {
       console.log('[twilio] stream stopped');
       this.emit('close');
