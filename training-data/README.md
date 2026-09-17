@@ -134,6 +134,25 @@ full corpus once it's ready, for the CPU-serving/cold-start angle.
   projects (semidark/kikiri-tts, avri-schneider/kokoro-hebrew) did this but there's no
   official/maintained path. Higher debugging risk than Matcha-TTS was. Not yet tried;
   worth a pilot only if Piper's fine-tuned quality plateaus below what's needed.
+  **Deeper research (2026-09-17):** confirmed real and independently replicated (not
+  vaporware) — checkpoint conversion is mechanically simple (Kokoro's `.pth` is
+  already keyed by StyleTTS2 module names), but requires a real, documented patch
+  set applied to StyleTTS2 itself (symlink table fix, weight_norm API migration,
+  restoring deleted loss-computation tensors, `torch.load` weights_only fix, etc. —
+  not a one-line loader change). Both community repos did *cross-lingual* transfer
+  (English Kokoro -> German/Hebrew); our use case (a different English voice, same
+  language) is actually easier than what they proved, since it avoids their
+  documented symbol-table/phoneme-index-mismatch risk entirely and an open issue
+  showing this recipe failing to generalize to a new language (Vietnamese) doesn't
+  apply to us. Real cost regardless of language: a near-full StyleTTS2 Stage 1 + 2
+  training run (tens of GPU-hours, not a lightweight adapter fine-tune — one
+  reported case was ~48h for 10 epochs on non-cloud hardware), plus a real data
+  rebuild (24kHz + IPA phonemization + speaker-id column, not a reuse of the
+  Matcha/Piper `path|text` filelists). Lowest-risk approach if pursued: fork
+  kikiri-tts directly rather than reimplementing its patch set from scratch. Given
+  the cost is an order of magnitude above anything spent so far (~$0.01-0.67 for
+  the Matcha/Piper pilots vs. tens of GPU-hours here), this should get an explicit
+  go/no-go check before spending real money, not just be started.
 - **New candidate: Piper, specifically for CPU-served always-on serving** (see
   `../DECISIONS.md`, "Fine-tuning path reopens Option A/B cheaply"). MIT, VITS-based,
   CPU-optimized. Official, maintained fine-tuning support via OHF-Voice/piper1-gpl
@@ -203,3 +222,35 @@ one word with noticeably robotic intonation, an isolated blip rather than a
 pervasive problem across all 5 samples. Worth rechecking after more training
 steps or a length_scale change to see if it's still there before treating it
 as a real pattern rather than noise from this specific sentence/seed.
+
+## Piper fine-tuning pilot — done, working (2026-09-17)
+
+`piper_pilot_finetune.py`: real, working fine-tune of OHF-Voice/piper1-gpl's
+`en_US-lessac-medium` checkpoint on the same 279-sample pilot slice, 300
+steps/5 epochs. `val_mel` decreased cleanly every epoch (0.5647 -> 0.5577 ->
+0.4938 -> 0.4649/0.4494 -> 0.4240 across two confirming runs) - a real
+convergence signal, not yet ear-verified with synthesized audio (next step).
+
+Took 6 real debugging rounds to get a clean run, all documented inline in the
+script itself: the same `weights_only` checkpoint-loading issue as
+Matcha-TTS but a different mechanism (Lightning's CLI hardcodes it,
+independent of torch's own default) and a different fix (must call
+`main()` in-process, not via subprocess, for a monkeypatch to take effect);
+`--ckpt_path` strictly validates a checkpoint's saved hyperparameters and
+breaks on this older checkpoint's stale `sample_bytes` field -
+`--model.warmstart_ckpt` is the correct weights-only mechanism instead;
+`espeakbridge` (a CMake/scikit-build native extension) is silently never
+built by a plain `pip install -e` at all, needing `--no-build-isolation` +
+pre-installed build-system deps + a separate explicit
+`setup.py build_ext --inplace` (matching upstream's own `script/dev_build`);
+`monotonic_align` is a second, separate Cython extension not wired into
+setup.py or CMakeLists.txt at all, always needing its own manual build step;
+the same NumPy 2 ABI break as Matcha-TTS, but the pin didn't survive Piper's
+own dependency resolution and had to be re-applied after everything else
+installed; and Piper's own hardcoded `val_mos` checkpoint-quality callback
+hard-crashes under our installed Lightning version instead of the soft-skip
+its own source comment promises (dropped that one callback).
+
+**Next:** synthesize audio from the resulting checkpoint and listen (same
+step Matcha-TTS went through), then decide whether to scale this to the full
+22,011-sample corpus the same way `full_finetune.py` did for Matcha-TTS.
