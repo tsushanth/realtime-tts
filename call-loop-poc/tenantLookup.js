@@ -56,6 +56,27 @@ export async function insertCallLog(row) {
   }
 }
 
+export async function updateCallLogById(id, patch) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !id) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/calldesk_call_logs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patch),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.error(`[call-log] update by id failed: HTTP ${res.status}`, await res.text().catch(() => ''));
+    }
+  } catch (err) {
+    console.error('[call-log] update by id failed', err);
+  }
+}
+
 export async function updateCallLogByCallSid(callSid, patch) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !callSid) return;
   try {
@@ -75,6 +96,38 @@ export async function updateCallLogByCallSid(callSid, patch) {
   } catch (err) {
     console.error('[call-log] update failed', err);
   }
+}
+
+// Recording retention enforcement (2026-09-17, see Settings page's "Call
+// Recording" section) — returns [{ recordingSid, callLogId }] for every
+// poc-engine recording whose tenant has set a retention_days window AND
+// whose call is now older than it. Deliberately two flat queries + a JS
+// filter rather than one clever PostgREST query: a per-row date comparison
+// against a PER-TENANT setting isn't expressible as a single filter, and
+// the volume here (recordings with a retention window set at all) is small
+// enough that this is simpler and easier to reason about than fighting
+// PostgREST's query syntax for it.
+export async function findExpiredRecordings() {
+  const tenants = await pg('calldesk_tenants', 'select=id,settings');
+  const retentionByTenant = new Map();
+  for (const t of tenants || []) {
+    const days = Number(t.settings?.recording_retention_days);
+    if (days > 0) retentionByTenant.set(t.id, days);
+  }
+  if (retentionByTenant.size === 0) return [];
+
+  const logs = await pg(
+    'calldesk_call_logs',
+    'voice_engine=eq.poc&recording_sid=not.is.null&select=id,tenant_id,recording_sid,created_at&order=created_at.asc&limit=500'
+  );
+  const now = Date.now();
+  return (logs || [])
+    .filter((row) => {
+      const retentionDays = retentionByTenant.get(row.tenant_id);
+      if (!retentionDays) return false;
+      return now - new Date(row.created_at).getTime() > retentionDays * 24 * 60 * 60 * 1000;
+    })
+    .map((row) => ({ recordingSid: row.recording_sid, callLogId: row.id }));
 }
 
 // Returns null when the number isn't routed to anything (unknown number, or
@@ -116,10 +169,11 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     return null;
   }
 
-  const [flows, businesses, calendars] = await Promise.all([
+  const [flows, businesses, calendars, tenants] = await Promise.all([
     pg('calldesk_conversation_flows', `id=eq.${version.flow_id}&select=nodes,global_settings`),
     pg('calldesk_businesses', `tenant_id=eq.${numberRow.tenant_id}&select=stripe_customer_id`),
     pg('calldesk_calendar_connections', `tenant_id=eq.${numberRow.tenant_id}&select=provider,api_key,event_type_id`),
+    pg('calldesk_tenants', `id=eq.${numberRow.tenant_id}&select=settings`),
   ]);
   const flowRow = flows?.[0];
   if (!flowRow?.nodes?.length) {
@@ -144,6 +198,10 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     calendar: calendars?.[0]
       ? { provider: calendars[0].provider, apiKey: calendars[0].api_key, eventTypeId: calendars[0].event_type_id }
       : undefined,
+    // Real per-tenant recording control (2026-09-17, see Settings page's
+    // "Call Recording" section) — defaults to recording ON (matches
+    // Retell's own default), only skipped when explicitly turned off.
+    recordingEnabled: tenants?.[0]?.settings?.recording_enabled !== 'false',
   };
 }
 

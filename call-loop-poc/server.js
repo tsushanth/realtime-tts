@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -327,6 +327,43 @@ async function startCallRecording(callSid) {
     console.error(`[call-loop] failed to start recording for ${callSid}: HTTP ${res.status}`, await res.text().catch(() => ''));
   }
 }
+
+// Retention enforcement — actually DELETES the audio from Twilio once a
+// tenant's own retention_days window passes (see Settings page's "Call
+// Recording" section), not just hiding it from the UI; we never hold a copy
+// ourselves (see calldesktech's own recording proxy comment — this whole
+// feature deliberately doesn't store audio in a bucket we own), so this is
+// the only real way the data actually stops existing. Runs periodically via
+// setInterval below — a long-running Node process already, so no separate
+// cron infra needed.
+async function enforceRecordingRetention() {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return;
+  const expired = await findExpiredRecordings().catch((err) => {
+    console.error('[call-loop] retention sweep query failed', err);
+    return [];
+  });
+  if (expired.length === 0) return;
+  console.log(`[call-loop] retention sweep: deleting ${expired.length} expired recording(s)`);
+  const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+  for (const { recordingSid, callLogId } of expired) {
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Recordings/${recordingSid}.json`, {
+        method: 'DELETE',
+        headers: { Authorization: `Basic ${auth64}` },
+      });
+      // 404 means it's already gone (deleted manually, or a prior sweep run
+      // partially succeeded) — still clear our own reference either way.
+      if (res.ok || res.status === 404) {
+        await updateCallLogById(callLogId, { recording_url: null, recording_sid: null });
+      } else {
+        console.error(`[call-loop] failed to delete recording ${recordingSid}: HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error(`[call-loop] failed to delete recording ${recordingSid}`, err);
+    }
+  }
+}
+
 // Shared secret guarding the GET /active-calls admin endpoint (see below).
 // Same shape as the gateway's ADMIN_SECRET (Bearer token, 401 when unset or
 // mismatched) — this only exposes read-only live-call state, no control.
@@ -645,12 +682,14 @@ app.post('/twilio/voice', async (req, res) => {
 // there's nothing sensitive being READ here, only a URL being written
 // against a callSid Twilio itself supplies.
 app.post('/twilio/recording-status', express.urlencoded({ extended: false }), async (req, res) => {
-  const { CallSid, RecordingStatus, RecordingUrl } = req.body || {};
+  const { CallSid, RecordingStatus, RecordingUrl, RecordingSid } = req.body || {};
   if (CallSid && RecordingStatus === 'completed' && RecordingUrl) {
     // Twilio's RecordingUrl has no extension by default — appending .mp3
     // gets back a real playable media file instead of the JSON resource
-    // representation the bare URL would otherwise return.
-    await updateCallLogByCallSid(CallSid, { recording_url: `${RecordingUrl}.mp3` });
+    // representation the bare URL would otherwise return. RecordingSid is
+    // stored separately (not parsed back out of the URL later) so the
+    // retention sweep below can target Twilio's DELETE endpoint directly.
+    await updateCallLogByCallSid(CallSid, { recording_url: `${RecordingUrl}.mp3`, recording_sid: RecordingSid || null });
   }
   res.sendStatus(200);
 });
@@ -1065,7 +1104,9 @@ twilioWss.on('connection', (twilioWs) => {
         outcome: 'answered',
         duration_seconds: 0,
       }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
-      if (RECORD_REAL_CALLS) startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
+      if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
+        startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
+      }
     }
   });
 });
@@ -3863,4 +3904,10 @@ server.listen(PORT, () => {
   // and the prewarm cost (a handful of short TTS calls, once, at startup)
   // is trivial either way.
   prewarmFillerCache();
+  // Every 6 hours is frequent enough that a 30-day retention setting is
+  // enforced within a fraction of a day of expiring, without hammering
+  // Twilio/Supabase on every process restart the way "run once at boot,
+  // then daily" would on a platform that redeploys/restarts often.
+  enforceRecordingRetention().catch((err) => console.error('[call-loop] initial retention sweep failed', err));
+  setInterval(() => enforceRecordingRetention().catch((err) => console.error('[call-loop] retention sweep failed', err)), 6 * 60 * 60 * 1000);
 });
