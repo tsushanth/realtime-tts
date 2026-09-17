@@ -2341,7 +2341,28 @@ class CallSession {
     // look something up, say goodbye and hang up, transfer the call) rather
     // than waiting for the caller to speak first.
     const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp']);
-    if (AUTO_ADVANCE_TYPES.has(nextNode.type)) {
+    // An 'extraction' node normally waits for the caller's next utterance —
+    // correct when it still needs to ask something the caller hasn't
+    // answered yet, since the current turn's own text already asked it
+    // conversationally (see the header comment on _applyTransition). But
+    // real bug, reproduced on a live call: a "booking" extraction node whose
+    // extract fields (name, preferred_time, ...) were ALL already collected
+    // — the model said "let me get that booked for you" (nothing left to
+    // ask) and transitioned in, expecting to immediately call
+    // check_availability/book_appointment itself. With no un-extracted
+    // fields left, this just sat there waiting for the caller to speak,
+    // dead silent for 46 real seconds until the caller said "hello?" out of
+    // confusion. If every field this node would extract is already
+    // satisfied, there's nothing left for the CALLER to answer — treat it
+    // like the auto-advance types so the model gets a turn to act.
+    const extractionFullySatisfied =
+      nextNode.type === 'extraction' &&
+      nextNode.extract &&
+      Object.keys(nextNode.extract).every((field) => {
+        const value = this.collectedData[field];
+        return value !== undefined && value !== null && String(value).trim() !== '';
+      });
+    if (AUTO_ADVANCE_TYPES.has(nextNode.type) || extractionFullySatisfied) {
       this._runNodeTurn(next_node_id);
     } else {
       this.currentNodeId = next_node_id;
