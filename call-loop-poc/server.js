@@ -160,6 +160,18 @@ const BACKCHANNEL_WORDS_DEFAULT = (process.env.BACKCHANNEL_WORDS || 'Mm-hmm.,Got
 // — this masks a one-time connection-setup delay at the start of a call.
 const KOKORO_WARMUP_PHRASE = process.env.KOKORO_WARMUP_PHRASE || 'One moment while I get set up.';
 
+// Masks dead air during a real Cal.com round trip. Real bug reported on a
+// live call: check_availability/book_appointment each carry up to an 8s
+// timeout, and _handleCalendarTool awaited them with literally nothing
+// spoken — the model's own "let me get that booked" line (its assistantText
+// for that turn) finishes playing and then the line goes completely silent
+// until the HTTP call resolves, easily several seconds, with no backchannel
+// covering it since backchanneling only fires while waiting on the LLM, not
+// while awaiting a tool call afterward. Same cached-clip approach as
+// backchanneling — zero added latency since it's pre-synthesized, not
+// generated live.
+const CALENDAR_LOOKUP_FILLER_PHRASE = process.env.CALENDAR_LOOKUP_FILLER_PHRASE || 'One moment, let me check the calendar.';
+
 // backend::voice::text -> Buffer (PCM16LE mono 24kHz). Populated at startup
 // for the HTTP TTS backends that have a single, global, env-configured voice
 // (elevenlabs/cartesia/minimax) so playing a filler costs zero network
@@ -233,7 +245,7 @@ async function fetchMinimaxPcmOnce(text) {
 
 async function prewarmFillerCache() {
   const jobs = [];
-  for (const text of BACKCHANNEL_WORDS_DEFAULT) {
+  for (const text of [...BACKCHANNEL_WORDS_DEFAULT, CALENDAR_LOOKUP_FILLER_PHRASE]) {
     if (ELEVENLABS_API_KEY) {
       jobs.push(
         fetchElevenLabsPcmOnce(text)
@@ -2932,6 +2944,16 @@ class CallSession {
   // round-trip). Never lets a calendar API error kill the call — always
   // produces some note for the model to react to, even a failure one.
   async _handleCalendarTool(toolUse) {
+    // Fire-and-forget: plays after whatever the model already said this turn
+    // finishes, covering the real API latency below instead of leaving dead
+    // air. Silently a no-op if this session's backend/voice has no cached
+    // clip (kokoro — see fillerCache's comment) rather than synthesizing
+    // live, which would be just as slow as what it's meant to hide.
+    const turnIdAtCall = this.activeTurn;
+    const fillerBuf = fillerCache.get(this._fillerCacheKey(CALENDAR_LOOKUP_FILLER_PHRASE));
+    if (fillerBuf) {
+      this._speakCached(fillerBuf, turnIdAtCall).catch((err) => console.error('[call-loop] calendar filler send failed', err));
+    }
     let note;
     try {
       if (toolUse.name === 'check_availability') {
@@ -2963,9 +2985,19 @@ class CallSession {
   // startTime/endTime timestamp params — the real one takes eventTypeId
   // plus start/end as plain YYYY-MM-DD dates and returns
   // { data: { "<date>": [{ start: <ISO timestamp> }, ...] } }.
+  //
+  // Real bug reported on a live call: start/end as bare YYYY-MM-DD dates are
+  // interpreted in UTC when no timeZone param is given (Cal.com's documented
+  // default), so a Monday query's window is Monday 00:00 UTC to Monday 00:00
+  // UTC the next day — for a Pacific business that's midnight to ~4-5pm
+  // local depending on DST, silently dropping every slot later in the local
+  // day. That's exactly why a caller could book 4:45pm but not 5pm: 4:45pm
+  // Pacific is still within the UTC Monday window, 5pm already isn't. Passing
+  // the flow's real timezone makes Cal.com filter the window in LOCAL days.
   async _checkAvailability(date) {
+    const timezone = this.flow?.globalSettings?.timezone || 'America/Los_Angeles';
     const res = await fetch(
-      `https://api.cal.com/v2/slots?eventTypeId=${this.calendar.eventTypeId}&start=${date}&end=${date}`,
+      `https://api.cal.com/v2/slots?eventTypeId=${this.calendar.eventTypeId}&start=${date}&end=${date}&timeZone=${encodeURIComponent(timezone)}`,
       { headers: { Authorization: `Bearer ${this.calendar.apiKey}`, 'cal-api-version': '2024-09-04' }, signal: AbortSignal.timeout(8000) }
     );
     if (!res.ok) throw new Error(`Cal.com slots request failed: HTTP ${res.status}`);
@@ -2982,7 +3014,7 @@ class CallSession {
     // than trusting a model-constructed timestamp at all.
     this._lastAvailableSlots = {};
     const labels = daySlots.map((s) => {
-      const label = new Date(s.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' });
+      const label = new Date(s.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
       this._lastAvailableSlots[label] = s.start;
       return label;
     });
