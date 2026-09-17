@@ -821,6 +821,7 @@ class CallSession {
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
     this.calendar = null; // { provider, apiKey, eventTypeId } — see tenantLookup.js / onClientMessage
+    this._lastAvailableSlots = null; // label -> real ISO time, from the most recent check_availability — see _bookAppointment
     // Mystery-shopper flag (see MYSTERY_SHOPPER_DECISIONS.md) — enables the
     // closing-loop-detection hangup below, since a flow-less session
     // otherwise never ends a call on its own.
@@ -1309,9 +1310,13 @@ class CallSession {
             properties: {
               name: { type: 'string', description: "Caller's name" },
               email: { type: 'string', description: "Caller's email address for the booking confirmation" },
-              startTime: { type: 'string', description: 'Exact start time, ISO 8601 (e.g. 2026-09-18T15:00:00-07:00)' },
+              // A label, not a timestamp you construct yourself — real bug
+              // found live: asking the model to build its own ISO 8601
+              // string got the UTC offset wrong and booked the wrong hour
+              // while confidently confirming the right one out loud.
+              selectedTime: { type: 'string', description: 'The EXACT time string from check_availability\'s results (e.g. "4:00 PM") — copy it exactly, do not reformat or compute a timestamp yourself.' },
             },
-            required: ['name', 'email', 'startTime'],
+            required: ['name', 'email', 'selectedTime'],
           },
         });
       }
@@ -2046,7 +2051,7 @@ class CallSession {
       } else {
         const result = await this._bookAppointment(toolUse.input);
         note = result.ok
-          ? `Booking confirmed for ${toolUse.input.startTime} (confirmation ${result.uid}). Read this back to the caller and treat the field as captured.`
+          ? `Booking confirmed for ${toolUse.input.selectedTime} (confirmation ${result.uid}). Read this back to the caller and treat the field as captured.`
           : `Booking attempt failed (${result.error}). Apologize and ask the caller to pick a different time, or offer to take a message instead.`;
         if (result.ok) this.collectedData.booking_confirmed = result.uid;
       }
@@ -2075,12 +2080,22 @@ class CallSession {
     if (!res.ok) throw new Error(`Cal.com slots request failed: HTTP ${res.status}`);
     const body = await res.json();
     const daySlots = body.data?.[date] || [];
-    // Local time string, not raw UTC ISO — the model should speak "3 PM",
-    // not "2026-09-18T22:00:00.000Z", and this is what it'll echo back to
-    // the caller almost verbatim.
-    return daySlots.map((s) =>
-      new Date(s.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' })
-    );
+    // Real bug, caught on a live call: book_appointment used to take a raw
+    // ISO startTime the MODEL had to construct itself (given only a human-
+    // readable "4:00 PM" from here) — it got the UTC offset wrong and
+    // booked 9 AM instead of the requested 4 PM, while confidently telling
+    // the caller "you're all set" for the right time. Classic don't-make-
+    // the-LLM-do-exact-arithmetic mistake. Fix: keep the real ISO value
+    // server-side, keyed by the exact label the model is given and is
+    // expected to echo back — book_appointment looks it up here rather
+    // than trusting a model-constructed timestamp at all.
+    this._lastAvailableSlots = {};
+    const labels = daySlots.map((s) => {
+      const label = new Date(s.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' });
+      this._lastAvailableSlots[label] = s.start;
+      return label;
+    });
+    return labels;
   }
 
   // POST /v2/bookings — confirmed live against the real API. Requires a
@@ -2088,7 +2103,14 @@ class CallSession {
   // a genuine hard problem for voice specifically (email capture by
   // spelling it out is error-prone) flagged in the design notes; not
   // solved here, just passed through as whatever the model captured.
-  async _bookAppointment({ name, email, startTime }) {
+  async _bookAppointment({ name, email, selectedTime }) {
+    const realIsoTime = this._lastAvailableSlots?.[selectedTime];
+    if (!realIsoTime) {
+      // The model passed a time that either wasn't in the last
+      // check_availability result, or check_availability was never called
+      // this turn at all — refuse rather than guess at what it meant.
+      return { ok: false, error: `"${selectedTime}" wasn't one of the times just checked — call check_availability again first` };
+    }
     const res = await fetch('https://api.cal.com/v2/bookings', {
       method: 'POST',
       headers: {
@@ -2098,7 +2120,7 @@ class CallSession {
       },
       body: JSON.stringify({
         eventTypeId: this.calendar.eventTypeId,
-        start: new Date(startTime).toISOString(),
+        start: realIsoTime,
         attendee: { name, email, timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' },
       }),
       signal: AbortSignal.timeout(8000),
