@@ -400,6 +400,27 @@ app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded f
 // opens the stream (e.g. caller hangs up mid-ring) doesn't leak forever.
 const pendingCallContext = new Map();
 
+// Session-resume state, keyed by CallSid — the infrastructure piece a
+// mid-call TwiML detour needs (e.g. redirecting out to Twilio's <Pay> verb
+// for PCI-compliant payment capture, then reconnecting our own
+// <Connect><Stream> once it's done — see the payment-node design; that
+// node type isn't built yet, this is the reusable piece underneath it).
+// Redirecting a live call to different TwiML tears down the CURRENT Media
+// Stream connection (a 'stop' event fires, same as a real hangup) and, once
+// the detour's own TwiML finishes, opens a BRAND NEW one — a new
+// CallSession would normally start that fresh, with none of the
+// in-progress conversation. Stashing the outgoing session's live state
+// here (in-process object references, not serialized — this never leaves
+// memory, so there's no JSON-roundtrip cost or shape to maintain) lets the
+// new session rehydrate instead of starting over.
+//
+// Not swept on a fixed timer like pendingCallContext — checked lazily on
+// read (mirrors testTtsOverrides' expiresAt pattern) since a resume is
+// rare and the entries are small; RESUME_TTL_MS below is generous enough
+// to cover a real payment flow without being effectively unbounded.
+const pendingResumeSessions = new Map();
+const RESUME_TTL_MS = 10 * 60 * 1000; // 10 min — Pay can involve retries (bad card, etc.), give it real room
+
 // Test-only, in-memory, TEST_CALL_SECRET-gated: lets the mystery-shopper
 // latency harness force a real tenant's INBOUND agent (resolved from
 // Supabase in /twilio/voice below) onto a different ttsBackend/ttsModel for
@@ -647,6 +668,21 @@ twilioWss.on('connection', (twilioWs) => {
     // at once (real gap found running the mystery-shopper framework, see
     // MYSTERY_SHOPPER_DECISIONS.md).
     session.callSid = callSid;
+
+    // A reconnect after a mid-call detour (see _redirectForDetour) has no
+    // pendingCallContext entry — that context was already established on
+    // this call's FIRST segment, and the detour's own TwiML (e.g. <Pay>)
+    // is what reconnects us, not another /twilio/voice hit. Check this
+    // BEFORE the pendingCallContext lookup below, which would otherwise
+    // just silently no-op on a resumed call (no entry to find).
+    if (session._tryResumeFromCallSid(callSid)) {
+      // No fresh caller utterance to react to (the caller was just talking
+      // to Twilio's own Pay prompts, not us) — same gap _runNodeTurn
+      // already bridges for any other auto-advanced node entry.
+      session._runNodeTurn(session.currentNodeId);
+      return;
+    }
+
     const resolved = pendingCallContext.get(callSid);
     if (!resolved) return;
     pendingCallContext.delete(callSid);
@@ -732,6 +768,12 @@ class CallSession {
     this.callSid = null; // set once the Twilio 'start' event arrives (browser calls never get one)
     this._shopperClosingCount = 0;
     this._closing = false;
+    // Set by _stashForResume() right before a mid-call TwiML detour (e.g.
+    // Pay) redirects the live call — the 'stop' event that follows is this
+    // session's transport actually closing, but NOT the call ending, so
+    // close() must skip billing finalization and the live-call-registry
+    // removal it normally does on a real hangup. See pendingResumeSessions.
+    this._pausedForResume = false;
     this._nudgeAttempts = new Map(); // nodeId -> count, see _maybeRetireTurn's deadlock-nudge fix
     this._queuedUserText = null; // see _onUserTurnComplete's in-flight-turn guard
     this._dtmfBuffer = ''; // see _onDtmfDigit — buffered keypad digits not yet flushed into a turn
@@ -1779,6 +1821,123 @@ class CallSession {
     }
   }
 
+  // Redirects the live call to different TwiML the same way _executeTransfer
+  // does, but for a detour we expect the call to come BACK from (e.g. Pay),
+  // not hand off permanently. Stashes this session's in-progress state
+  // first so the reconnected stream can rehydrate it — see
+  // pendingResumeSessions and _tryResumeFromCallSid.
+  //
+  // Deliberately generic (redirectTwiml is caller-supplied, not hardcoded
+  // to Pay) — this is the reusable primitive; the payment-node type that
+  // would actually call this with a <Pay> TwiML string isn't built yet
+  // (see the 2026-09-16 Twilio <Pay> design notes) pending confirming the
+  // exact redirect/reconnect and recording-suppression behavior directly
+  // against Twilio, not assumed from secondary sources.
+  async _redirectForDetour(redirectTwiml) {
+    const callSid = this.clientWs?.callSid;
+    if (!callSid || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      console.warn(
+        `[call-loop] detour redirect requested but cannot complete it (callSid=${callSid ? 'present' : 'missing'}, ` +
+        `twilioCredsConfigured=${Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN)})`
+      );
+      return false;
+    }
+    this._stashForResume(callSid);
+    try {
+      const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls/${callSid}.json`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ Twiml: redirectTwiml }).toString(),
+        }
+      );
+      console.log(`[call-loop] detour redirect for ${callSid} -> Twilio responded HTTP ${res.status}`);
+      if (!res.ok) {
+        // The redirect itself failed — nothing to resume into, so don't
+        // leave a stashed entry that'll just sit until RESUME_TTL_MS expires.
+        pendingResumeSessions.delete(callSid);
+      }
+      return res.ok;
+      // Our media-stream WS leg gets a 'stop' event now, same as a real
+      // hangup — close() checks _pausedForResume (set by _stashForResume)
+      // to skip billing/registry finalization for this non-final close.
+    } catch (err) {
+      console.error('[call-loop] detour redirect failed', err);
+      pendingResumeSessions.delete(callSid);
+      return false;
+    }
+  }
+
+  // Captures everything a resumed session needs to continue the same
+  // conversation rather than start fresh — stored as live object
+  // references (this Map never leaves process memory) so there's no
+  // serialization shape to keep in sync with CallSession's own fields.
+  _stashForResume(callSid) {
+    this._pausedForResume = true;
+    pendingResumeSessions.set(callSid, {
+      history: this.history,
+      collectedData: this.collectedData,
+      currentNodeId: this.currentNodeId,
+      flow: this.flow,
+      flowNodesById: this.flowNodesById,
+      cost: this.cost, // same tracker instance carries forward — billed once, on the real final close()
+      tenantId: this.tenantId,
+      phoneNumber: this.phoneNumber,
+      stripeCustomerId: this.stripeCustomerId,
+      ttsBackend: this.ttsBackend,
+      ttsModel: this.ttsModel,
+      llmModel: this.llmModel,
+      voice: this.voice,
+      systemPrompt: this.systemPrompt,
+      backchannelEnabled: this.backchannelEnabled,
+      backchannelFrequency: this.backchannelFrequency,
+      backchannelDelayMs: this.backchannelDelayMs,
+      backchannelWords: this.backchannelWords,
+      turnSeq: this.turnSeq,
+      stashedAt: Date.now(),
+    });
+  }
+
+  // Called from the Twilio 'start' handler before falling back to the
+  // normal fresh-session path — returns true and rehydrates `this` if a
+  // resume is pending for this CallSid, false otherwise (an ordinary new
+  // call, or a resume that expired before Twilio reconnected — e.g. the
+  // caller hung up mid-Pay and never came back).
+  _tryResumeFromCallSid(callSid) {
+    const stashed = pendingResumeSessions.get(callSid);
+    if (!stashed) return false;
+    pendingResumeSessions.delete(callSid);
+    if (Date.now() - stashed.stashedAt > RESUME_TTL_MS) {
+      console.warn(`[call-loop] resume for ${callSid} expired (stashed ${Date.now() - stashed.stashedAt}ms ago) — starting fresh instead`);
+      return false;
+    }
+    Object.assign(this, {
+      history: stashed.history,
+      collectedData: stashed.collectedData,
+      currentNodeId: stashed.currentNodeId,
+      flow: stashed.flow,
+      flowNodesById: stashed.flowNodesById,
+      cost: stashed.cost,
+      tenantId: stashed.tenantId,
+      phoneNumber: stashed.phoneNumber,
+      stripeCustomerId: stashed.stripeCustomerId,
+      ttsBackend: stashed.ttsBackend,
+      ttsModel: stashed.ttsModel,
+      llmModel: stashed.llmModel,
+      voice: stashed.voice,
+      systemPrompt: stashed.systemPrompt,
+      backchannelEnabled: stashed.backchannelEnabled,
+      backchannelFrequency: stashed.backchannelFrequency,
+      backchannelDelayMs: stashed.backchannelDelayMs,
+      backchannelWords: stashed.backchannelWords,
+      turnSeq: stashed.turnSeq,
+    });
+    console.log(`[call-loop] resumed session for ${callSid} at node "${this.currentNodeId}" (${this.history.length} history entries carried over)`);
+    return true;
+  }
+
   // A turn only stops being "active" (eligible for barge-in) once the LLM
   // has finished generating AND every TTS chunk it dispatched has finished
   // playing/erroring/being cancelled — otherwise a stray VAD blip after the
@@ -2292,8 +2451,6 @@ class CallSession {
   close() {
     if (this._closed) return;
     this._closed = true;
-    activeSessions.delete(this.id);
-    console.log('[call-loop] client disconnected');
     this.dgConnection?.close();
     this.ttsWs?.close();
     // A flow's goodbye node calls this proactively to end the call — unlike
@@ -2305,6 +2462,21 @@ class CallSession {
     // itself triggered BY the transport closing — both TwilioCallAdapter and
     // a plain ws.WebSocket treat a second close() as a no-op.
     this.clientWs.close?.();
+
+    // A detour redirect (see _redirectForDetour/_stashForResume) closes
+    // THIS session's transport but the call itself isn't over — a new
+    // CallSession will pick it back up via _tryResumeFromCallSid once
+    // Twilio reconnects. Billing finalization and the live-call registry
+    // removal below both mean "the call is done" — neither is true yet,
+    // so skip both here and let the eventual real close() (paused=false)
+    // do them once, covering the accumulated cost across every segment.
+    if (this._pausedForResume) {
+      console.log('[call-loop] session paused for resume (detour in progress) — not finalizing billing/registry yet');
+      return;
+    }
+
+    activeSessions.delete(this.id);
+    console.log('[call-loop] client disconnected');
     // Deepgram bills for the whole connected duration, not per-turn audio —
     // total call wall-clock is the right proxy, not summed turn lengths.
     const voiceSeconds = (Date.now() - this._callStartedAt) / 1000;
