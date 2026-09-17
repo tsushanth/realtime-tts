@@ -27,28 +27,39 @@ async function pg(table, query) {
 // Returns null when the number isn't routed to anything (unknown number, or
 // its inbound slot is unset) — callers fall back to the old static
 // single-tenant behavior rather than erroring the call.
-export async function resolveInboundCall(toNumber) {
+//
+// `direction` ('inbound' | 'outbound') picks which of the number's two
+// routing slots to resolve — calldesk_phone_numbers has always stored both
+// inbound_agent_version_id and outbound_agent_version_id (the Numbers page
+// UI lets a tenant set both independently), but this function only ever
+// read the inbound one until now, so an outbound-placed test call always
+// ran the number's INBOUND flow regardless of what was actually configured
+// for outbound. Found auditing what a real "make an outbound call" button
+// would need to call correctly.
+export async function resolveInboundCall(toNumber, direction = 'inbound') {
   if (!toNumber) return null;
+  const versionColumn = direction === 'outbound' ? 'outbound_agent_version_id' : 'inbound_agent_version_id';
   const numbers = await pg(
     'calldesk_phone_numbers',
-    `number=eq.${encodeURIComponent(toNumber)}&select=tenant_id,inbound_agent_version_id`
+    `number=eq.${encodeURIComponent(toNumber)}&select=tenant_id,${versionColumn}`
   );
   const numberRow = numbers?.[0];
-  if (!numberRow?.inbound_agent_version_id) {
-    console.warn(`[tenant-lookup] no inbound routing for ${toNumber} — falling back to static config`);
+  const agentVersionId = numberRow?.[versionColumn];
+  if (!agentVersionId) {
+    console.warn(`[tenant-lookup] no ${direction} routing for ${toNumber} — falling back to static config`);
     return null;
   }
 
   const versions = await pg(
     'calldesk_agent_versions',
-    `id=eq.${numberRow.inbound_agent_version_id}&select=voice_engine,tts_backend,flow_id,agent_id`
+    `id=eq.${agentVersionId}&select=voice_engine,tts_backend,flow_id,agent_id`
   );
   const version = versions?.[0];
   // 'retell' versions are handled entirely on Retell's side (this call
   // wouldn't even reach call-loop-poc's Twilio number for those) — only
   // 'poc' versions need a flow handed to this engine.
   if (!version || version.voice_engine !== 'poc' || !version.flow_id) {
-    console.warn(`[tenant-lookup] ${toNumber} -> version ${numberRow.inbound_agent_version_id} is not a poc-engine version with a flow — falling back`);
+    console.warn(`[tenant-lookup] ${toNumber} -> version ${agentVersionId} is not a poc-engine version with a flow — falling back`);
     return null;
   }
 

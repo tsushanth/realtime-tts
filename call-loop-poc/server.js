@@ -21,6 +21,9 @@ import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems } from './tenantLookup.js';
+import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 
 const PORT = process.env.PORT || 8090;
 // The Deepgram+Claude+TTS pipeline — the only engine this repo runs now.
@@ -330,6 +333,73 @@ const MAX_NUDGE_ATTEMPTS = 2;
 // 1 for sales") doesn't leave a caller waiting a full second-plus for a
 // response with no feedback that their press registered.
 const DTMF_DEBOUNCE_MS = 1200;
+// Guards against two logic_split nodes routing to each other — with no LLM
+// turn in between to break the cycle, that would otherwise loop forever in
+// a single synchronous call stack. Any real flow needs far fewer hops than
+// this to reach a conversational node.
+const LOGIC_SPLIT_MAX_HOPS = 10;
+// Reminder Message Frequency's own cap — see _scheduleReminderIfConfigured.
+const REMINDER_MAX_ATTEMPTS = 3;
+// Real sandboxing for a 'code' node (see _executeCodeNode) — QuickJS
+// compiled to WASM, same approach Retell's own Code node docs describe, run
+// in a completely separate memory space from this process (not Node's own
+// `vm` module, which shares the V8 heap/prototypes with the host and is a
+// well-known non-boundary; not eval()/Function(), same problem). Limits
+// mirror Retell's own documented ones.
+const CODE_NODE_TIMEOUT_MS = 10000;
+const CODE_NODE_MEMORY_LIMIT_BYTES = 16 * 1024 * 1024;
+const CODE_NODE_MAX_SOURCE_CHARS = 20000;
+const CODE_NODE_MAX_OUTPUT_CHARS = 15000;
+
+// SSRF guard for the sandboxed fetch a code node's script can call — resolves
+// the hostname and checks the RESOLVED address, not just the literal
+// hostname string, so a hostname that resolves to a private/loopback address
+// (e.g. via attacker-controlled DNS) can't bypass a string-only check.
+function isPrivateOrLocalIp(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower === '::') return true;
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local fc00::/7
+    if (lower.startsWith('fe80')) return true; // link-local
+    return false;
+  }
+  return true; // unrecognized format — block rather than risk it
+}
+
+async function sandboxSafeFetch(urlString, options) {
+  let url;
+  try {
+    url = new URL(String(urlString));
+  } catch {
+    throw new Error('Invalid URL');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Only http:// and https:// URLs are allowed');
+  }
+  let addresses;
+  try {
+    addresses = await dns.lookup(url.hostname, { all: true });
+  } catch (err) {
+    throw new Error(`DNS lookup failed for "${url.hostname}": ${err.message}`);
+  }
+  if (addresses.length === 0 || addresses.some((a) => isPrivateOrLocalIp(a.address))) {
+    throw new Error('Requests to private/local network addresses are not allowed');
+  }
+  const method = (options?.method || 'GET').toUpperCase();
+  const headers = options?.headers && typeof options.headers === 'object' ? options.headers : undefined;
+  const body = typeof options?.body === 'string' ? options.body : undefined;
+  const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(8000) });
+  const text = await res.text();
+  return { status: res.status, ok: res.ok, body: text.slice(0, 100000) };
+}
 // Shared by both the shopper's own reply (server.js's assistant-turn
 // handling) and the check on what it just heard from the other party (see
 // _onUserTurnComplete below) — see MYSTERY_SHOPPER_PATTERNS.md pattern 2
@@ -381,11 +451,21 @@ const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) da
 const DEEPGRAM_EOT_THRESHOLD = process.env.DEEPGRAM_EOT_THRESHOLD ?? '0.6';
 const DEEPGRAM_EOT_TIMEOUT_MS = process.env.DEEPGRAM_EOT_TIMEOUT_MS ?? '5000';
 const DEEPGRAM_KEYWORDS = process.env.DEEPGRAM_KEYWORDS?.trim() || null;
-const deepgramParams =
-  `model=flux-general-en&eot_threshold=${DEEPGRAM_EOT_THRESHOLD}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}` +
-  `&numerals=true${DEEPGRAM_KEYWORDS ? `&keyterm=${encodeURIComponent(DEEPGRAM_KEYWORDS)}` : ''}`;
-const DEEPGRAM_WS_URL_BROWSER = `wss://api.deepgram.com/v2/listen?${deepgramParams}&encoding=linear16&sample_rate=16000`;
-const DEEPGRAM_WS_URL_TWILIO = `wss://api.deepgram.com/v2/listen?${deepgramParams}&encoding=mulaw&sample_rate=8000`;
+// Transcription Mode (flow-level Global Setting, not per-node — see the
+// comment on _connectDeepgram below for why it can't honestly be per-node)
+// maps directly onto this same real knob: lower = faster/more responsive
+// turn-taking at the cost of more false turn-ends, higher = more patient/
+// accurate at the cost of latency. 'balanced' matches today's existing
+// default exactly, so a flow that never sets this sees zero behavior change.
+const TRANSCRIPTION_MODE_THRESHOLDS = { fast: '0.5', balanced: DEEPGRAM_EOT_THRESHOLD, accurate: '0.75' };
+function buildDeepgramUrl(isTwilio, eotThreshold) {
+  const params =
+    `model=flux-general-en&eot_threshold=${eotThreshold}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}` +
+    `&numerals=true${DEEPGRAM_KEYWORDS ? `&keyterm=${encodeURIComponent(DEEPGRAM_KEYWORDS)}` : ''}`;
+  return isTwilio
+    ? `wss://api.deepgram.com/v2/listen?${params}&encoding=mulaw&sample_rate=8000`
+    : `wss://api.deepgram.com/v2/listen?${params}&encoding=linear16&sample_rate=16000`;
+}
 
 if (!DEEPGRAM_API_KEY) console.warn('[call-loop] DEEPGRAM_API_KEY not set — STT will fail');
 if (!ANTHROPIC_API_KEY) console.warn('[call-loop] ANTHROPIC_API_KEY not set — LLM will fail');
@@ -477,8 +557,14 @@ app.post('/twilio/voice', async (req, res) => {
     pendingCallContext.set(callSid, { isShopper: true, createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
+    // ?direction=outbound (see /place-test-call below) resolves the DIALED
+    // number's own outbound_agent_version_id instead of its inbound one —
+    // a real "make an outbound call" button tests what that number is
+    // actually configured to say when IT calls out, not what it says when
+    // called.
+    const direction = req.query.direction === 'outbound' ? 'outbound' : 'inbound';
     if (callSid) {
-      const resolved = await resolveInboundCall(toNumber).catch((err) => {
+      const resolved = await resolveInboundCall(toNumber, direction).catch((err) => {
         console.error('[call-loop] tenant lookup failed', err);
         return null;
       });
@@ -495,6 +581,12 @@ app.post('/twilio/voice', async (req, res) => {
           ...resolved,
           ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
           fromNumber: req.body.From || null,
+          // The tenant's OWN number (what was dialed), as distinct from the
+          // caller's (fromNumber) — needed as the "From" on an in-call SMS
+          // (see 'sms' node type / _executeSmsNode), since texting the
+          // caller has to come from a number that's actually theirs, not
+          // whoever called in.
+          tenantNumber: toNumber || null,
           createdAt: Date.now(),
         });
       }
@@ -592,7 +684,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction } = req.body || {};
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
   // whatever business we're dialing (our own number, or a competitor's).
@@ -605,21 +697,30 @@ app.post('/place-test-call', express.json(), async (req, res) => {
 
   try {
     const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-    // No FROM number configured explicitly — ask Twilio which number(s) this
-    // account actually owns and use the first, rather than guessing one.
-    const numbersRes = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json?PageSize=1`,
-      { headers: { Authorization: `Basic ${auth64}` } }
-    );
-    const numbersBody = await numbersRes.json();
-    const fromNumber = numbersBody.incoming_phone_numbers?.[0]?.phone_number;
+    let fromNumber = routeAs;
     if (!fromNumber) {
-      return res.status(500).json({ error: 'No Twilio phone number found on this account', detail: numbersBody });
+      // Only shopper mode reaches here — no specific number to test, so ask
+      // Twilio which number(s) this account owns and use the first one.
+      // Real bug fixed alongside this: this fallback used to run
+      // UNCONDITIONALLY, even when routeAs (the number a caller actually
+      // wants to test FROM) was given — meaning a "make an outbound call"
+      // button testing a specific number could silently place the call from
+      // a DIFFERENT number instead, with no error or warning.
+      const numbersRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json?PageSize=1`,
+        { headers: { Authorization: `Basic ${auth64}` } }
+      );
+      const numbersBody = await numbersRes.json();
+      fromNumber = numbersBody.incoming_phone_numbers?.[0]?.phone_number;
+      if (!fromNumber) {
+        return res.status(500).json({ error: 'No Twilio phone number found on this account', detail: numbersBody });
+      }
     }
 
+    const outboundQuery = direction === 'outbound' ? '&direction=outbound' : '';
     const voiceUrl = shopper
       ? `https://${req.headers.host}/twilio/voice?mode=shopper`
-      : `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}`;
+      : `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}${outboundQuery}`;
     const params = new URLSearchParams({ To: toNumber, From: fromNumber, Url: voiceUrl });
     // Opt-in only — a normal test call shouldn't silently start recording.
     // Twilio's own dual-channel recording (caller + callee on separate
@@ -638,7 +739,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (!callRes.ok) {
       return res.status(callRes.status).json({ error: 'Twilio call creation failed', detail: callBody });
     }
-    console.log(`[call-loop] test call placed: ${fromNumber} -> ${toNumber} (routeAs=${routeAs}), sid=${callBody.sid}`);
+    console.log(`[call-loop] test call placed: ${fromNumber} -> ${toNumber} (routeAs=${routeAs}, direction=${direction || 'inbound'}), sid=${callBody.sid}`);
     res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status });
   } catch (err) {
     console.error('[call-loop] place-test-call failed', err);
@@ -774,6 +875,7 @@ twilioWss.on('connection', (twilioWs) => {
       ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
       ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
       ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
+      ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
       ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
     }), false);
   });
@@ -835,6 +937,28 @@ class CallSession {
     // close() must skip billing finalization and the live-call-registry
     // removal it normally does on a real hangup. See pendingResumeSessions.
     this._pausedForResume = false;
+    // Set right before a press_digit node's detour (see _executePressDigit)
+    // to the node id we should jump straight to once the reconnect lands —
+    // must survive the detour via _stashForResume/_tryResumeFromCallSid
+    // like every other cross-detour field, since the resumed call gets a
+    // brand-new CallSession instance, not this one.
+    this._pendingPressDigitTarget = null;
+    // Real bug found 2026-09-18 auditing the press_digit resume path: a
+    // resumed payment node had no equivalent guard. _maybeRetireTurn fires
+    // _executePayment purely off turnState.nodeType === 'payment', with no
+    // way to tell "just entered this node" from "sitting in it after
+    // resuming from its OWN prior detour" — so the very turn generated on
+    // reconnect (which _runNodeTurn always marks isNodeEntry:true, entry or
+    // resume alike) retired and re-triggered ANOTHER real <Pay> redirect
+    // every single time, unconditionally, regardless of what the model did
+    // or said. This matches a real live symptom from this session ("entered
+    // everything.. it is back to enter card number") that was never
+    // actually root-caused at the time. Set true right before the detour in
+    // _executePayment, checked in _maybeRetireTurn, reset in
+    // _applyTransition — and stashed/rehydrated like every other
+    // cross-detour field, since the resumed call gets a brand-new
+    // CallSession instance.
+    this._paymentAwaitingResume = false;
     this._nudgeAttempts = new Map(); // nodeId -> count, see _maybeRetireTurn's deadlock-nudge fix
     this._queuedUserText = null; // see _onUserTurnComplete's in-flight-turn guard
     this._dtmfBuffer = ''; // see _onDtmfDigit — buffered keypad digits not yet flushed into a turn
@@ -847,6 +971,10 @@ class CallSession {
     // them.
     this.tenantId = null;
     this.phoneNumber = null;
+    this.tenantNumber = null; // the tenant's OWN dialed number, see 'sms' node / _executeSmsNode
+    this._pendingResponseTimer = null; // see _scheduleUserTurn (Response Wait Time)
+    this._reminderTimer = null; // see _scheduleReminderIfConfigured (Reminder Message Frequency)
+    this._reminderAttempts = 0;
     this.cost = new CallCostTracker({ ttsBackend: TTS_BACKEND, voiceEngine: 'cascaded' });
     this._callStartedAt = Date.now();
     // Stable id for the active-calls registry (also handy in logs). Registered
@@ -887,10 +1015,22 @@ class CallSession {
     if (this.clientWs.readyState === WebSocket.OPEN) this.clientWs.send(JSON.stringify(obj));
   }
 
-  _connectDeepgram() {
+  // eotThreshold defaults to the global DEEPGRAM_EOT_THRESHOLD — overridden
+  // when a flow's Transcription Mode differs (see the reconnect right after
+  // `this.flow = msg.flow` is set below). Deliberately NOT a per-node
+  // setting like Interruption Sensitivity/Response Wait Time/Reminder
+  // Frequency: this connects once, before ANY flow node is even known (a
+  // real phone call's Deepgram socket opens in the constructor, before the
+  // 'context' WS message carrying the flow ever arrives), so it can only
+  // honestly be a flow-level Global Setting — a per-node UI control here
+  // would just silently do nothing for whichever node isn't current at
+  // connection time, which is exactly the kind of cosmetic/fake setting
+  // this codebase's "compute, don't infer" discipline explicitly avoids.
+  _connectDeepgram(eotThreshold = DEEPGRAM_EOT_THRESHOLD) {
     if (!DEEPGRAM_API_KEY) return;
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
-    const url = isTwilio ? DEEPGRAM_WS_URL_TWILIO : DEEPGRAM_WS_URL_BROWSER;
+    const url = buildDeepgramUrl(isTwilio, eotThreshold);
+    this._deepgramEotThreshold = eotThreshold;
     const dg = new WebSocket(url, { headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` } });
     this.dgConnection = dg;
 
@@ -922,7 +1062,17 @@ class CallSession {
         const text = msg.transcript?.trim();
         if (text) {
           this.send({ type: 'transcript', text, isFinal: false });
-          if (this._pendingBargeIn) {
+          // Interruption Sensitivity (per-node tuning, params.interruptionSensitivity)
+          // — real threshold on the SAME mechanism as the fix above, not a
+          // separate cosmetic setting: 'high' (default) keeps today's
+          // behavior (barge in on the very first transcribed word); 'low'
+          // requires several words of real transcript before committing to
+          // an interruption, so a short "um"/"okay" that Deepgram DOES
+          // manage to transcribe still doesn't cut the assistant off —
+          // exactly the class of false-positive the StartOfTurn-vs-Update
+          // fix above already targets, just with a tunable bar instead of a
+          // fixed one-word bar.
+          if (this._pendingBargeIn && this._transcriptMeetsInterruptionThreshold(text)) {
             this._pendingBargeIn = false;
             this._bargeIn();
           }
@@ -932,7 +1082,7 @@ class CallSession {
         // is what nova-2 + acoustic VAD couldn't do: it waits for a complete
         // thought, not just a gap in the audio.
         const text = msg.transcript?.trim();
-        if (text) this._onUserTurnComplete(text);
+        if (text) this._scheduleUserTurn(text);
       }
     });
 
@@ -989,6 +1139,9 @@ class CallSession {
       if (typeof msg.phoneNumber === 'string' && msg.phoneNumber.trim()) {
         this.phoneNumber = msg.phoneNumber.trim();
       }
+      if (typeof msg.tenantNumber === 'string' && msg.tenantNumber.trim()) {
+        this.tenantNumber = msg.tenantNumber.trim();
+      }
       if (VALID_TTS_BACKENDS.includes(msg.ttsBackend)) {
         if (msg.ttsBackend !== 'kokoro' && ttsBackendMissingKey(msg.ttsBackend)) {
           console.warn(`[call-loop] context requested ttsBackend=${msg.ttsBackend} but its API key/config isn't set — falling back to kokoro`);
@@ -1031,6 +1184,20 @@ class CallSession {
         this.currentNodeId = msg.flow.startNodeId || this.flow.nodes[0].id;
         console.log(`[call-loop] flow set — ${this.flow.nodes.length} nodes, starting at "${this.currentNodeId}"`);
         this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
+        // Transcription Mode reconnect — this arrives essentially
+        // immediately after the socket opens (same WS frame sequence, no
+        // extra round trip), before the caller has had any real chance to
+        // speak, so swapping the Deepgram connection here can't cut off a
+        // word the way a mid-call reconnect could. Only actually reconnects
+        // when the resolved mode differs from what's already connected
+        // (i.e. never, for the common case of a flow that doesn't set this
+        // at all) — zero behavior change unless a tenant explicitly opts in.
+        const requestedThreshold = TRANSCRIPTION_MODE_THRESHOLDS[this.flow.globalSettings?.transcriptionMode];
+        if (requestedThreshold && requestedThreshold !== this._deepgramEotThreshold) {
+          console.log(`[call-loop] transcription mode "${this.flow.globalSettings.transcriptionMode}" requested — reconnecting Deepgram (eot_threshold ${this._deepgramEotThreshold} -> ${requestedThreshold})`);
+          this.dgConnection?.close();
+          this._connectDeepgram(requestedThreshold);
+        }
       }
       if (typeof msg.greeting === 'string' && msg.greeting.trim()) {
         this.greeting = msg.greeting;
@@ -1097,7 +1264,63 @@ class CallSession {
     this._onUserTurnComplete(`[Caller pressed ${digits} on the keypad]`);
   }
 
+  // Response Wait Time (per-node tuning, params.responseWaitTimeMs) — real
+  // delay inserted between Deepgram's EndOfTurn firing and actually
+  // generating a reply, so a caller who pauses mid-thought (which can
+  // trip semantic endpointing into firing early) has a window to keep
+  // talking before the assistant jumps in. A LATER EndOfTurn arriving
+  // before the timer fires cancels the pending one and reschedules with
+  // the newer (more complete) text, rather than both firing.
+  _scheduleUserTurn(text) {
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
+    if (this._pendingResponseTimer) {
+      clearTimeout(this._pendingResponseTimer);
+      this._pendingResponseTimer = null;
+    }
+    const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
+    const waitMs = Math.max(0, Math.min(10000, Number(node?.params?.responseWaitTimeMs) || 0));
+    if (waitMs <= 0) {
+      this._onUserTurnComplete(text);
+      return;
+    }
+    this._pendingResponseTimer = setTimeout(() => {
+      this._pendingResponseTimer = null;
+      this._onUserTurnComplete(text);
+    }, waitMs);
+  }
+
+  // Reminder Message Frequency (per-node tuning, params.reminderMessageFrequencySec)
+  // — if the caller goes silent for that long after the assistant finishes
+  // speaking, proactively check in ("Are you still there?") instead of
+  // waiting forever. Capped at REMINDER_MAX_ATTEMPTS consecutive reminders
+  // so a caller who's actually hung up without a clean signal doesn't get
+  // nagged in an endless loop — after the cap, the call is left to whatever
+  // normal hangup/timeout handling already exists elsewhere.
+  _scheduleReminderIfConfigured() {
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
+    const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
+    const freqSec = Number(node?.params?.reminderMessageFrequencySec) || 0;
+    if (freqSec <= 0 || this._closing) return;
+    if ((this._reminderAttempts || 0) >= REMINDER_MAX_ATTEMPTS) return;
+    this._reminderTimer = setTimeout(() => {
+      this._reminderTimer = null;
+      if (this._closing || this.activeTurn !== 0) return; // caller/assistant already talking again
+      this._reminderAttempts = (this._reminderAttempts || 0) + 1;
+      console.log(`[call-loop] caller silent for ${freqSec}s — sending reminder (attempt ${this._reminderAttempts})`);
+      this.history.push({
+        role: 'user',
+        content: '[System note: the caller has been silent for a while. Check in briefly — e.g. "Are you still there?" — without repeating your last message.]',
+      });
+      const turnId = ++this.turnSeq;
+      this.activeTurn = turnId;
+      this.turnState = { id: turnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+      this._generateTurn(turnId, Date.now(), { isNodeEntry: false });
+    }, freqSec * 1000);
+  }
+
   async _onUserTurnComplete(userText) {
+    this._reminderAttempts = 0; // real activity — the silence streak is over
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
     // Cycle-2 mystery-shopper finding (see MYSTERY_SHOPPER_DECISIONS.md):
     // close() only disconnects once the audio queue drains, but nothing
     // stopped a NEW turn from being generated (and re-filling that queue)
@@ -1175,6 +1398,44 @@ class CallSession {
   // (function/knowledge_base/goodbye/transfer) that act as soon as the flow
   // enters them rather than waiting on the caller to say something first.
   async _runNodeTurn(nodeId) {
+    // A logic_split node never talks and never calls the LLM — it's a pure
+    // code-path branch over this.collectedData (see _evaluateLogicSplit).
+    // This guard covers the two ways a logic_split can become "current":
+    // as the flow's starting node, or as the node a resumed call lands back
+    // on. Mid-flow arrivals (via transition_flow) are handled directly in
+    // _applyTransition instead, since that's where hop-limited chaining
+    // (two splits routing to each other) is enforced.
+    const entryNode = this.flow ? this.flowNodesById.get(nodeId) : null;
+    if (entryNode && entryNode.type === 'logic_split') {
+      this.currentNodeId = nodeId;
+      const target = this._evaluateLogicSplit(entryNode);
+      if (!target) {
+        console.warn(`[call-loop] logic_split "${nodeId}" matched no edge and has no default edge — flow stalled here`);
+        return;
+      }
+      this._applyTransition({ next_node_id: target });
+      return;
+    }
+    // A press_digit node never talks either — it plays real DTMF tones into
+    // an already-connected call (via a TwiML detour, see _executePressDigit)
+    // so the agent can navigate another system's phone tree, then continues
+    // once reconnected. _runNodeTurn fires twice for it: once on fresh entry
+    // (execute the detour, don't advance yet — _pendingPressDigitTarget is
+    // unset) and once on the post-detour resume (advance to the edge target
+    // now that the tones have played — _pendingPressDigitTarget is set,
+    // carried across via _stashForResume/_tryResumeFromCallSid since the
+    // resumed call gets a brand-new CallSession instance).
+    if (entryNode && entryNode.type === 'press_digit') {
+      this.currentNodeId = nodeId;
+      if (this._pendingPressDigitTarget) {
+        const target = this._pendingPressDigitTarget;
+        this._pendingPressDigitTarget = null;
+        this._applyTransition({ next_node_id: target });
+        return;
+      }
+      await this._executePressDigit(entryNode);
+      return;
+    }
     this.currentNodeId = nodeId;
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
@@ -1229,6 +1490,17 @@ class CallSession {
       this.turnState.nodeParams = node?.params || null;
     }
 
+    // Defensive: logic_split should always be intercepted by _runNodeTurn or
+    // _applyTransition before reaching here (see LOGIC_SPLIT_MAX_HOPS), so
+    // this should never actually fire — but a split has no prompt to build a
+    // conversational turn from anyway, so if it ever does land here, treat
+    // it as a stall rather than sending a broken/empty turn to the model.
+    if (node?.type === 'logic_split' || node?.type === 'press_digit') {
+      console.error(`[call-loop] _generateTurn reached a ${node.type} node ("${this.currentNodeId}") — this should have been intercepted earlier; stalling instead of calling the LLM`);
+      if (this.turnState?.id === turnId) this.turnState.llmDone = true;
+      return;
+    }
+
     // A function node's side effect happens before it says anything, and
     // only once — on the turn that actually enters the node (via
     // _runNodeTurn). Without the isNodeEntry guard, every later turn where
@@ -1241,6 +1513,15 @@ class CallSession {
     }
     if (node?.type === 'knowledge_base' && isNodeEntry) {
       await this._executeKnowledgeBaseNode(node);
+    }
+    if (node?.type === 'sms' && isNodeEntry) {
+      await this._executeSmsNode(node);
+    }
+    if (node?.type === 'code' && isNodeEntry) {
+      await this._executeCodeNode(node);
+    }
+    if (node?.type === 'mcp' && isNodeEntry) {
+      await this._executeMcpNode(node);
     }
 
     const systemPrompt = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
@@ -1320,6 +1601,28 @@ class CallSession {
             },
             required: ['name', 'email', 'selectedTime'],
           },
+        });
+      }
+    }
+
+    // 'subagent' node — attaches multiple pre-configured tools (any mix of
+    // function/code/sms/mcp/transfer) to ONE node and lets the model decide
+    // WHEN (if ever) to call each, mid-conversation, across as many turns as
+    // it takes — unlike every other node type here, which maps to exactly
+    // one auto-run behavior. Matches Retell's own Subagent node model: the
+    // tools are configured by the flow author (server-side, already
+    // {{field}}-interpolated by each executor same as their dedicated node
+    // types), not supplied as arguments by the model — the model's only job
+    // is picking which one to invoke and when. Reuses the SAME executors as
+    // the dedicated function/code/sms/mcp/transfer node types via a
+    // synthetic node built from each tool's config, rather than
+    // duplicating their logic.
+    if (node?.type === 'subagent') {
+      for (const toolConfig of this._parseSubagentTools(node)) {
+        tools.push({
+          name: `subagent_tool_${toolConfig.id}`,
+          description: toolConfig.description || `Runs the "${toolConfig.id}" tool.`,
+          input_schema: { type: 'object', properties: {}, required: [] },
         });
       }
     }
@@ -1428,6 +1731,31 @@ class CallSession {
       if (calendarToolUse && this.activeTurn === turnId) {
         if (assistantText) this.history.push({ role: 'assistant', content: assistantText });
         await this._handleCalendarTool(calendarToolUse);
+        return;
+      }
+      // Subagent tool call — same "execute, then generate a follow-up turn"
+      // shape as the calendar tools above, just routed by id to whichever
+      // of this node's configured tools the model actually picked.
+      const subagentToolUse = node?.type === 'subagent'
+        ? final.content.find((b) => b.type === 'tool_use' && b.name?.startsWith('subagent_tool_'))
+        : null;
+      if (subagentToolUse && this.activeTurn === turnId) {
+        if (assistantText) this.history.push({ role: 'assistant', content: assistantText });
+        const toolId = subagentToolUse.name.slice('subagent_tool_'.length);
+        const toolConfig = this._parseSubagentTools(node).find((t) => t.id === toolId);
+        if (toolConfig) {
+          await this._executeSubagentTool(toolConfig);
+          // A transfer tool ends the call itself (redirects it) — no
+          // follow-up turn to generate, and this.activeTurn/turnState may
+          // already be in a different state by the time it returns.
+          if (toolConfig.kind === 'transfer') return;
+          const followUpTurnId = ++this.turnSeq;
+          this.activeTurn = followUpTurnId;
+          this.turnState = { id: followUpTurnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+          await this._generateTurn(followUpTurnId, Date.now(), { isNodeEntry: false });
+        } else {
+          console.warn(`[call-loop] subagent node "${node.id}" — model called unknown tool id "${toolId}"`);
+        }
         return;
       }
       // Cycles 10-11 (mystery-shopper) finding: every "produced no speech"
@@ -1665,7 +1993,24 @@ class CallSession {
       `"the day after", "next Tuesday"), resolve it to a specific calendar date yourself and ` +
       `say the actual date out loud (e.g. "that's Thursday the 18th") — never just repeat the ` +
       `caller's relative phrasing back as if it were a booked date.\n\n`;
-    if (isNodeEntry) {
+    // Resumed from this node's own Pay detour (see _executePayment /
+    // _paymentAwaitingResume) — this is the turn generated right after the
+    // caller finished (or canceled/failed) Twilio's real card-entry flow.
+    // The node's original prompt ("let them know you're transferring them
+    // now") is wrong here — that already happened — and asking the model to
+    // treat this as an ordinary "node entry" turn is what let it repeat
+    // that line, sounding like the payment was starting over. React to the
+    // real outcome instead.
+    if (node.type === 'payment' && this._paymentAwaitingResume && this.collectedData.payment_status) {
+      prompt +=
+        `Step instructions (original, for context only — do NOT repeat this; the transfer to enter ` +
+        `card details already happened): ${node.prompt}\n` +
+        `The payment attempt just finished — the real outcome is payment_status = ` +
+        `"${this.collectedData.payment_status}" (also see "Already collected" below). Tell the ` +
+        `caller that outcome naturally in one short sentence, then immediately call transition_flow ` +
+        `to move to this step's edge that matches it. Don't ask the caller anything, don't say ` +
+        `you're transferring them again, and don't attempt the payment yourself — that already ran.\n`;
+    } else if (isNodeEntry) {
       prompt += `Step instructions: ${node.prompt}\n`;
     } else {
       prompt +=
@@ -1806,6 +2151,18 @@ class CallSession {
         `caller's name at most once, thank them at most once, and say goodbye once. Do not stack ` +
         `multiple thank-yous or repeat their name within this line.\n`;
     }
+    // Fine-tuning examples — per-node few-shot guidance the flow author
+    // writes for tricky/specific scenarios this step tends to hit (e.g. a
+    // caller who gives a partial address, or asks to reschedule mid-booking).
+    // Deliberately just prose handed to the model, not a structured
+    // input/output pair format — this is guidance the model reads, not code
+    // that executes, so free text the author writes naturally is more
+    // useful than forcing a rigid schema on it.
+    if (node.params?.fineTuningExamples?.trim()) {
+      prompt +=
+        `\nExample scenarios for this step (for guidance — adapt to what the caller actually says, ` +
+        `don't recite these verbatim):\n${node.params.fineTuningExamples.trim()}\n`;
+    }
     prompt += gs.allowInterruptions === false
       ? 'Complete your sentences before listening.\n'
       : 'Allow the caller to interrupt you.\n';
@@ -1846,7 +2203,13 @@ class CallSession {
   // speaking (see _maybeRetireTurn) — not the instant the tool call arrives —
   // so the caller always hears the current node's full response before the
   // flow moves on.
-  _applyTransition({ next_node_id, extracted }) {
+  _applyTransition({ next_node_id, extracted }, logicSplitHops = 0) {
+    // A real transition means we're actually leaving whatever node we were
+    // in — safe to clear unconditionally (harmless no-op unless we were
+    // sitting in a payment node). Without this, a genuine LATER re-entry
+    // into a payment node (e.g. a retry-payment edge) would stay
+    // permanently suppressed by the first attempt's guard.
+    this._paymentAwaitingResume = false;
     if (extracted && typeof extracted === 'object') {
       Object.assign(this.collectedData, extracted);
     }
@@ -1865,14 +2228,80 @@ class CallSession {
     else if (this.currentNodeId === 'take_message') this.cost.addBillableEvent('message');
     console.log(`[call-loop] flow transition -> "${next_node_id}" (${nextNode.type})`);
     this.send({ type: 'flow_state', currentNodeId: next_node_id, nodeType: nextNode.type, collectedData: this.collectedData });
+
+    // A logic_split routes again immediately, purely in code — no LLM turn,
+    // no caller-facing side effect. Recursing here (rather than going
+    // through _runNodeTurn) is what lets two splits chain straight through
+    // in the same tick; the hop cap exists because two splits can route to
+    // each other and nothing else here would ever stop that.
+    if (nextNode.type === 'logic_split') {
+      if (logicSplitHops >= LOGIC_SPLIT_MAX_HOPS) {
+        console.error(`[call-loop] logic_split hop limit (${LOGIC_SPLIT_MAX_HOPS}) exceeded at "${next_node_id}" — likely two splits routing to each other; stopping here`);
+        return;
+      }
+      const target = this._evaluateLogicSplit(nextNode);
+      if (!target) {
+        console.warn(`[call-loop] logic_split "${next_node_id}" matched no edge and has no default edge — flow stalled here`);
+        this.currentNodeId = next_node_id;
+        return;
+      }
+      this._applyTransition({ next_node_id: target }, logicSplitHops + 1);
+      return;
+    }
+
     // These node types act as soon as the flow enters them (run a webhook,
     // look something up, say goodbye and hang up, transfer the call) rather
     // than waiting for the caller to speak first.
-    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment']);
+    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp']);
     if (AUTO_ADVANCE_TYPES.has(nextNode.type)) {
       this._runNodeTurn(next_node_id);
     } else {
       this.currentNodeId = next_node_id;
+    }
+  }
+
+  // Picks the first edge whose structured condition matches this.collectedData,
+  // or the first conditionless edge as an explicit default/fallback. Returns
+  // null if nothing matches and there's no default — the caller decides how
+  // to handle a stalled split.
+  _evaluateLogicSplit(node) {
+    for (const edge of node.edges || []) {
+      if (!edge.condition || typeof edge.condition !== 'object') {
+        return edge.target; // conditionless edge = default
+      }
+      if (this._evaluateStructuredCondition(edge.condition, this.collectedData)) {
+        return edge.target;
+      }
+    }
+    return null;
+  }
+
+  // Real evaluation, not LLM judgment — the only place in this file a
+  // condition string/object is actually compared rather than handed to the
+  // model. Extracted fields have no real type system today (extract only
+  // ever declares 'string'), so this coerces to numeric comparison
+  // best-effort and otherwise falls back to a trimmed, case-insensitive
+  // string comparison.
+  _evaluateStructuredCondition({ field, operator, value }, data) {
+    const actual = data ? data[field] : undefined;
+    const actualNum = Number(actual);
+    const valueNum = Number(value);
+    const bothNumeric =
+      actual !== undefined && actual !== '' && !Number.isNaN(actualNum) &&
+      value !== undefined && value !== '' && !Number.isNaN(valueNum);
+    const cmp = bothNumeric
+      ? (actualNum < valueNum ? -1 : actualNum > valueNum ? 1 : 0)
+      : String(actual ?? '').trim().toLowerCase().localeCompare(String(value ?? '').trim().toLowerCase());
+    switch (operator) {
+      case '==': return cmp === 0;
+      case '!=': return cmp !== 0;
+      case '>': return cmp > 0;
+      case '<': return cmp < 0;
+      case '>=': return cmp >= 0;
+      case '<=': return cmp <= 0;
+      default:
+        console.warn(`[call-loop] logic_split: unknown operator "${operator}" — treating as no match`);
+        return false;
     }
   }
 
@@ -1931,6 +2360,276 @@ class CallSession {
         content: `[System note: function "${node.function}" failed — let the caller know something went wrong and offer to have someone follow up]`,
       });
     }
+  }
+
+  // In-call SMS — texts the caller (or an explicit number) mid-call, e.g. a
+  // confirmation link or a payment link. Unlike press_digit/payment, this
+  // never touches the live voice channel at all — POST /Messages.json is an
+  // ordinary async REST call, same shape as _redirectForDetour's own fetch,
+  // with nothing to detour or resume — so it follows the SAME isNodeEntry
+  // pattern as function/knowledge_base nodes (see _generateTurn), not the
+  // press_digit/payment pattern. A failed send is folded into history as a
+  // system note, same as a failed function-node webhook, rather than
+  // silently doing nothing — the model should know to react to it.
+  async _executeSmsNode(node) {
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      console.warn(`[call-loop] sms node "${node.id}" requires Twilio credentials — skipping`);
+      return;
+    }
+    const to = this._interpolateFields(node.params?.to || '').trim() || this.phoneNumber;
+    const from = this.tenantNumber;
+    const body = this._interpolateFields(node.params?.body || '');
+    if (!to) {
+      console.warn(`[call-loop] sms node "${node.id}" has no destination number (no params.to and no caller number on this session) — skipping`);
+      return;
+    }
+    if (!from) {
+      console.warn(`[call-loop] sms node "${node.id}" has no tenant number to send from on this session — skipping`);
+      return;
+    }
+    if (!body.trim()) {
+      console.warn(`[call-loop] sms node "${node.id}" has no message body — skipping`);
+      return;
+    }
+    try {
+      const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      const result = await res.json().catch(() => ({}));
+      if (res.ok) {
+        console.log(`[call-loop] sms node "${node.id}" sent -> ${to} (sid ${result.sid})`);
+      } else {
+        console.error(`[call-loop] sms node "${node.id}" failed: HTTP ${res.status} ${JSON.stringify(result)}`);
+        this.history.push({
+          role: 'user',
+          content: `[System note: the text message failed to send — let the caller know and offer another way to get the info]`,
+        });
+      }
+    } catch (err) {
+      console.error(`[call-loop] sms node "${node.id}" request failed`, err);
+      this.history.push({
+        role: 'user',
+        content: `[System note: the text message failed to send — let the caller know and offer another way to get the info]`,
+      });
+    }
+  }
+
+  // A 'code' node runs flow-author-authored JavaScript in a real sandbox
+  // (see CODE_NODE_* constants above) — for calculations, data formatting,
+  // or a lightweight HTTP lookup that doesn't need a whole function-node
+  // webhook. No secrets from this process are ever exposed into the
+  // sandbox: only `dv` (this.collectedData, matching Retell's own Code node
+  // inputs) and a network-restricted `fetch`. Follows the same isNodeEntry
+  // pattern as function/knowledge_base/sms — a one-time side effect on
+  // entry, not re-run on every turn spent in the node.
+  async _executeCodeNode(node) {
+    const code = String(node.params?.code || '').slice(0, CODE_NODE_MAX_SOURCE_CHARS);
+    if (!code.trim()) {
+      console.warn(`[call-loop] code node "${node.id}" has no code — skipping`);
+      return;
+    }
+
+    let context;
+    try {
+      context = await newAsyncContext();
+      context.runtime.setMemoryLimit(CODE_NODE_MEMORY_LIMIT_BYTES);
+      context.runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + CODE_NODE_TIMEOUT_MS));
+
+      // dv: read-only dynamic variables, all strings — mirrors Retell's own
+      // Code node input shape.
+      const dvResult = context.evalCode(`(${JSON.stringify(this.collectedData || {})})`);
+      const dv = context.unwrapResult(dvResult);
+      context.setProp(context.global, 'dv', dv);
+      dv.dispose();
+
+      // __hostFetch is asyncified (suspends the whole WASM module while the
+      // real host fetch runs) but exposed to the sandboxed script as a
+      // plain SYNCHRONOUS `fetch(url, options)` — no await, no Promise, no
+      // module/top-level-await handling needed anywhere in this method.
+      // This is the library's own documented "async on host, sync in
+      // QuickJS" pattern; an earlier version of this tried to expose an
+      // async `fetch` instead and hit real, verified problems (an unawaited
+      // async IIFE's return value dumps as a raw pending-Promise state, and
+      // `type: "module"` top-level-await mode never actually settles its
+      // exports promise via evalCodeAsync) — this sync-facade design has no
+      // such edge case and was the one actually verified working end-to-end
+      // (calc+dv, object return, a real network fetch, the SSRF guard, and
+      // the interrupt timeout) before landing.
+      const hostFetchHandle = context.newAsyncifiedFunction('__hostFetch', async (urlHandle, optionsHandle) => {
+        const urlStr = context.getString(urlHandle);
+        let options = {};
+        try { options = JSON.parse(context.getString(optionsHandle)); } catch { /* default {} */ }
+        try {
+          const result = await sandboxSafeFetch(urlStr, options);
+          return context.newString(JSON.stringify(result));
+        } catch (err) {
+          return context.newString(JSON.stringify({ error: err.message }));
+        }
+      });
+      hostFetchHandle.consume((fn) => context.setProp(context.global, '__hostFetch', fn));
+
+      const wrapped =
+        `function fetch(url, options) {\n` +
+        `  return JSON.parse(__hostFetch(String(url), JSON.stringify(options || {})));\n` +
+        `}\n` +
+        `(() => {\n${code}\n})();`;
+
+      const evalResult = await context.evalCodeAsync(wrapped);
+      const resultHandle = context.unwrapResult(evalResult);
+      const value = context.dump(resultHandle);
+
+      let serialized;
+      try { serialized = JSON.stringify(value); } catch { serialized = String(value); }
+      if (serialized && serialized.length > CODE_NODE_MAX_OUTPUT_CHARS) {
+        serialized = serialized.slice(0, CODE_NODE_MAX_OUTPUT_CHARS) + '…(truncated)';
+      }
+      console.log(`[call-loop] code node "${node.id}" -> ${serialized}`);
+      this.history.push({
+        role: 'user',
+        content: `[System note: code step returned ${serialized}]`,
+      });
+      // A plain-object return value (not an array/primitive) merges into
+      // collectedData, same as a function node's webhook JSON result would
+      // if it were treated that way — lets a later step reference a field
+      // the code computed without the model having to parse it back out of
+      // the system-note text.
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        Object.assign(this.collectedData, value);
+      }
+    } catch (err) {
+      console.error(`[call-loop] code node "${node.id}" execution failed`, err);
+      this.history.push({
+        role: 'user',
+        content: `[System note: the code step failed (${err.message}) — let the caller know something went wrong and offer to have someone follow up]`,
+      });
+    } finally {
+      context?.dispose();
+    }
+  }
+
+  // 'mcp' node — calls ONE pre-selected tool on a remote MCP (Model Context
+  // Protocol) server the flow author configured (server URL, headers,
+  // tool name/arguments), matching Retell's own MCP node model: the author
+  // picks the tool at authoring time, not the LLM at call time. Hand-rolled
+  // rather than the official @modelcontextprotocol/sdk — that package pulls
+  // in a full server-framework dependency tree (express, hono, ajv, jose,
+  // ...) for what's really three small JSON-RPC POSTs; this repo already
+  // avoids SDKs in favor of raw fetch() for Twilio/Stripe, so the same
+  // convention applies here. Stateless by design (fresh initialize on every
+  // call) — this fires once per node entry, not a persistent chat session
+  // with the MCP server, and the spec allows a session-less connection.
+  async _executeMcpNode(node) {
+    const serverUrl = node.params?.serverUrl?.trim();
+    const toolName = node.params?.toolName?.trim();
+    if (!serverUrl || !toolName) {
+      console.warn(`[call-loop] mcp node "${node.id}" is missing serverUrl or toolName — skipping`);
+      return;
+    }
+    let extraHeaders = {};
+    try { extraHeaders = node.params?.headers ? JSON.parse(this._interpolateFields(node.params.headers)) : {}; }
+    catch (err) { console.warn(`[call-loop] mcp node "${node.id}" has invalid JSON in params.headers — ignoring: ${err.message}`); }
+    let toolArguments = {};
+    try { toolArguments = node.params?.toolArguments ? JSON.parse(this._interpolateFields(node.params.toolArguments)) : {}; }
+    catch (err) { console.warn(`[call-loop] mcp node "${node.id}" has invalid JSON in params.toolArguments — ignoring: ${err.message}`); }
+
+    try {
+      const baseHeaders = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        ...extraHeaders,
+      };
+
+      const initRes = await this._mcpRequest(serverUrl, baseHeaders, {
+        jsonrpc: '2.0', id: 1, method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'call-loop-poc', version: '1.0.0' },
+        },
+      });
+      if (initRes.body?.error) {
+        throw new Error(`initialize failed: ${JSON.stringify(initRes.body.error)}`);
+      }
+      const sessionId = initRes.headers.get('mcp-session-id');
+      const sessionHeaders = sessionId ? { ...baseHeaders, 'Mcp-Session-Id': sessionId, 'MCP-Protocol-Version': '2025-06-18' } : baseHeaders;
+
+      // Notification — no id, no response body expected (spec: 202 Accepted).
+      await this._mcpRequest(serverUrl, sessionHeaders, {
+        jsonrpc: '2.0', method: 'notifications/initialized',
+      }, true);
+
+      const callRes = await this._mcpRequest(serverUrl, sessionHeaders, {
+        jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: toolName, arguments: toolArguments },
+      });
+      if (callRes.body?.error) {
+        throw new Error(`tools/call failed: ${JSON.stringify(callRes.body.error)}`);
+      }
+
+      // A tool result's content is an array of blocks (usually one text
+      // block); try to parse that text as JSON for structured field
+      // extraction, but fall back to the raw text if it isn't JSON — plenty
+      // of real tools just return a plain string.
+      const contentBlocks = callRes.body?.result?.content || [];
+      const rawText = contentBlocks.map((b) => (b.type === 'text' ? b.text : '')).join('\n').trim();
+      let parsed = null;
+      try { parsed = JSON.parse(rawText); } catch { /* not JSON, keep raw text */ }
+
+      const serialized = rawText.length > CODE_NODE_MAX_OUTPUT_CHARS
+        ? rawText.slice(0, CODE_NODE_MAX_OUTPUT_CHARS) + '…(truncated)'
+        : rawText;
+      console.log(`[call-loop] mcp node "${node.id}" tool "${toolName}" -> ${serialized.slice(0, 300)}`);
+      this.history.push({
+        role: 'user',
+        content: `[System note: MCP tool "${toolName}" returned ${serialized || '(empty result)'}]`,
+      });
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        Object.assign(this.collectedData, parsed);
+      }
+    } catch (err) {
+      console.error(`[call-loop] mcp node "${node.id}" failed`, err);
+      this.history.push({
+        role: 'user',
+        content: `[System note: the MCP tool call failed (${err.message}) — let the caller know something went wrong and offer to have someone follow up]`,
+      });
+    }
+  }
+
+  // One JSON-RPC POST for the MCP client above. `expectNoBody` is for the
+  // notifications/initialized call, which the spec says gets a 202 with no
+  // JSON-RPC response — the connection's Content-Type header response can't
+  // be parsed as JSON in that case, and shouldn't be.
+  async _mcpRequest(serverUrl, headers, rpcBody, expectNoBody = false) {
+    const res = await fetch(serverUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(rpcBody),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (expectNoBody) return { headers: res.headers, body: null };
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`MCP server HTTP ${res.status}: ${text.slice(0, 300)}`);
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/event-stream')) {
+      // A streaming/SSE response — parse the last "data: {...}" frame as the
+      // JSON-RPC result. Most single-tool-call servers respond synchronously
+      // with plain JSON instead; this is a fallback for ones that don't.
+      const text = await res.text();
+      const dataLines = text.split('\n').filter((l) => l.startsWith('data:'));
+      const lastData = dataLines[dataLines.length - 1]?.slice(5).trim();
+      return { headers: res.headers, body: lastData ? JSON.parse(lastData) : null };
+    }
+    const body = await res.json().catch(() => null);
+    return { headers: res.headers, body };
   }
 
   // Redirects the live call via Twilio's REST API — only possible on a real
@@ -2047,10 +2746,106 @@ class CallSession {
       `chargeAmount="${amount}" paymentConnector="${connector}" ` +
       `${description ? `description="${description}" ` : ''}` +
       `action="https://${PUBLIC_HOST}/twilio/pay-result?callSid=${callSid}" /></Response>`;
+    // See the constructor's _paymentAwaitingResume comment — this is what
+    // stops the resumed turn from re-triggering this same method again.
+    this._paymentAwaitingResume = true;
     const ok = await this._redirectForDetour(payTwiml);
     if (!ok) {
+      this._paymentAwaitingResume = false;
       console.error(`[call-loop] payment redirect failed for ${callSid} — hanging up rather than leaving the call stuck`);
       this.close();
+    }
+  }
+
+  // Outbound DTMF — the agent pressing digits into ANOTHER system's phone
+  // tree (e.g. navigating a pharmacy's IVR on a call this agent placed),
+  // not routing an inbound caller's own keypresses (that's ordinary
+  // conversational input, see _onDtmfDigit). <Play digits="..."> generates
+  // real DTMF tones the far end hears as keypresses; unlike <Pay>, it has no
+  // async outcome to wait for, so the reconnect goes in the SAME TwiML
+  // response rather than needing a separate action/webhook round-trip.
+  async _executePressDigit(node) {
+    const callSid = this.clientWs?.callSid;
+    if (!callSid) {
+      console.warn('[call-loop] press_digit node requires a Twilio call (no callSid) — skipping');
+      return;
+    }
+    const target = node.edges?.[0]?.target;
+    if (!target) {
+      console.warn(`[call-loop] press_digit node "${node.id}" has no edge to advance to — nothing to do`);
+      return;
+    }
+    const resolvedDigits = this._interpolateFields(node.params?.digits || '');
+    // Only real DTMF characters — 0-9, *, #, A-D, and w/W for pauses (see
+    // Twilio's <Play digits> docs) — survive; this is also the XML-injection
+    // guard for an attribute built from a flow-author + collectedData string.
+    const sanitizedDigits = resolvedDigits.replace(/[^0-9*#A-Da-dwW]/g, '');
+    if (!sanitizedDigits) {
+      console.warn(`[call-loop] press_digit node "${node.id}" resolved to no valid digits ("${resolvedDigits}") — skipping the tone detour, advancing directly`);
+      this._applyTransition({ next_node_id: target });
+      return;
+    }
+    const twiml =
+      `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+      `<Play digits="${sanitizedDigits}"/>` +
+      `<Connect><Stream url="wss://${PUBLIC_HOST}/twilio-stream" /></Connect>` +
+      `</Response>`;
+    this._pendingPressDigitTarget = target;
+    const ok = await this._redirectForDetour(twiml);
+    if (!ok) {
+      this._pendingPressDigitTarget = null;
+      console.error(`[call-loop] press_digit redirect failed for ${callSid} — hanging up rather than leaving the call stuck`);
+      this.close();
+    }
+  }
+
+  // "{{field}}" -> this.collectedData[field], for a press_digit node's
+  // digits param (e.g. "2{{account_number}}#") — the only templating this
+  // codebase does, kept minimal on purpose: no expressions, no nesting,
+  // just a literal lookup, since the result is sanitized to DTMF characters
+  // immediately after anyway.
+  _interpolateFields(template) {
+    return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, field) => {
+      const value = this.collectedData?.[field];
+      return value === undefined || value === null ? '' : String(value);
+    });
+  }
+
+  // A subagent node's params.tools is a flow-author-written JSON array —
+  // parsed defensively since it's hand-authored JSON in the flow editor,
+  // same trust level as a code node's script or an mcp node's headers/
+  // arguments JSON. Each entry needs at minimum an id (used to build the
+  // Anthropic tool name and to route dispatch back to it) and a kind
+  // matching one of the node types whose executor it reuses.
+  _parseSubagentTools(node) {
+    let raw;
+    try {
+      raw = JSON.parse(node.params?.tools || '[]');
+    } catch (err) {
+      console.warn(`[call-loop] subagent node "${node.id}" has invalid JSON in params.tools — no tools offered: ${err.message}`);
+      return [];
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((t) => t && typeof t.id === 'string' && t.id.trim() && ['function', 'code', 'sms', 'mcp', 'transfer'].includes(t.kind));
+  }
+
+  // Dispatches a subagent tool call to the SAME executor its dedicated node
+  // type uses, via a synthetic node built from the tool's own config —
+  // reuses tested logic instead of re-implementing function/code/sms/mcp/
+  // transfer execution a second time. Each of those executors already
+  // pushes its own [System note: ...] into history on completion/failure
+  // (see _executeFunctionNode/_executeCodeNode/_executeSmsNode/
+  // _executeMcpNode), so the caller just needs to generate a follow-up turn
+  // afterward — exactly _handleCalendarTool's own pattern.
+  async _executeSubagentTool(toolConfig) {
+    const syntheticNode = { id: toolConfig.id, type: toolConfig.kind, params: toolConfig, function: toolConfig.functionName, edges: [] };
+    switch (toolConfig.kind) {
+      case 'function': return this._executeFunctionNode(syntheticNode);
+      case 'code': return this._executeCodeNode(syntheticNode);
+      case 'sms': return this._executeSmsNode(syntheticNode);
+      case 'mcp': return this._executeMcpNode(syntheticNode);
+      case 'transfer': return this._executeTransfer(toolConfig);
+      default: return undefined;
     }
   }
 
@@ -2178,6 +2973,8 @@ class CallSession {
       backchannelDelayMs: this.backchannelDelayMs,
       backchannelWords: this.backchannelWords,
       turnSeq: this.turnSeq,
+      pendingPressDigitTarget: this._pendingPressDigitTarget,
+      paymentAwaitingResume: this._paymentAwaitingResume,
       stashedAt: Date.now(),
     });
   }
@@ -2215,6 +3012,8 @@ class CallSession {
       backchannelDelayMs: stashed.backchannelDelayMs,
       backchannelWords: stashed.backchannelWords,
       turnSeq: stashed.turnSeq,
+      _pendingPressDigitTarget: stashed.pendingPressDigitTarget ?? null,
+      _paymentAwaitingResume: stashed.paymentAwaitingResume ?? false,
     });
     console.log(`[call-loop] resumed session for ${callSid} at node "${this.currentNodeId}" (${this.history.length} history entries carried over)`);
     return true;
@@ -2241,7 +3040,16 @@ class CallSession {
         this._executeTransfer(this.turnState.nodeParams);
         return;
       }
-      if (this.turnState.nodeType === 'payment') {
+      // _paymentAwaitingResume guards against re-triggering the SAME <Pay>
+      // detour on the resumed turn that follows it — that turn also reports
+      // nodeType === 'payment' (currentNodeId hasn't moved yet), so without
+      // this check every completed payment immediately re-charged. See the
+      // constructor's comment for the full real-bug writeup. Once this is
+      // true, fall through to the normal transition check below instead —
+      // the resumed turn's own transition_flow call (guided by the
+      // payment_status-aware prompt override in _buildNodeSystemPrompt) is
+      // what actually moves the flow on from here.
+      if (this.turnState.nodeType === 'payment' && !this._paymentAwaitingResume) {
         this._executePayment(this.turnState.nodeParams);
         return;
       }
@@ -2347,6 +3155,13 @@ class CallSession {
             this._speak(fallback, fallbackTurnId, Date.now());
           }
         }
+      }
+      // Reached only when nothing above started a new turn (activeTurn is
+      // still the 0 this block set at entry) — the assistant is genuinely
+      // done and now waiting on the caller. This is the real "silence
+      // clock start" moment for Reminder Message Frequency.
+      if (this.activeTurn === 0) {
+        this._scheduleReminderIfConfigured();
       }
     }
   }
@@ -2719,10 +3534,22 @@ class CallSession {
     this.send({ type: 'tts_event', event: msg });
   }
 
+  // Real threshold behind Interruption Sensitivity — see the Update-event
+  // handler above. Reads the CURRENT node's params (falls back to the
+  // default 'high' = 1 word, today's existing behavior, when unset).
+  _transcriptMeetsInterruptionThreshold(text) {
+    const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
+    const sensitivity = node?.params?.interruptionSensitivity || 'high';
+    const minWords = sensitivity === 'low' ? 3 : sensitivity === 'medium' ? 2 : 1;
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    return wordCount >= minWords;
+  }
+
   _bargeIn() {
     if (this.activeTurn === 0) return;
     console.log(`[call-loop] barge-in — cancelling turn ${this.activeTurn}`);
     this.activeTurn = 0; // no active turn is allowed to speak until the next final transcript
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; } // caller is clearly not silent
     if (this._httpTtsAborts) {
       for (const controller of this._httpTtsAborts) controller.abort();
       this._httpTtsAborts.clear();
@@ -2737,6 +3564,8 @@ class CallSession {
   close() {
     if (this._closed) return;
     this._closed = true;
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
+    if (this._pendingResponseTimer) { clearTimeout(this._pendingResponseTimer); this._pendingResponseTimer = null; }
     this.dgConnection?.close();
     this.ttsWs?.close();
     // A flow's goodbye node calls this proactively to end the call — unlike
