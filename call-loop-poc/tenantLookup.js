@@ -52,9 +52,10 @@ export async function resolveInboundCall(toNumber) {
     return null;
   }
 
-  const [flows, businesses] = await Promise.all([
+  const [flows, businesses, calendars] = await Promise.all([
     pg('calldesk_conversation_flows', `id=eq.${version.flow_id}&select=nodes,global_settings`),
     pg('calldesk_businesses', `tenant_id=eq.${numberRow.tenant_id}&select=stripe_customer_id`),
+    pg('calldesk_calendar_connections', `tenant_id=eq.${numberRow.tenant_id}&select=provider,api_key,event_type_id`),
   ]);
   const flowRow = flows?.[0];
   if (!flowRow?.nodes?.length) {
@@ -73,6 +74,12 @@ export async function resolveInboundCall(toNumber) {
     },
     ttsBackend: version.tts_backend || undefined,
     stripeCustomerId: businesses?.[0]?.stripe_customer_id || undefined,
+    // Real calendar booking (2026-09-17) — present only for a tenant that's
+    // actually connected one; check_availability/book_appointment simply
+    // aren't offered as tools when this is undefined (see server.js).
+    calendar: calendars?.[0]
+      ? { provider: calendars[0].provider, apiKey: calendars[0].api_key, eventTypeId: calendars[0].event_type_id }
+      : undefined,
   };
 }
 

@@ -774,6 +774,7 @@ twilioWss.on('connection', (twilioWs) => {
       ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
       ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
       ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
+      ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
     }), false);
   });
 });
@@ -819,6 +820,7 @@ class CallSession {
     // demo calls and flow-MCP test calls have none, and simply don't get
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
+    this.calendar = null; // { provider, apiKey, eventTypeId } — see tenantLookup.js / onClientMessage
     // Mystery-shopper flag (see MYSTERY_SHOPPER_DECISIONS.md) — enables the
     // closing-loop-detection hangup below, since a flow-less session
     // otherwise never ends a call on its own.
@@ -969,6 +971,14 @@ class CallSession {
       }
       if (typeof msg.stripeCustomerId === 'string' && msg.stripeCustomerId.trim()) {
         this.stripeCustomerId = msg.stripeCustomerId.trim();
+      }
+      // Real calendar booking (2026-09-17) — see tenantLookup.js. Only a
+      // tenant with a real Cal.com connection gets check_availability/
+      // book_appointment offered as tools at all (see
+      // _buildNodeSystemPrompt's tool list) — nothing changes for every
+      // other tenant.
+      if (msg.calendar && typeof msg.calendar === 'object') {
+        this.calendar = msg.calendar;
       }
       // Live-monitoring metadata (see the registry / GET /active-calls) — a
       // real routed call passes both; anonymous browser demos pass neither.
@@ -1268,6 +1278,43 @@ class CallSession {
           required: ['field', 'value'],
         },
       });
+
+      // Real calendar booking (2026-09-17) — only offered when this tenant
+      // has a real Cal.com connection (see tenantLookup.js/onClientMessage),
+      // and only on an extraction step (the same kind of node that already
+      // gathers name/time) — never a standalone node type, matching how
+      // record_field itself works: a tool available mid-turn, not a
+      // one-shot node like 'function'/'transfer'/'payment'.
+      if (this.calendar) {
+        tools.push({
+          name: 'check_availability',
+          description:
+            'Check real calendar availability for a given day. Call this whenever the caller mentions a day ' +
+            'they want, BEFORE proposing or confirming any specific time — never guess or invent available times.',
+          input_schema: {
+            type: 'object',
+            properties: {
+              date: { type: 'string', description: 'The date to check, as YYYY-MM-DD' },
+            },
+            required: ['date'],
+          },
+        });
+        tools.push({
+          name: 'book_appointment',
+          description:
+            'Books the appointment for real on the calendar. Only call this AFTER check_availability has ' +
+            'confirmed the exact time is open, and the caller has explicitly confirmed they want it.',
+          input_schema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: "Caller's name" },
+              email: { type: 'string', description: "Caller's email address for the booking confirmation" },
+              startTime: { type: 'string', description: 'Exact start time, ISO 8601 (e.g. 2026-09-18T15:00:00-07:00)' },
+            },
+            required: ['name', 'email', 'startTime'],
+          },
+        });
+      }
     }
 
     let firstTokenAt = null;
@@ -1356,6 +1403,25 @@ class CallSession {
           this.collectedData[block.input.field] = block.input.value;
           console.log(`[call-loop] recorded field "${block.input.field}" = "${block.input.value}"`);
         }
+      }
+
+      // Real calendar booking (2026-09-17): unlike record_field, the model
+      // needs to actually SEE the real API result and speak from it (real
+      // available times, a real confirmation) — not just silently persist
+      // a value. Rather than inventing Anthropic's native multi-round
+      // tool_result protocol (a different message shape than anything else
+      // here uses), this reuses the exact system-note-injection +
+      // follow-up-turn pattern already proven for the deadlock-nudge fix:
+      // push what actually happened as a synthetic note, generate a fresh
+      // turn to react to it. Returns early — this turn's own (likely
+      // empty or premature) text is superseded by the follow-up turn's.
+      const calendarToolUse = final.content.find(
+        (b) => b.type === 'tool_use' && (b.name === 'check_availability' || b.name === 'book_appointment')
+      );
+      if (calendarToolUse && this.activeTurn === turnId) {
+        if (assistantText) this.history.push({ role: 'assistant', content: assistantText });
+        await this._handleCalendarTool(calendarToolUse);
+        return;
       }
       // Cycles 10-11 (mystery-shopper) finding: every "produced no speech"
       // fallback fired exactly when the model also called record_field in
@@ -1961,6 +2027,87 @@ class CallSession {
       console.error(`[call-loop] payment redirect failed for ${callSid} — hanging up rather than leaving the call stuck`);
       this.close();
     }
+  }
+
+  // Real calendar booking (2026-09-17) — executes whichever calendar tool
+  // the model called, then injects the REAL result as a system note and
+  // generates a follow-up turn to speak from it (see the call site above
+  // for why this reuses the nudge pattern instead of a native tool_result
+  // round-trip). Never lets a calendar API error kill the call — always
+  // produces some note for the model to react to, even a failure one.
+  async _handleCalendarTool(toolUse) {
+    let note;
+    try {
+      if (toolUse.name === 'check_availability') {
+        const slots = await this._checkAvailability(toolUse.input.date);
+        note = slots.length > 0
+          ? `Availability check for ${toolUse.input.date}: ${slots.join(', ')} are open. Propose one of these — do not invent times not in this list.`
+          : `Availability check for ${toolUse.input.date}: nothing open that day. Ask the caller for a different day.`;
+      } else {
+        const result = await this._bookAppointment(toolUse.input);
+        note = result.ok
+          ? `Booking confirmed for ${toolUse.input.startTime} (confirmation ${result.uid}). Read this back to the caller and treat the field as captured.`
+          : `Booking attempt failed (${result.error}). Apologize and ask the caller to pick a different time, or offer to take a message instead.`;
+        if (result.ok) this.collectedData.booking_confirmed = result.uid;
+      }
+    } catch (err) {
+      console.error(`[call-loop] calendar tool ${toolUse.name} failed`, err);
+      note = 'The calendar system is temporarily unavailable. Apologize to the caller and offer to take their info for a callback instead.';
+    }
+    this.history.push({ role: 'user', content: `[System note: ${note}]` });
+    const turnId = ++this.turnSeq;
+    this.activeTurn = turnId;
+    this.turnState = { id: turnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+    await this._generateTurn(turnId, Date.now(), { isNodeEntry: false });
+  }
+
+  // GET /v2/slots — confirmed live against the real API (2026-09-17,
+  // response shape verified directly rather than trusted from docs, which
+  // described a different, incorrect path: /v2/slots/available with
+  // startTime/endTime timestamp params — the real one takes eventTypeId
+  // plus start/end as plain YYYY-MM-DD dates and returns
+  // { data: { "<date>": [{ start: <ISO timestamp> }, ...] } }.
+  async _checkAvailability(date) {
+    const res = await fetch(
+      `https://api.cal.com/v2/slots?eventTypeId=${this.calendar.eventTypeId}&start=${date}&end=${date}`,
+      { headers: { Authorization: `Bearer ${this.calendar.apiKey}`, 'cal-api-version': '2024-09-04' }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) throw new Error(`Cal.com slots request failed: HTTP ${res.status}`);
+    const body = await res.json();
+    const daySlots = body.data?.[date] || [];
+    // Local time string, not raw UTC ISO — the model should speak "3 PM",
+    // not "2026-09-18T22:00:00.000Z", and this is what it'll echo back to
+    // the caller almost verbatim.
+    return daySlots.map((s) =>
+      new Date(s.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' })
+    );
+  }
+
+  // POST /v2/bookings — confirmed live against the real API. Requires a
+  // real attendee email (Cal.com's own required field, not our choice) —
+  // a genuine hard problem for voice specifically (email capture by
+  // spelling it out is error-prone) flagged in the design notes; not
+  // solved here, just passed through as whatever the model captured.
+  async _bookAppointment({ name, email, startTime }) {
+    const res = await fetch('https://api.cal.com/v2/bookings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.calendar.apiKey}`,
+        'Content-Type': 'application/json',
+        'cal-api-version': '2024-08-13',
+      },
+      body: JSON.stringify({
+        eventTypeId: this.calendar.eventTypeId,
+        start: new Date(startTime).toISOString(),
+        attendee: { name, email, timeZone: this.flow?.globalSettings?.timezone || 'America/Los_Angeles' },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.status === 'error') {
+      return { ok: false, error: body.error?.message || `HTTP ${res.status}` };
+    }
+    return { ok: true, uid: body.data?.uid };
   }
 
   // Captures everything a resumed session needs to continue the same
