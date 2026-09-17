@@ -747,6 +747,82 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   }
 });
 
+// Populous US area codes essentially guaranteed to have inventory — same
+// fallback list calldesktech's own purchase route used to lean on when it
+// bought numbers through Retell instead of here.
+const PURCHASE_FALLBACK_AREA_CODES = ['212', '415', '312', '404'];
+
+// Buys a REAL Twilio number on THIS app's own Twilio account and points its
+// Voice webhook at our own /twilio/voice, so it actually rings into this
+// app's call handling. calldesktech used to buy poc-engine tenants' numbers
+// through Retell's phone-number API instead — that number lives in Retell's
+// own Twilio (sub)account, not this one, which is exactly why a real test
+// call from it failed with Twilio's "not yet verified for your account":
+// our own TWILIO_ACCOUNT_SID/AUTH_TOKEN (used by /place-test-call and for
+// real inbound routing) never owned it. Same admin-secret guard as
+// /place-test-call — this spends real money, not just reads state.
+app.post('/purchase-number', express.json(), async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    return res.status(500).json({ error: 'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured' });
+  }
+
+  const { areaCode: requestedAreaCode } = req.body || {};
+  const candidates = [requestedAreaCode, ...PURCHASE_FALLBACK_AREA_CODES, undefined].filter(
+    (v, i, arr) => arr.indexOf(v) === i
+  );
+  const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+
+  try {
+    let phoneNumber = null;
+    let lastDetail = null;
+    for (const areaCode of candidates) {
+      const searchUrl = new URL(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/AvailablePhoneNumbers/US/Local.json`);
+      searchUrl.searchParams.set('PageSize', '1');
+      if (areaCode) searchUrl.searchParams.set('AreaCode', areaCode);
+      const searchRes = await fetch(searchUrl, { headers: { Authorization: `Basic ${auth64}` } });
+      const searchBody = await searchRes.json();
+      if (!searchRes.ok) {
+        lastDetail = searchBody;
+        continue;
+      }
+      const candidate = searchBody.available_phone_numbers?.[0]?.phone_number;
+      if (candidate) {
+        phoneNumber = candidate;
+        break;
+      }
+    }
+
+    if (!phoneNumber) {
+      return res.status(502).json({ error: 'No Twilio numbers available in any candidate area code', detail: lastDetail });
+    }
+
+    const voiceUrl = `https://${PUBLIC_HOST}/twilio/voice`;
+    const purchaseParams = new URLSearchParams({
+      PhoneNumber: phoneNumber,
+      VoiceUrl: voiceUrl,
+      VoiceMethod: 'POST',
+    });
+    const purchaseRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth64}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: purchaseParams,
+    });
+    const purchaseBody = await purchaseRes.json();
+    if (!purchaseRes.ok) {
+      return res.status(purchaseRes.status).json({ error: 'Twilio number purchase failed', detail: purchaseBody });
+    }
+    console.log(`[call-loop] purchased phone number: ${phoneNumber}`);
+    res.status(201).json({ phone_number: phoneNumber });
+  } catch (err) {
+    console.error('[call-loop] purchase-number failed', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Sets/clears a short-lived per-number TTS override for A/B latency testing
 // against a real tenant's live agent (see testTtsOverrides above for why
 // this exists instead of just editing the tenant's DB row). Same admin-
