@@ -1304,7 +1304,9 @@ class CallSession {
           name: 'book_appointment',
           description:
             'Books the appointment for real on the calendar. Only call this AFTER check_availability has ' +
-            'confirmed the exact time is open, and the caller has explicitly confirmed they want it.',
+            'confirmed the exact time is open, and the caller has explicitly confirmed they want it. You MUST ' +
+            'also have spelled the email address back letter-by-letter and gotten a yes — a mis-transcribed ' +
+            'email books a real appointment no one can be reached to confirm or fix.',
           input_schema: {
             type: 'object',
             properties: {
@@ -1700,15 +1702,22 @@ class CallSession {
       // transitioning) added directly from the cycle-9 judge's own
       // suggestion: closes without ever confirming a booking looked
       // unfinished even when the data was actually correct.
+      // Numbered with a running counter, not hand-tracked ternaries —
+      // real bug caught writing the email-read-back step below: two
+      // different steps both computed to the same number ('5') because
+      // the ternary math wasn't updated when a step was inserted between
+      // them. A counter can't drift out of sync with itself the way two
+      // separate ternary expressions can.
+      let stepNum = 1;
       prompt += `For this step, in order:\n`;
       if (missingFields.length > 0) {
-        prompt += `1. You still need: ${missingFields.join(', ')}. Ask for ALL of these together in ONE question, in the SAME turn — don't ask one at a time. Do not ask about anything not in this list — it's already been captured (see "Already collected" below).\n`;
+        prompt += `${stepNum++}. You still need: ${missingFields.join(', ')}. Ask for ALL of these together in ONE question, in the SAME turn — don't ask one at a time. Do not ask about anything not in this list — it's already been captured (see "Already collected" below).\n`;
       } else {
-        prompt += `1. Every field for this step is already captured (see "Already collected" below) — do not ask for any of them again. Move straight to confirming/summarizing.\n`;
+        prompt += `${stepNum++}. Every field for this step is already captured (see "Already collected" below) — do not ask for any of them again. Move straight to confirming/summarizing.\n`;
       }
-      prompt += `2. The moment the caller gives you a field, call record_field for it — but ALWAYS also say something out loud to the caller in that same turn. Calling record_field is a silent background action, never a substitute for actually replying — never let a turn consist of only a tool call with nothing spoken.\n`;
+      prompt += `${stepNum++}. The moment the caller gives you a field, call record_field for it — but ALWAYS also say something out loud to the caller in that same turn. Calling record_field is a silent background action, never a substitute for actually replying — never let a turn consist of only a tool call with nothing spoken.\n`;
       if (hasTimeField) {
-        prompt += `3. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
+        prompt += `${stepNum++}. If a date/time answer is vague ("afternoon", "next week"), propose ONE concrete slot inside their range and get a yes before treating it as captured.\n`;
       }
       // Real call finding (2026-09-16): this step used to say "read back
       // what you captured before relying on it" — soft enough that a live
@@ -1719,8 +1728,19 @@ class CallSession {
       // correct — reworded as a hard requirement that's explicit about
       // what "confirmed" means, instead of leaving the model to treat its
       // own capture as sufficient.
-      prompt += `${hasTimeField ? '4' : '3'}. Names and numbers are easy to mishear. Before treating any field as final, you MUST ask the caller a direct yes/no question repeating back exactly what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?"). Calling record_field is NOT confirmation — it only means you heard something. Wait for the caller to actually say yes (or correct you) before moving on.\n`;
-      prompt += `${hasTimeField ? '5' : '4'}. Only after the caller has explicitly confirmed every field this way, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently, without a prior yes/no confirmation, or without ever stating the final summary.\n`;
+      prompt += `${stepNum++}. Names and numbers are easy to mishear. Before treating any field as final, you MUST ask the caller a direct yes/no question repeating back exactly what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?"). Calling record_field is NOT confirmation — it only means you heard something. Wait for the caller to actually say yes (or correct you) before moving on.\n`;
+      // Real call finding (2026-09-17): the generic "read back" rule above
+      // didn't stop a mis-transcribed email (an extra letter added) from
+      // going straight into a real booking with no confirmation at all —
+      // spoken email addresses fail differently and more often than names:
+      // spelled character-by-character, easy to drop or add one, and
+      // unlike a name a caller usually can't hear something's wrong from
+      // context. Worth its own explicit, harder-to-skip rule rather than
+      // trusting it's covered by "numbers are easy to mishear."
+      if (this.calendar && Object.keys(node.extract).includes('email')) {
+        prompt += `${stepNum++}. Before calling book_appointment, you MUST spell the caller's email address back letter-by-letter (e.g. "That's A-L-E-X at gmail dot com, is that right?") and get an explicit yes. This is separate from the general read-back above — do it even if you already confirmed the name. Never call book_appointment on an unconfirmed email.\n`;
+      }
+      prompt += `${stepNum++}. Only after the caller has explicitly confirmed every field this way, say ONE summary sentence with all of them ("So that's Alex Morgan at 2pm tomorrow.") and THEN call transition_flow in the same turn — don't transition silently, without a prior yes/no confirmation, or without ever stating the final summary.\n`;
     }
     if (Object.keys(this.collectedData).length > 0) {
       prompt += `Already collected this call (do NOT ask for these again): ${JSON.stringify(this.collectedData)}\n`;
