@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -301,6 +301,32 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 // TwiML's Stream url) from code paths with no live request to read a host
 // from (_executePayment runs from _maybeRetireTurn, not an Express handler).
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'call-loop-poc.fly.dev';
+// Real call recording (2026-09-17) — on by default, matching Retell's own
+// approach of not enforcing a disclosure announcement itself (consent is
+// left to whoever configures the agent, per Retell's privacy policy). A
+// <Connect><Stream> call isn't recorded by Twilio automatically the way a
+// <Dial>/<Record> verb would be — has to be started explicitly via the REST
+// API on the already-live call. RecordingStatusCallback below is how the
+// finished recording's URL comes back (asynchronously, after the call ends).
+const RECORD_REAL_CALLS = process.env.RECORD_REAL_CALLS !== 'false';
+
+async function startCallRecording(callSid) {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return;
+  const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+  const params = new URLSearchParams({
+    RecordingChannels: 'dual',
+    RecordingStatusCallback: `https://${PUBLIC_HOST}/twilio/recording-status`,
+    RecordingStatusCallbackEvent: 'completed',
+  });
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls/${callSid}/Recordings.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth64}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+  if (!res.ok) {
+    console.error(`[call-loop] failed to start recording for ${callSid}: HTTP ${res.status}`, await res.text().catch(() => ''));
+  }
+}
 // Shared secret guarding the GET /active-calls admin endpoint (see below).
 // Same shape as the gateway's ADMIN_SECRET (Bearer token, 401 when unset or
 // mismatched) — this only exposes read-only live-call state, no control.
@@ -599,6 +625,7 @@ app.post('/twilio/voice', async (req, res) => {
           // caller has to come from a number that's actually theirs, not
           // whoever called in.
           tenantNumber: toNumber || null,
+          direction,
           createdAt: Date.now(),
         });
       }
@@ -608,6 +635,57 @@ app.post('/twilio/voice', async (req, res) => {
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response><Connect><Stream url="wss://${req.headers.host}/twilio-stream" /></Connect></Response>`;
   res.type('text/xml').send(twiml);
+});
+
+// Twilio calls this once a recording started via startCallRecording()
+// finishes processing — asynchronously, after the call itself has already
+// ended (see close()'s own duration/transcript update, which happens
+// separately and earlier). No auth on this one; Twilio doesn't sign
+// RecordingStatusCallback requests the way it does some other webhooks, and
+// there's nothing sensitive being READ here, only a URL being written
+// against a callSid Twilio itself supplies.
+app.post('/twilio/recording-status', express.urlencoded({ extended: false }), async (req, res) => {
+  const { CallSid, RecordingStatus, RecordingUrl } = req.body || {};
+  if (CallSid && RecordingStatus === 'completed' && RecordingUrl) {
+    // Twilio's RecordingUrl has no extension by default — appending .mp3
+    // gets back a real playable media file instead of the JSON resource
+    // representation the bare URL would otherwise return.
+    await updateCallLogByCallSid(CallSid, { recording_url: `${RecordingUrl}.mp3` });
+  }
+  res.sendStatus(200);
+});
+
+// Proxies a Twilio recording's audio bytes through this server's own Twilio
+// credentials — the browser can't fetch a Twilio recording URL directly, it
+// requires HTTP Basic Auth with the account's SID/token, which obviously
+// can't be handed to the client. calldesktech's own /api/calls/[id]/recording
+// route calls this rather than exposing Twilio creds to calldesktech either.
+// Same admin-secret guard as /place-test-call/-purchase-number.
+app.get('/recording-audio', async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const url = req.query.url;
+  if (!url || typeof url !== 'string' || !url.startsWith('https://api.twilio.com/')) {
+    return res.status(400).json({ error: 'url must be a real Twilio recording URL' });
+  }
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    return res.status(500).json({ error: 'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured' });
+  }
+  try {
+    const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const twilioRes = await fetch(url, { headers: { Authorization: `Basic ${auth64}` } });
+    if (!twilioRes.ok || !twilioRes.body) {
+      return res.status(twilioRes.status).json({ error: 'Failed to fetch recording from Twilio' });
+    }
+    res.setHeader('Content-Type', twilioRes.headers.get('content-type') || 'audio/mpeg');
+    for await (const chunk of twilioRes.body) res.write(chunk);
+    res.end();
+  } catch (err) {
+    console.error('[call-loop] recording proxy failed', err);
+    res.status(502).json({ error: err.message });
+  }
 });
 
 // Real finding from a live test call (2026-09-17): Twilio's actual Result
@@ -966,6 +1044,29 @@ twilioWss.on('connection', (twilioWs) => {
       ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
       ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
     }), false);
+
+    // Real call logging + recording (2026-09-17) — this is the only place a
+    // real poc-engine call becomes visible on the dashboard's Calls page at
+    // all; unlike Retell, nothing external notifies calldesktech of this
+    // call's lifecycle, since WE own the telephony end to end. Same
+    // no-disclosure default Retell itself uses (consent is left to whoever
+    // configures the agent, not a platform-enforced announcement — see
+    // Retell's own privacy policy). Neither call blocks the greeting from
+    // going out.
+    if (resolved.tenantId) {
+      session.direction = resolved.direction || 'inbound';
+      insertCallLog({
+        tenant_id: resolved.tenantId,
+        retell_call_id: callSid,
+        caller_phone: resolved.fromNumber || 'unknown',
+        to_number: resolved.tenantNumber || null,
+        direction: session.direction,
+        voice_engine: 'poc',
+        outcome: 'answered',
+        duration_seconds: 0,
+      }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
+      if (RECORD_REAL_CALLS) startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
+    }
   });
 });
 
@@ -1017,6 +1118,8 @@ class CallSession {
     // otherwise never ends a call on its own.
     this.isShopper = false;
     this.callSid = null; // set once the Twilio 'start' event arrives (browser calls never get one)
+    this._callLogId = null; // set once insertCallLog resolves — see the 'start' handler and close() below
+    this.direction = null;
     this._shopperClosingCount = 0;
     this._closing = false;
     // Set by _stashForResume() right before a mid-call TwiML detour (e.g.
@@ -3734,6 +3837,21 @@ class CallSession {
       transferEvents: this.cost.transferEvents,
       messageEvents: this.cost.messageEvents,
     }).catch((err) => console.error('[call-loop] usage reporting failed', err));
+
+    // Finalizes the call log row this session's 'start' handler created (see
+    // insertCallLog there) — keyed by callSid rather than the possibly-not-
+    // yet-resolved _callLogId, so a very short call can't race its own
+    // insert. No-ops harmlessly if this session was never a real logged call
+    // (browser tab, shopper mode, or Supabase creds unset).
+    if (this.callSid) {
+      const transcript = this.history
+        .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content }));
+      updateCallLogByCallSid(this.callSid, {
+        duration_seconds: Math.round(voiceSeconds),
+        transcript,
+      }).catch((err) => console.error('[call-loop] call log finalize failed', err));
+    }
   }
 }
 

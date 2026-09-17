@@ -24,6 +24,59 @@ async function pg(table, query) {
   return res.json();
 }
 
+// Real call logging for poc-engine calls (2026-09-17): unlike Retell, which
+// notifies calldesktech of a call's lifecycle via its own webhook, THIS
+// engine owns the telephony lifecycle directly — nothing else logs a
+// poc-engine call, so it has to happen here. Same shared Supabase project,
+// direct PostgREST insert/update rather than a round trip through
+// calldesktech, matching pg()'s own reasoning above.
+export async function insertCallLog(row) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/calldesk_call_logs`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(row),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.error(`[call-log] insert failed: HTTP ${res.status}`, await res.text().catch(() => ''));
+      return null;
+    }
+    const inserted = await res.json();
+    return inserted?.[0]?.id || null;
+  } catch (err) {
+    console.error('[call-log] insert failed', err);
+    return null;
+  }
+}
+
+export async function updateCallLogByCallSid(callSid, patch) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !callSid) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/calldesk_call_logs?retell_call_id=eq.${encodeURIComponent(callSid)}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patch),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.error(`[call-log] update failed: HTTP ${res.status}`, await res.text().catch(() => ''));
+    }
+  } catch (err) {
+    console.error('[call-log] update failed', err);
+  }
+}
+
 // Returns null when the number isn't routed to anything (unknown number, or
 // its inbound slot is unset) — callers fall back to the old static
 // single-tenant behavior rather than erroring the call.
