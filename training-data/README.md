@@ -191,3 +191,15 @@ Checkpoints for every 2,000 steps (plus the final one) are on the
 out to sound better than the final one (possible if the model started
 overfitting or drifting late in training — worth comparing a few, not just
 assuming later is always better).
+
+**Ear-verified result (2026-09-17): good, real progress.** Listened to all 5
+samples — overall quality judged "good," a real, usable improvement over the
+279-sample pilot. Two specific notes: (1) speaking pace reads as a little
+slow throughout — `synthesize_full_ft.py` used `length_scale=0.95`; worth
+trying a lower value (e.g. 0.85-0.9) on the next synthesis pass, no retraining
+needed since this is an inference-time parameter, not a training artifact.
+(2) `sample_3.wav` ("Is there anything else I can help you with today?") had
+one word with noticeably robotic intonation, an isolated blip rather than a
+pervasive problem across all 5 samples. Worth rechecking after more training
+steps or a length_scale change to see if it's still there before treating it
+as a real pattern rather than noise from this specific sentence/seed.
