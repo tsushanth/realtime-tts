@@ -506,24 +506,43 @@ app.post('/twilio/voice', async (req, res) => {
   res.type('text/xml').send(twiml);
 });
 
+// Real finding from a live test call (2026-09-17): Twilio's actual Result
+// values (payment-connector-error, too-many-failed-attempts, etc. — see
+// https://www.twilio.com/docs/voice/api/payment-resource#statuscallback)
+// don't match a flow author's natural edge-condition wording ("payment
+// failed or was canceled") closely enough for the model to reliably
+// recognize a failure — reproduced live: it treated an unrecognized
+// Result as "try again" and re-triggered the payment redirect twice in a
+// row instead of routing to the flow's own failed-payment node. Same
+// "compute, don't infer" fix as the missing-fields prompt work earlier —
+// normalize Twilio's many possible Result strings into a plain
+// success/failed boolean-ish field here, in code, rather than asking the
+// model to pattern-match raw Twilio enum values it's never seen
+// documented. The raw value is kept alongside it for debugging, just not
+// as the field an edge condition is expected to reason about.
+const PAYMENT_SUCCESS_RESULTS = new Set(['success']);
+
 // <Pay>'s action callback — Twilio POSTs here once a payment session ends
 // (success, failure, or the caller pressed * to cancel). Writes ONLY the
-// outcome into the paused session's stashed collectedData — Result, last
-// four digits, card brand — never PaymentCardNumber or any other raw
-// cardholder field, even though Twilio's webhook payload can include one
-// for certain transaction types (see CreatePayments' own Input field note:
-// digits are redacted from Twilio's LOGS, which is a different guarantee
-// than "never appears in this webhook body" — the responsibility not to
-// let it into OUR history/logs/DB is on this handler, not Twilio).
+// outcome into the paused session's stashed collectedData — normalized
+// status, last four digits, card brand — never PaymentCardNumber or any
+// other raw cardholder field, even though Twilio's webhook payload can
+// include one for certain transaction types (see CreatePayments' own
+// Input field note: digits are redacted from Twilio's LOGS, which is a
+// different guarantee than "never appears in this webhook body" — the
+// responsibility not to let it into OUR history/logs/DB is on this
+// handler, not Twilio).
 // Reconnects the call into a fresh <Connect><Stream> either way; the
-// payment node's own outgoing edges (flow-author-defined, e.g. "payment
-// succeeded" / "payment failed or was canceled") take it from there once
-// _tryResumeFromCallSid rehydrates and _runNodeTurn re-evaluates.
+// payment node's own outgoing edges (flow-author-defined, e.g. "the
+// payment succeeded" / "the payment did not succeed") take it from there
+// once _tryResumeFromCallSid rehydrates and _runNodeTurn re-evaluates.
 app.post('/twilio/pay-result', (req, res) => {
   const callSid = req.query.callSid || req.body.CallSid;
   const stashed = callSid ? pendingResumeSessions.get(callSid) : null;
   if (stashed) {
-    stashed.collectedData.payment_status = req.body.Result || 'unknown';
+    const rawResult = req.body.Result || 'unknown';
+    stashed.collectedData.payment_status = PAYMENT_SUCCESS_RESULTS.has(rawResult) ? 'succeeded' : 'failed';
+    stashed.collectedData.payment_status_detail = rawResult; // raw Twilio value, for logs/debugging only — not what an edge condition should key off
     if (req.body.PaymentCardNumber) {
       // Last-resort guard: this field is meant to already be masked
       // ("XXXXXXXXXXXX1234") per Twilio's redaction guarantee, but never
@@ -533,7 +552,7 @@ app.post('/twilio/pay-result', (req, res) => {
       stashed.collectedData.payment_last4 = digitsOnly.slice(-4);
     }
     if (req.body.PaymentConfirmationCode) stashed.collectedData.payment_confirmation = req.body.PaymentConfirmationCode;
-    console.log(`[call-loop] pay-result for ${callSid}: ${stashed.collectedData.payment_status}`);
+    console.log(`[call-loop] pay-result for ${callSid}: ${stashed.collectedData.payment_status} (raw: ${rawResult})`);
   } else {
     console.warn(`[call-loop] pay-result for ${callSid} — no stashed session found (expired or never redirected from here)`);
   }
