@@ -3809,10 +3809,20 @@ class CallSession {
 
   // Real threshold behind Interruption Sensitivity — see the Update-event
   // handler above. Reads the CURRENT node's params (falls back to the
-  // default 'high' = 1 word, today's existing behavior, when unset).
+  // platform default when unset).
+  //
+  // Default changed 'high' -> 'medium' (2026-09-17): a real mystery-shopper
+  // call reproduced the exact failure mode this risked — the shopper said a
+  // one-word "thanks" while the agent was still mid-sentence reading back
+  // full booking details (date/time/phone number), 'high' cut the agent off
+  // on that single word, and the rest of the confirmation only arrived
+  // fragmented in a later turn after the caller had already said goodbye. A
+  // real caller doing the same could hang up without ever hearing their
+  // full confirmation. 'medium' (2 words) is still fast enough to feel
+  // responsive but filters out exactly this class of short acknowledgment.
   _transcriptMeetsInterruptionThreshold(text) {
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
-    const sensitivity = node?.params?.interruptionSensitivity || 'high';
+    const sensitivity = node?.params?.interruptionSensitivity || 'medium';
     const minWords = sensitivity === 'low' ? 3 : sensitivity === 'medium' ? 2 : 1;
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     return wordCount >= minWords;
