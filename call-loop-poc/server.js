@@ -1787,7 +1787,7 @@ class CallSession {
   // this.systemPrompt every other turn uses, and the LLM signals when to
   // advance by calling the transition_flow tool rather than us guessing from
   // the model's prose.
-  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false } = {}) {
+  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set() } = {}) {
     if (!anthropic) {
       this.send({ type: 'error', message: 'ANTHROPIC_API_KEY not configured' });
       if (this.turnState?.id === turnId) this.turnState.llmDone = true;
@@ -1941,6 +1941,11 @@ class CallSession {
     // duplicating their logic.
     if (node?.type === 'subagent') {
       for (const toolConfig of this._parseSubagentTools(node)) {
+        // Live-call finding (2026-09-18): a tool that already ran in this
+        // follow-up chain stayed offered, and the model re-called it (3x
+        // `calc` in one turn) — a real double-fire risk for side-effecting
+        // tools like sms/function. Each tool runs at most once per chain.
+        if (ranSubagentTools.has(toolConfig.id)) continue;
         tools.push({
           name: `subagent_tool_${toolConfig.id}`,
           description: toolConfig.description || `Runs the "${toolConfig.id}" tool.`,
@@ -2074,7 +2079,7 @@ class CallSession {
           const followUpTurnId = ++this.turnSeq;
           this.activeTurn = followUpTurnId;
           this.turnState = { id: followUpTurnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
-          await this._generateTurn(followUpTurnId, Date.now(), { isNodeEntry: false });
+          await this._generateTurn(followUpTurnId, Date.now(), { isNodeEntry: false, ranSubagentTools: new Set([...ranSubagentTools, toolId]) });
         } else {
           console.warn(`[call-loop] subagent node "${node.id}" — model called unknown tool id "${toolId}"`);
         }
