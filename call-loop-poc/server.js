@@ -1307,6 +1307,7 @@ class CallSession {
     this._paymentAwaitingResume = false;
     this._nudgeAttempts = new Map(); // nodeId -> count, see _maybeRetireTurn's deadlock-nudge fix
     this._queuedUserText = null; // see _onUserTurnComplete's in-flight-turn guard
+    this.clientWs.onDrained = () => this._onAudioDrained();
     this._dtmfBuffer = ''; // see _onDtmfDigit — buffered keypad digits not yet flushed into a turn
     this._dtmfTimer = null;
     // Live-monitoring metadata — which tenant owns this call and the phone
@@ -1723,7 +1724,9 @@ class CallSession {
     // caller says exactly like the not-yet-spoken case below and replay it
     // once this turn finishes.
     const uninterruptible = this._resolveInterruptionSensitivity() === 'off';
-    if (this.activeTurn !== 0 && this.turnState?.id === this.activeTurn && (!this.turnState.startedSpeaking || uninterruptible)) {
+    const audibleTail = this.clientWs.isSpeaking?.() === true; // audio still playing after synthesis finished
+    const inFlight = this.activeTurn !== 0 && this.turnState?.id === this.activeTurn;
+    if ((inFlight && (!this.turnState.startedSpeaking || uninterruptible)) || (uninterruptible && audibleTail)) {
       this._queuedUserText = this._queuedUserText ? `${this._queuedUserText} ${userText}` : userText;
       console.log(`[call-loop] turn ${this.activeTurn} hasn't spoken yet — queuing instead of preempting: "${userText}"`);
       return;
@@ -3564,6 +3567,10 @@ class CallSession {
       // of queued text arriving exactly around a flow transition isn't
       // handled here yet and needs its own follow-up.)
       if (this._queuedUserText) {
+        // Uninterruptible step with audio still playing out: hold until it
+        // drains (_onAudioDrained replays it) instead of starting a new turn
+        // whose audio would queue behind the tail.
+        if (this._resolveInterruptionSensitivity() === 'off' && this.clientWs.isSpeaking?.()) return;
         const queued = this._queuedUserText;
         this._queuedUserText = null;
         this._onUserTurnComplete(queued);
@@ -4081,8 +4088,21 @@ class CallSession {
     return wordCount >= minWords;
   }
 
+  // The phone adapter's paced audio queue just emptied — replay anything the
+  // caller said while an uninterruptible step was still audibly speaking.
+  _onAudioDrained() {
+    if (!this._queuedUserText || this.activeTurn !== 0 || this._closing) return;
+    const queued = this._queuedUserText;
+    this._queuedUserText = null;
+    this._onUserTurnComplete(queued);
+  }
+
   _bargeIn() {
-    if (this.activeTurn === 0) return;
+    // Nothing in flight AND nothing still audible = nothing to interrupt. A
+    // finished turn whose audio is still draining IS interruptible (the
+    // caller hears it) — this used to return early and ignore barge-in for
+    // the whole playback tail of any turn whose synthesis had completed.
+    if (this.activeTurn === 0 && this.clientWs.isSpeaking?.() !== true) return;
     console.log(`[call-loop] barge-in — cancelling turn ${this.activeTurn}`);
     this.activeTurn = 0; // no active turn is allowed to speak until the next final transcript
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; } // caller is clearly not silent

@@ -179,6 +179,14 @@ export class TwilioCallAdapter extends EventEmitter {
     this._pacedQueue = [];
   }
 
+  // Whether agent audio is still being fed to the caller. A turn is marked
+  // finished when TTS SYNTHESIS completes, but this queue keeps playing it
+  // out at real time for seconds afterward — barge-in and "don't interrupt"
+  // logic need to know about that tail, not just whether a turn is in flight.
+  isSpeaking() {
+    return this._pacedQueue.length > 0;
+  }
+
   _startPacing() {
     if (this._paceTimer) return;
     this._paceTimer = setInterval(() => {
@@ -190,6 +198,7 @@ export class TwilioCallAdapter extends EventEmitter {
         // close() below) couldn't act on it yet — do it now that the
         // queue has actually drained.
         if (this._closeRequested) this._doClose();
+        if (this.onDrained) this.onDrained();
         return;
       }
       this.twilioWs.send(JSON.stringify({ event: 'media', streamSid: this.streamSid, media: { payload: frame.toString('base64') } }));
