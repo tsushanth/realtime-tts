@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -878,6 +878,36 @@ app.post('/place-test-call', express.json(), async (req, res) => {
       return res.status(callRes.status).json({ error: 'Twilio call creation failed', detail: callBody });
     }
     console.log(`[call-loop] test call placed: ${fromNumber} -> ${toNumber} (routeAs=${routeAs}, direction=${direction || 'inbound'}), sid=${callBody.sid}`);
+
+    // Tags a shopper call as internal/test call history for the tenant it
+    // actually exercised, rather than leaving it invisible. Written directly
+    // here at dial-time instead of relying on the normal inbound-call
+    // webhook path — a real call between two of our own Twilio numbers
+    // reproducibly only ever produced ONE observable CallSid/CallSession in
+    // testing (2026-09-18), not the two independently-webhooked legs this
+    // would otherwise need; the exact underlying Twilio mechanism wasn't
+    // fully pinned down, so this sidesteps that uncertainty rather than
+    // depending on it. Best-effort, fire-and-forget — never blocks the
+    // response on this.
+    if (shopper) {
+      findTenantIdByNumber(toNumber)
+        .then((tenantId) => {
+          if (!tenantId) return; // shopper's target wasn't one of our own numbers (e.g. a competitor's)
+          return insertCallLog({
+            tenant_id: tenantId,
+            retell_call_id: callBody.sid,
+            caller_phone: fromNumber,
+            to_number: toNumber,
+            direction: 'inbound',
+            voice_engine: 'poc',
+            outcome: 'answered',
+            duration_seconds: 0,
+            is_internal_test: true,
+          });
+        })
+        .catch((err) => console.error('[call-loop] shopper internal-test call log failed (non-fatal)', err));
+    }
+
     res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status });
   } catch (err) {
     console.error('[call-loop] place-test-call failed', err);

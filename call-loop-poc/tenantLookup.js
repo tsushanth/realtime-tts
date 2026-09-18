@@ -81,6 +81,17 @@ export async function acquireTwilioGlobalToken(maxWaitMs = 30000) {
   return false;
 }
 
+// Used by /place-test-call's shopper branch to tag a call log as internal
+// test traffic when the shopper's target happens to be one of our own
+// tenants' real numbers (2026-09-17) — see that route's own comment for why
+// this writes the log directly rather than relying on the normal inbound-
+// call webhook path for it.
+export async function findTenantIdByNumber(number) {
+  if (!number) return null;
+  const rows = await pg('calldesk_phone_numbers', `number=eq.${encodeURIComponent(number)}&select=tenant_id&limit=1`);
+  return rows?.[0]?.tenant_id || null;
+}
+
 // Real call logging for poc-engine calls (2026-09-17): unlike Retell, which
 // notifies calldesktech of a call's lifecycle via its own webhook, THIS
 // engine owns the telephony lifecycle directly — nothing else logs a
