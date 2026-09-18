@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Resolves a real inbound Twilio call to the tenant that owns the dialed
 // number — the gap that made every phone call get the exact same static
 // config regardless of which number was called, and made per-tenant
@@ -303,4 +304,40 @@ async function attachKnowledgeBaseIds(nodes, agentId) {
   return nodes.map((n) =>
     n.type === 'knowledge_base' ? { ...n, params: { ...n.params, knowledgeBaseId } } : n
   );
+}
+
+// Same delivery contract as calldesktech's dispatchWebhookEvent (src/lib/webhooks.ts):
+// body {event, created_at, data}, X-CallDesk-Signature = sha256=HMAC(secret, body).
+export async function dispatchTenantWebhook(tenantId, event, data) {
+  if (!tenantId) return;
+  try {
+    const hooks = await pg('calldesk_webhooks', `select=id,url,secret&tenant_id=eq.${encodeURIComponent(tenantId)}&enabled=eq.true&events=cs.${encodeURIComponent(`{"${event}"}`)}`);
+    if (!hooks?.length) return;
+    const body = JSON.stringify({ event, created_at: new Date().toISOString(), data });
+    await Promise.all(hooks.map(async (wh) => {
+      try {
+        const res = await fetch(wh.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'CallDesk-Webhooks/1',
+            'X-CallDesk-Event': event,
+            'X-CallDesk-Signature': `sha256=${crypto.createHmac('sha256', wh.secret).update(body).digest('hex')}`,
+          },
+          body,
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) console.error(`[webhook] ${wh.id} ${event} -> HTTP ${res.status}`);
+      } catch (err) {
+        console.error(`[webhook] ${wh.id} ${event} failed: ${err.message}`);
+      }
+    }));
+  } catch (err) {
+    console.error('[webhook] dispatch failed', err);
+  }
+}
+
+export async function findTenantIdByCallSid(callSid) {
+  const rows = await pg('calldesk_call_logs', `select=tenant_id&retell_call_id=eq.${encodeURIComponent(callSid)}&limit=1`);
+  return rows?.[0]?.tenant_id || null;
 }

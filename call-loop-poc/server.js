@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -754,6 +754,9 @@ app.post('/twilio/dial-status', express.urlencoded({ extended: false }), async (
     const waitMs = Math.max(0, totalElapsedMs - answeredMs);
     updateCallLogByCallSid(CallSid, { transfer_status: transferStatus, transfer_wait_ms: Math.round(waitMs) })
       .catch((err) => console.error('[call-loop] transfer status update failed', err));
+    findTenantIdByCallSid(CallSid).then((tid) => dispatchTenantWebhook(tid, 'call.transferred', {
+      call_id: CallSid, tenant_id: tid, outcome: 'transferred', transfer_status: transferStatus, transfer_wait_ms: Math.round(waitMs),
+    })).catch(() => {});
   }
   res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
 });
@@ -1225,6 +1228,15 @@ twilioWss.on('connection', (twilioWs) => {
     session._tenantInterruptionSensitivity = resolved.interruptionSensitivity || null;
     if (resolved.tenantId) {
       session.direction = resolved.direction || 'inbound';
+      session._tenantId = resolved.tenantId;
+      dispatchTenantWebhook(resolved.tenantId, 'call.started', {
+        call_id: callSid,
+        tenant_id: resolved.tenantId,
+        caller_phone: resolved.fromNumber || 'unknown',
+        to_number: resolved.tenantNumber || null,
+        direction: session.direction,
+        started_at: new Date().toISOString(),
+      });
       insertCallLog({
         tenant_id: resolved.tenantId,
         retell_call_id: callSid,
@@ -1719,7 +1731,10 @@ class CallSession {
     const vmMode = this.flow?.globalSettings?.voicemailDetection;
     if ((vmMode === 'hangup' || vmMode === 'leave_message') && (this._vmUserTurns = (this._vmUserTurns || 0) + 1) <= 3 &&
         /leave (a|your) (message|name)|after the (beep|tone)|at the tone|not available (right now|to take)|(voice ?mail|mailbox)|can'?t take your call|record your message/i.test(userText)) {
-      this.onAnsweredBy('machine_end_transcript');
+      // A greeting saying "after the beep" ends BEFORE the beep; speaking a
+      // message now would talk over it and not be recorded, so wait it out.
+      if (vmMode === 'leave_message') setTimeout(() => this.onAnsweredBy('machine_end_transcript'), 3500);
+      else this.onAnsweredBy('machine_end_transcript');
       return;
     }
     this._reminderAttempts = 0; // real activity — the silence streak is over
@@ -4216,6 +4231,8 @@ class CallSession {
     const mode = gs.voicemailDetection;
     const isMachine = /^machine_end/.test(answeredBy) || answeredBy === 'fax';
     if (!isMachine || (mode !== 'hangup' && mode !== 'leave_message') || this._closing || this._closed) return;
+    if (this._vmHandled) return;
+    this._vmHandled = true;
     console.log(`[call-loop] answered_by=${answeredBy}, voicemailDetection=${mode}`);
     if (this.callSid) updateCallLogByCallSid(this.callSid, { outcome: 'voicemail' }).catch(() => {});
     const message = typeof gs.voicemailMessage === 'string' ? gs.voicemailMessage.trim() : '';
@@ -4290,11 +4307,32 @@ class CallSession {
       const transcript = this.history
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         .map((m) => ({ role: m.role, content: m.content }));
-      updateCallLogByCallSid(this.callSid, {
+      const finalize = updateCallLogByCallSid(this.callSid, {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
       }).catch((err) => console.error('[call-loop] call log finalize failed', err));
-      this._runPostCallAnalysis(transcript).catch((err) => console.error('[call-loop] post-call analysis failed', err));
+      const tenantId = this._tenantId;
+      const answeredBy = this.collectedData?.answered_by;
+      const machine = typeof answeredBy === 'string' && (/^machine_end/.test(answeredBy) || answeredBy === 'fax');
+      const endedAt = new Date();
+      Promise.all([finalize, this._runPostCallAnalysis(transcript).catch((err) => { console.error('[call-loop] post-call analysis failed', err); return null; })])
+        .then(([, analysis]) => {
+          if (!tenantId) return;
+          const data = {
+            call_id: this.callSid,
+            tenant_id: tenantId,
+            direction: this.direction || 'inbound',
+            duration_seconds: Math.round(voiceSeconds),
+            outcome: machine ? 'voicemail' : 'answered',
+            transcript,
+            analysis: analysis || null,
+            started_at: new Date(this._callStartedAt).toISOString(),
+            ended_at: endedAt.toISOString(),
+          };
+          dispatchTenantWebhook(tenantId, 'call.completed', data);
+          if (analysis) dispatchTenantWebhook(tenantId, 'call.analyzed', data);
+        })
+        .catch((err) => console.error('[call-loop] completion webhooks failed', err));
     }
   }
 }
@@ -4304,9 +4342,9 @@ class CallSession {
 // from the transcript into call_logs.analysis. Off unless fields are configured.
 CallSession.prototype._runPostCallAnalysis = async function (transcript) {
   const rawFields = this.flow?.globalSettings?.postCallAnalysis?.fields;
-  if (!anthropic || !this.callSid || !Array.isArray(rawFields) || transcript.length === 0) return;
+  if (!anthropic || !this.callSid || !Array.isArray(rawFields) || transcript.length === 0) return null;
   const fields = rawFields.filter((f) => f && typeof f.name === 'string' && f.name.trim() && ['text', 'boolean', 'number', 'enum'].includes(f.type) && (f.type !== 'enum' || (Array.isArray(f.options) && f.options.length)));
-  if (!fields.length) return;
+  if (!fields.length) return null;
   const properties = {};
   for (const f of fields) {
     const description = f.description || undefined;
@@ -4323,10 +4361,11 @@ CallSession.prototype._runPostCallAnalysis = async function (transcript) {
     messages: [{ role: 'user', content: `Call transcript:\n\"\"\"\n${text}\n\"\"\"` }],
   });
   const block = res.content.find((b) => b.type === 'tool_use');
-  if (!block) return;
+  if (!block) return null;
   const analysis = {};
   for (const f of fields) analysis[f.name] = block.input?.[f.name] ?? null;
   await updateCallLogByCallSid(this.callSid, { analysis });
+  return analysis;
 };
 
 server.listen(PORT, () => {
