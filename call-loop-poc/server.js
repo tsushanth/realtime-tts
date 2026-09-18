@@ -1975,6 +1975,18 @@ class CallSession {
       if (fillerTimer) clearTimeout(fillerTimer);
     }
 
+    // A transfer/goodbye step with a fixed message says exactly that, without the model.
+    const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye') && typeof node.params?.spokenMessage === 'string'
+      ? node.params.spokenMessage.trim() : '';
+    if (fixedLine && this.turnState?.id === turnId) {
+      this.history.push({ role: 'assistant', content: fixedLine });
+      console.log(`[call-loop] [call ${this.callSid || this.id}] turn ${turnId} assistant: "${fixedLine}"`);
+      this._speak(fixedLine, turnId, turnStartedAt);
+      this.turnState.llmDone = true;
+      this._maybeRetireTurn(turnId);
+      return;
+    }
+
     const systemPrompt = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
@@ -3227,7 +3239,7 @@ class CallSession {
         }
       );
       console.log(`[call-loop] transfer -> ${to} (Twilio responded HTTP ${res.status})`);
-      if (res.ok) this.cost.addBillableEvent('transfer');
+      if (res.ok) { this.cost.addBillableEvent('transfer'); this._transferInitiated = true; }
       // Twilio's own <Dial> now owns the call — our media-stream WS leg will
       // get a 'stop' event and close() normally once that dial ends. The
       // action= callback (not this WS) is what learns the real outcome.
@@ -4323,7 +4335,7 @@ class CallSession {
             tenant_id: tenantId,
             direction: this.direction || 'inbound',
             duration_seconds: Math.round(voiceSeconds),
-            outcome: machine ? 'voicemail' : 'answered',
+            outcome: machine ? 'voicemail' : this._transferInitiated ? 'transferred' : 'answered',
             transcript,
             analysis: analysis || null,
             started_at: new Date(this._callStartedAt).toISOString(),
