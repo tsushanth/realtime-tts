@@ -24,6 +24,54 @@ async function pg(table, query) {
   return res.json();
 }
 
+// Global CPS cap for the shared Twilio account (2026-09-17) — this is the
+// single choke point every Twilio call placement in this file goes through
+// (batch calling, single test calls, mystery-shopper), so it's the right
+// place to enforce the platform-wide limit: Twilio is ONE account shared
+// across every tenant, and this app runs multiple Fly machines, so an
+// in-memory counter wouldn't be safe. See calldesktech's
+// supabase/migrations/023_rate_limiters.sql for the shared atomic-token-
+// bucket implementation both repos call into. Conservative guessed
+// defaults, NOT verified against this account's actual approved CPS/
+// concurrency limits — tune via env once that's confirmed.
+const TWILIO_GLOBAL_CAPACITY = Number(process.env.TWILIO_GLOBAL_BURST ?? 4);
+const TWILIO_GLOBAL_REFILL_PER_SEC = Number(process.env.TWILIO_GLOBAL_CPS ?? 2);
+
+export async function acquireTwilioGlobalToken(maxWaitMs = 30000) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return true; // fail open, same reasoning as pg()
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/calldesk_try_acquire_token`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          p_key: 'twilio-global',
+          p_capacity: TWILIO_GLOBAL_CAPACITY,
+          p_refill_per_sec: TWILIO_GLOBAL_REFILL_PER_SEC,
+          p_cost: 1,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        console.error(`[rate-limiter] RPC failed: HTTP ${res.status} — failing open for this attempt`);
+        return true;
+      }
+      const acquired = await res.json();
+      if (acquired === true) return true;
+    } catch (err) {
+      console.error('[rate-limiter] RPC failed — failing open for this attempt', err);
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
 // Real call logging for poc-engine calls (2026-09-17): unlike Retell, which
 // notifies calldesktech of a call's lifecycle via its own webhook, THIS
 // engine owns the telephony lifecycle directly — nothing else logs a

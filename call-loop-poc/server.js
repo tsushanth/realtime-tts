@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -858,6 +858,15 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (record) {
       params.set('Record', 'true');
       params.set('RecordingChannels', 'dual');
+    }
+    // Global CPS cap (2026-09-17) — this is THE choke point for every real
+    // Twilio call this app places (batch calling, single test calls,
+    // mystery-shopper), so it's the right place to enforce the shared
+    // account's platform-wide limit rather than per-caller. See
+    // acquireTwilioGlobalToken's own comment in tenantLookup.js.
+    const gotToken = await acquireTwilioGlobalToken();
+    if (!gotToken) {
+      return res.status(429).json({ error: 'Rate limit wait timed out (platform-wide Twilio cap) — try again shortly' });
     }
     const callRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`, {
       method: 'POST',
