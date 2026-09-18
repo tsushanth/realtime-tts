@@ -59,6 +59,17 @@ wrangler is not logged in). A real call needs a staging copy of call-loop-poc (t
 no staging app; production `TTS_GATEWAY_WS_URL` is a process-wide Fly secret, so it
 cannot be pointed at Piper per call without rerouting live traffic).
 
+## Cloudflare edge hop for Piper (measured 2026-09-18, Fly sjc, 2 interleaved rounds)
+Deployed `worker-cf-edge-piper/` as `tts-edge-proxy-piper` (workers.dev; production
+`tts-edge-proxy` untouched). Warm first-audio p50: Piper direct 263/231ms, Piper via
+Cloudflare 277/303ms, Kokoro prod path 371/353ms. Fresh connection -> first audio: Piper
+direct 650-745ms, via Cloudflare 770-990ms, Kokoro prod 1000-1190ms. **From Fly sjc the
+Cloudflare hop made Piper slightly SLOWER** (+15-70ms warm, +100-150ms fresh): sjc already
+has a ~75ms direct path to Modal, so the proxy is pure overhead here (its earlier win was
+for a west-coast client). Note this run's direct RTT (73-77ms) was far better than runs 1-3
+(126-185ms), so absolute Piper numbers swing ~100-300ms with container placement/time of
+day; comparisons within one interleaved run are the trustworthy ones.
+
 ## Cost (Modal published rates: $0.0000131/core-s, $0.00000222/GiB-s)
 Always-on cpu=4, 2GiB: ~$0.205/hr = ~$4.91/day = ~$149/month (~$119 after the $30
 Starter credit). cpu=2 would be roughly half. Scale-to-zero: ~$0 idle, pay per use.
