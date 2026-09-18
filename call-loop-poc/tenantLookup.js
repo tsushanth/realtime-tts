@@ -270,6 +270,8 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     // "Call Recording" section) — defaults to recording ON (matches
     // Retell's own default), only skipped when explicitly turned off.
     recordingEnabled: tenants?.[0]?.settings?.recording_enabled !== 'false',
+    // Tenant-wide default for how easily a caller can barge in (high/medium/low/off) — see server.js _transcriptMeetsInterruptionThreshold for the full precedence.
+    interruptionSensitivity: ['high', 'medium', 'low', 'off'].includes(tenants?.[0]?.settings?.interruption_sensitivity) ? tenants[0].settings.interruption_sensitivity : undefined,
   };
 }
 

@@ -243,19 +243,59 @@ async function fetchMinimaxPcmOnce(text) {
   return Buffer.from(body.data.audio, 'hex');
 }
 
+// Wakes the TTS gateway's backend (RunPod serverless CPU worker) with a
+// throwaway one-word synth. Live call finding (2026-09-18): turn 1 had a
+// 15.9s TTS TTFB — the gateway WebSocket itself opens instantly (Fly), the
+// stall is the worker spinning up BEHIND it. An outbound call rings for
+// 5-30s and an inbound one has the answer webhook, so kicking this off at
+// dial/answer time overlaps the cold start with time the caller is already
+// waiting anyway. Throttled so a burst of calls doesn't stack pings.
+let lastGatewayWarmAt = 0;
+function warmTtsGateway(reason) {
+  if (Date.now() - lastGatewayWarmAt < 60_000) return;
+  lastGatewayWarmAt = Date.now();
+  const startedAt = Date.now();
+  const ws = new WebSocket(
+    TTS_GATEWAY_WS_URL,
+    TTS_GATEWAY_API_KEY ? { headers: { Authorization: `Bearer ${TTS_GATEWAY_API_KEY}` } } : undefined
+  );
+  const finish = (why) => {
+    clearTimeout(timer);
+    console.log(`[call-loop] tts gateway warm (${reason}) ${why} after ${Date.now() - startedAt}ms`);
+    try { ws.close(); } catch { /* already closed */ }
+  };
+  const timer = setTimeout(() => finish('timed out'), 45_000);
+  ws.on('open', () => ws.send(JSON.stringify({ type: 'synthesize', text: 'Hi.', voice: TTS_VOICE, speed: 1.0 })));
+  ws.on('message', (_data, isBinary) => { if (isBinary) finish('ready'); });
+  ws.on('error', (err) => finish(`failed (${err.message})`));
+}
+
+// Boot-time prewarm hits several providers at once and got 429s from
+// ElevenLabs/Cartesia (seen right after a deploy) — leaving the cold-start
+// warmup clip uncached, so the mask had nothing to play. Retry with backoff.
+async function withRetry(fn, attempts = 4) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); }
+    catch (err) {
+      if (i >= attempts) throw err;
+      await new Promise((r) => setTimeout(r, 1500 * i + Math.random() * 500));
+    }
+  }
+}
+
 async function prewarmFillerCache() {
   const jobs = [];
   for (const text of [...BACKCHANNEL_WORDS_DEFAULT, CALENDAR_LOOKUP_FILLER_PHRASE]) {
     if (ELEVENLABS_API_KEY) {
       jobs.push(
-        fetchElevenLabsPcmOnce(text)
+        withRetry(() => fetchElevenLabsPcmOnce(text))
           .then((buf) => fillerCache.set(`elevenlabs::${ELEVENLABS_VOICE_ID}::${text}`, buf))
           .catch((err) => console.warn(`[call-loop] filler prewarm (elevenlabs, "${text}") failed:`, err.message))
       );
     }
     if (CARTESIA_API_KEY && CARTESIA_VOICE_ID) {
       jobs.push(
-        fetchCartesiaPcmOnce(text)
+        withRetry(() => fetchCartesiaPcmOnce(text))
           .then((buf) => fillerCache.set(`cartesia::${CARTESIA_VOICE_ID}::${text}`, buf))
           .catch((err) => console.warn(`[call-loop] filler prewarm (cartesia, "${text}") failed:`, err.message))
       );
@@ -275,7 +315,7 @@ async function prewarmFillerCache() {
   // entries above, even though both happen to use the same provider here.
   if (ELEVENLABS_API_KEY) {
     jobs.push(
-      fetchElevenLabsPcmOnce(KOKORO_WARMUP_PHRASE)
+      withRetry(() => fetchElevenLabsPcmOnce(KOKORO_WARMUP_PHRASE))
         .then((buf) => fillerCache.set(`warmup::elevenlabs::${ELEVENLABS_VOICE_ID}::${KOKORO_WARMUP_PHRASE}`, buf))
         .catch((err) => console.warn('[call-loop] kokoro warmup line prewarm failed:', err.message))
     );
@@ -643,6 +683,7 @@ app.post('/twilio/voice', async (req, res) => {
         console.error('[call-loop] tenant lookup failed', err);
         return null;
       });
+      if (resolved && (resolved.ttsBackend || TTS_BACKEND) === 'kokoro') warmTtsGateway('answer');
       // Caller's number (From), carried through for the live-call registry's
       // display — the dialed tenant number (To) is the same for every call, the
       // caller's isn't.
@@ -887,6 +928,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     // mystery-shopper), so it's the right place to enforce the shared
     // account's platform-wide limit rather than per-caller. See
     // acquireTwilioGlobalToken's own comment in tenantLookup.js.
+    if (TTS_BACKEND === 'kokoro') warmTtsGateway('dial');
     const gotToken = await acquireTwilioGlobalToken();
     if (!gotToken) {
       return res.status(429).json({ error: 'Rate limit wait timed out (platform-wide Twilio cap) — try again shortly' });
@@ -1154,6 +1196,7 @@ twilioWss.on('connection', (twilioWs) => {
     // configures the agent, not a platform-enforced announcement — see
     // Retell's own privacy policy). Neither call blocks the greeting from
     // going out.
+    session._tenantInterruptionSensitivity = resolved.interruptionSensitivity || null;
     if (resolved.tenantId) {
       session.direction = resolved.direction || 'inbound';
       insertCallLog({
@@ -3672,6 +3715,22 @@ class CallSession {
         this._speakCached(warmupBuf, turnId).catch((err) => console.error('[call-loop] warmup send failed', err));
       }
     }
+    // The socket-open check above only catches a slow gateway CONNECTION.
+    // The real cold start (RunPod worker spin-up, 15.9s on a live call) sits
+    // behind an already-open socket, so also arm a timer: if no audio has
+    // arrived ~1.5s after the session's first synthesize, play the warmup
+    // clip anyway. Once per session, and only if nothing has spoken yet.
+    if (!this._warmupTimerArmed && !this._ttsAudioSeen) {
+      this._warmupTimerArmed = true;
+      setTimeout(() => {
+        if (this._ttsAudioSeen || this._warmupPlayed || this.activeTurn !== turnId) return;
+        const buf = fillerCache.get(`warmup::elevenlabs::${ELEVENLABS_VOICE_ID}::${KOKORO_WARMUP_PHRASE}`);
+        if (!buf) { console.warn('[call-loop] TTS slow to start but no warmup clip cached — dead air until the worker is ready'); return; }
+        this._warmupPlayed = true;
+        console.log(`[call-loop] turn ${turnId}: no TTS audio after 1.5s, playing warmup line`);
+        this._speakCached(buf, turnId).catch((err) => console.error('[call-loop] warmup send failed', err));
+      }, 1500);
+    }
     const dispatch = () => {
       if (this.activeTurn !== turnId) {
         console.log(`[call-loop] turn ${turnId} dropped before dispatch — activeTurn is now ${this.activeTurn} (superseded while waiting for TTS socket)`);
@@ -3955,6 +4014,7 @@ class CallSession {
       // PCM16LE mono 24kHz chunk immediately following a chunk_meta message.
       if (this.clientWs.readyState === WebSocket.OPEN) {
         if (this.turnState) this.turnState.startedSpeaking = true; // see _onUserTurnComplete
+        this._ttsAudioSeen = true;
         this.clientWs.send(data, { binary: true });
       }
       return;
@@ -3996,7 +4056,17 @@ class CallSession {
   // responsive but filters out exactly this class of short acknowledgment.
   _transcriptMeetsInterruptionThreshold(text) {
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
-    const sensitivity = node?.params?.interruptionSensitivity || 'medium';
+    const gs = this.flow?.globalSettings || {};
+    // "Allow interruptions" was only ever a prompt hint ("complete your
+    // sentences") — never enforced here, so unchecking it still let the
+    // caller cut the agent off. Enforce it.
+    if (gs.allowInterruptions === false) return false;
+    // Precedence: this step's own setting > the flow's default > the
+    // tenant's default (Settings) > platform default (medium). 'off' = never
+    // interrupt (greetings, disclosures, payment prompts).
+    const sensitivity =
+      node?.params?.interruptionSensitivity || gs.interruptionSensitivity || this._tenantInterruptionSensitivity || 'medium';
+    if (sensitivity === 'off') return false;
     const minWords = sensitivity === 'low' ? 3 : sensitivity === 'medium' ? 2 : 1;
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     return wordCount >= minWords;
