@@ -254,3 +254,26 @@ its own source comment promises (dropped that one callback).
 **Next:** synthesize audio from the resulting checkpoint and listen (same
 step Matcha-TTS went through), then decide whether to scale this to the full
 22,011-sample corpus the same way `full_finetune.py` did for Matcha-TTS.
+
+## Real CPU inference benchmarks (2026-09-17)
+
+Both fine-tuned checkpoints (Matcha-TTS's full 22,011-sample run, Piper's
+279-sample pilot) benchmarked on a plain 4-vCPU Modal container - no GPU at
+all - with the same 5 test sentences used throughout this whole
+investigation. Real measured numbers, not the stock-voice Jetson numbers
+from earlier in this file:
+
+| Model | RTF | Speed vs. realtime | Model load |
+|---|---|---|---|
+| Matcha-TTS (full corpus) | 0.53-0.61 | 1.6-1.9x | ~3.1s |
+| Piper (pilot) | 0.10-0.11 | ~9-10x | ~1.7s |
+
+Both are genuinely fast enough for real-time serving on plain CPU, with
+Piper meaningfully faster (expected - it's purpose-built for CPU/ONNX
+serving, where Matcha-TTS's win was specifically "not LSTM-based, so at
+least *viable* on CPU/compiler backends" rather than "optimized for CPU").
+This is real, direct evidence for the always-on-CPU-instance path discussed
+throughout this file as an alternative to paying for a warm GPU floor to
+avoid the ~17.5s cold start - both models could plausibly serve from a
+cheap, always-on CPU box today, pending real load-testing under concurrent
+calls (not measured here - this is single-request latency only).
