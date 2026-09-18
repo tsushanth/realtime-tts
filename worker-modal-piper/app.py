@@ -40,7 +40,7 @@ CPU = 4
 MEMORY_MB = 2048
 ORT_INTRA_THREADS = 2   # set from bench results, see README.md in this directory
 MAX_CONCURRENT_CALLS = 8
-MIN_CONTAINERS = 0      # 0 = scale to zero (no standing cost). Set to 1 for always-on.
+MIN_CONTAINERS = 0      # 0 = scale to zero (no standing cost, ~9s cold start). 1 = always-on (~$0.2/hr for cpu=4, 2GiB).
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -147,6 +147,11 @@ def web():
     from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 
     engine = PiperEngine(ORT_INTRA_THREADS)
+    # First inference after process start pays one-time costs (onnxruntime memory
+    # arenas / kernel selection, espeak data load). Pay them here, at container
+    # start, not on the first caller's first sentence.
+    for _ids in engine.sentences(TEST_TEXTS[0]):
+        engine.synth(_ids)
     pool = ThreadPoolExecutor(max_workers=CPU)
     AUTH_TOKEN = os.environ["TTS_WS_AUTH_TOKEN"]
     web_app = FastAPI()

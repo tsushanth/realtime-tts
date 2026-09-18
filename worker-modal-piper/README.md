@@ -29,14 +29,39 @@ Warm request, ~2.6-4.3s sentences:
 - Network round trip in the test topology: **260ms** (measured with an error reply that
   does no synthesis). Test client and container are in different regions, so this is a
   property of the test, not the service. `*.modal.run` is us-east-1 (see DECISIONS.md).
-- Cold (scale-to-zero, one measurement): **~3.0s** connect -> first audio, vs ~17.5s
-  for Kokoro/T4.
+- Cold start, scale-to-zero (with startup warm-up): **9.4s** to first audio (8.9s waiting
+  for the container, then ~0.5s). n=1 genuinely cold sample. An earlier "~3.0s" figure
+  was WRONG: that container had just been exercised and was not cold. Note the container
+  also survived a 150s idle gap despite `scaledown_window=120`, so "cold" is not
+  reliably reproducible by waiting.
+- Always-on (`min_containers=1`): no cold outlier in 3 probes across 200s gaps and 6
+  fresh Fly connections; connect -> first audio ~1.1-1.3s from Fly sjc.
 
 Baselines from DECISIONS.md: Kokoro/T4 production ~408ms warm per turn, ~970ms first
-turn; ElevenLabs ~170-430ms. **Honest read:** warm server-side latency is the same
-ballpark as Kokoro's GPU, not a clear win. The wins are cold start (~3s vs ~17.5s),
-no GPU floor, and working `stop`. A true end-to-end number (Fly -> Cloudflare -> Modal)
-has NOT been measured; it needs a real call routed here.
+turn; ElevenLabs ~170-430ms.
+
+## End-to-end from the real Fly machine (sjc), read-only client via `fly ssh`
+Script: piped over stdin to `call-loop-poc`'s machine, using its own env token (never
+printed). Piper is measured DIRECT to Modal (no Cloudflare hop); Kokoro is the production
+path (Fly -> Cloudflare -> Modal) as a same-vantage control. Three runs:
+| | Piper direct, warm p50 | Kokoro prod path, warm p50 | Kokoro cold |
+|---|---|---|---|
+| run 1 | 399ms | 372ms | 14.7s |
+| run 2 | 388ms | 288ms | - |
+| run 3 (Piper always-on) | 538ms | 310ms | 51.6s |
+Piper's own message RTT from Fly was 126-129ms in runs 1-2 and 185ms in run 3, so
+placement/network variance between runs (~100-150ms) is as large as the Piper-vs-Kokoro
+gap. Honest read: **warm latency is roughly comparable to Kokoro-on-T4, possibly
+slightly slower; not a win.** The wins are cold start (9s scale-to-zero, none always-on,
+vs 15-52s observed for Kokoro), no GPU floor, and working `stop`. The Cloudflare hop for
+Piper is UNMEASURED (edge copy in `../worker-cf-edge-piper/` is written but not deployed:
+wrangler is not logged in). A real call needs a staging copy of call-loop-poc (there is
+no staging app; production `TTS_GATEWAY_WS_URL` is a process-wide Fly secret, so it
+cannot be pointed at Piper per call without rerouting live traffic).
+
+## Cost (Modal published rates: $0.0000131/core-s, $0.00000222/GiB-s)
+Always-on cpu=4, 2GiB: ~$0.205/hr = ~$4.91/day = ~$149/month (~$119 after the $30
+Starter credit). cpu=2 would be roughly half. Scale-to-zero: ~$0 idle, pay per use.
 
 ## Capacity (`modal run app.py::bench_main`, cpu=4, single container)
 | ORT threads | 1 caller p50 | 4 callers p50 | audio-s per wall-s @ 4 / 12 callers |
@@ -56,8 +81,9 @@ espeak-ng thread safety: 200 concurrent phonemizations, 0 mismatches, no crash. 
 does not prove it is safe, so phonemization stays serialized under a lock (0.5ms cost).
 
 ## Open decisions (not made)
-1. `MIN_CONTAINERS`: 0 = no standing cost, ~3s worst-case first call; 1 = always warm,
-   continuous billing. CPU cost not verified here - check Modal billing after enabling.
+1. `MIN_CONTAINERS`: 0 = no standing cost, ~9s cold start; 1 = always warm, ~$149/month
+   at cpu=4 (see Cost). call-loop-poc has a cold-start mask ("warmup line" after 1.5s)
+   and dial-time pre-warm for the Kokoro backend that would need equivalent handling here.
 2. Pin the container region to match where call-loop-poc runs (Modal `region=`), to cut RTT.
 3. Route a real call here (change `TTS_GATEWAY_WS_URL`, or the Cloudflare edge worker
    origin) for the first true end-to-end latency measurement.
