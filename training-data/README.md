@@ -277,3 +277,28 @@ throughout this file as an alternative to paying for a warm GPU floor to
 avoid the ~17.5s cold start - both models could plausibly serve from a
 cheap, always-on CPU box today, pending real load-testing under concurrent
 calls (not measured here - this is single-request latency only).
+
+## Kokoro shortcut: real limitation found, not just undertraining (2026-09-17)
+
+Scaled the Kokoro pilot from 1 to 15 epochs to test whether the pure-noise
+output (see below) was simply the from-scratch style/prosody encoders
+needing more warmup time, as hypothesized after the first listen. **That
+hypothesis turned out to be incomplete.** Validation loss did improve
+(0.716 vs. ~0.79-0.81 at 1 epoch) but generated durations were essentially
+unchanged (58.0s vs. 57.4s, 67.2s vs. 67.0s, etc. for the same sentences
+that should run 3-6s) despite 15x more training. Something more structural
+than "needs more steps" is producing pathologically long durations under
+this shortcut config - a plausible candidate (not yet verified) is a
+hop-length/frame-rate mismatch between our config and what Kokoro's
+duration predictor was actually trained against, since duration is
+predicted in frames and converted to samples via `hop_length`.
+
+**Given this is a real, unresolved structural issue** rather than something
+more training time fixes, and given Matcha-TTS and Piper are both already
+validated end to end with good quality *and* strong CPU performance (see
+above), further Kokoro debugging is being deprioritized rather than sinking
+more GPU-hours chasing this specific issue. The DIY StyleTTS2 shortcut path
+remains documented and working up through checkpoint training and
+inference - if revisited, start by comparing our config's `hop_length`/
+`sr`/frame-rate settings against Kokoro's original training config before
+assuming more epochs will help.

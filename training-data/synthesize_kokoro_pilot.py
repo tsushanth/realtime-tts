@@ -80,9 +80,9 @@ pretrained_model: "/opt/kikiri-src/training/kokoro_base.pth"
 load_only_params: true
 second_stage_load_pretrained: true
 batch_size: 2
-epochs: 1
+epochs: 15
 epochs_1st: 1
-epochs_2nd: 1
+epochs_2nd: 15
 save_freq: 1
 data_params:
   train_data: "/pilot/train_list.txt"
@@ -179,7 +179,7 @@ slmadv_params:
 """
 
 
-@app.function(gpu="T4", timeout=1800)
+@app.function(gpu="T4", timeout=3 * 3600)  # 15 epochs at ~7-9 min each
 def train_and_synthesize():
     import base64
     import os
@@ -252,7 +252,11 @@ def train_and_synthesize():
     _ = [model[key].to(device) for key in model]
     _ = [model[key].eval() for key in model]
 
-    ckpt_path = "/output/kokoro_pilot/epoch_2nd_00000.pth"
+    import glob
+    ckpts = sorted(glob.glob("/output/kokoro_pilot/epoch_2nd_*.pth"))
+    if not ckpts:
+        raise RuntimeError("No epoch_2nd_*.pth checkpoint found in /output/kokoro_pilot")
+    ckpt_path = ckpts[-1]  # highest epoch number = most trained
     print(f"Loading checkpoint: {ckpt_path}")
     model, _, _, _ = load_checkpoint(model, None, ckpt_path, load_only_params=True)
     _ = [model[key].eval() for key in model]
