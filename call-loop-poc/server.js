@@ -764,6 +764,21 @@ app.post('/twilio/dial-status', express.urlencoded({ extended: false }), async (
 // can't be handed to the client. calldesktech's own /api/calls/[id]/recording
 // route calls this rather than exposing Twilio creds to calldesktech either.
 // Same admin-secret guard as /place-test-call/-purchase-number.
+// Async AMD result from Twilio (set up in /place-test-call). Result may
+// arrive before the session has its flow, so it is stashed and replayed.
+const pendingAnsweredBy = new Map(); // callSid -> answeredBy
+app.post('/twilio/amd-status', express.urlencoded({ extended: false }), (req, res) => {
+  const { CallSid, AnsweredBy } = req.body || {};
+  res.sendStatus(204);
+  if (!CallSid || !AnsweredBy) return;
+  const session = [...activeSessions.values()].find((s) => s.callSid === CallSid);
+  if (session?.flow) session.onAnsweredBy(AnsweredBy);
+  else {
+    pendingAnsweredBy.set(CallSid, AnsweredBy);
+    setTimeout(() => pendingAnsweredBy.delete(CallSid), 60000).unref?.();
+  }
+});
+
 app.get('/recording-audio', async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
@@ -922,6 +937,17 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (record) {
       params.set('Record', 'true');
       params.set('RecordingChannels', 'dual');
+    }
+    // Voicemail detection is opt-in per flow (globalSettings.voicemailDetection).
+    if (direction === 'outbound' && routeAs && !shopper) {
+      const resolvedOut = await resolveInboundCall(routeAs, 'outbound').catch(() => null);
+      const vm = resolvedOut?.flow?.globalSettings?.voicemailDetection;
+      if (vm === 'hangup' || vm === 'leave_message') {
+        params.set('MachineDetection', 'DetectMessageEnd');
+        params.set('AsyncAmd', 'true');
+        params.set('AsyncAmdStatusCallback', `https://${req.headers.host}/twilio/amd-status`);
+        params.set('AsyncAmdStatusCallbackMethod', 'POST');
+      }
     }
     // Global CPS cap (2026-09-17) — this is THE choke point for every real
     // Twilio call this app places (batch calling, single test calls,
@@ -1539,6 +1565,15 @@ class CallSession {
         // when the resolved mode differs from what's already connected
         // (i.e. never, for the common case of a flow that doesn't set this
         // at all) — zero behavior change unless a tenant explicitly opts in.
+        if (this.callSid && pendingAnsweredBy.has(this.callSid)) {
+      const ab = pendingAnsweredBy.get(this.callSid);
+      pendingAnsweredBy.delete(this.callSid);
+      setImmediate(() => this.onAnsweredBy(ab));
+    }
+    const maxSec = Number(this.flow.globalSettings?.maxCallDurationSec) || 0;
+        if (maxSec > 0 && !this._maxDurationTimer) {
+          this._maxDurationTimer = setTimeout(() => this._endCallGracefully(`maxCallDurationSec ${maxSec}s reached`), maxSec * 1000);
+        }
         const requestedThreshold = TRANSCRIPTION_MODE_THRESHOLDS[this.flow.globalSettings?.transcriptionMode];
         if (requestedThreshold && requestedThreshold !== this._deepgramEotThreshold) {
           console.log(`[call-loop] transcription mode "${this.flow.globalSettings.transcriptionMode}" requested — reconnecting Deepgram (eot_threshold ${this._deepgramEotThreshold} -> ${requestedThreshold})`);
@@ -1625,7 +1660,9 @@ class CallSession {
       this._pendingResponseTimer = null;
     }
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
-    const waitMs = Math.max(0, Math.min(10000, Number(node?.params?.responseWaitTimeMs) || 0));
+    const resp = Number(this.flow?.globalSettings?.responsiveness);
+    const globalWaitMs = Number.isFinite(resp) && resp >= 0 && resp <= 1 && this.flow?.globalSettings?.responsiveness != null ? Math.round((1 - resp) * 1500) : 0;
+    const waitMs = Math.max(0, Math.min(10000, Number(node?.params?.responseWaitTimeMs) || globalWaitMs));
     if (waitMs <= 0) {
       this._onUserTurnComplete(text);
       return;
@@ -1647,11 +1684,22 @@ class CallSession {
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
     const freqSec = Number(node?.params?.reminderMessageFrequencySec) || 0;
-    if (freqSec <= 0 || this._closing) return;
-    if ((this._reminderAttempts || 0) >= REMINDER_MAX_ATTEMPTS) return;
+    const endSec = Number(this.flow?.globalSettings?.endCallAfterSilenceSec) || 0;
+    if (this._closing) return;
+    if (endSec > 0 && !this._silenceSince) this._silenceSince = Date.now();
+    const remindOk = freqSec > 0 && (this._reminderAttempts || 0) < REMINDER_MAX_ATTEMPTS;
+    if (!remindOk && endSec <= 0) return;
+    const endLeftMs = endSec > 0 ? Math.max(0, endSec * 1000 - (Date.now() - this._silenceSince)) : Infinity;
+    const delayMs = remindOk ? Math.min(freqSec * 1000, endLeftMs) : endLeftMs;
     this._reminderTimer = setTimeout(() => {
       this._reminderTimer = null;
       if (this._closing || this.activeTurn !== 0) return; // caller/assistant already talking again
+      if (endSec > 0 && this._silenceSince && Date.now() - this._silenceSince >= endSec * 1000 - 50) {
+        console.log(`[call-loop] caller silent for ${endSec}s (endCallAfterSilenceSec) — hanging up`);
+        this._closing = true;
+        this.close();
+        return;
+      }
       this._reminderAttempts = (this._reminderAttempts || 0) + 1;
       console.log(`[call-loop] caller silent for ${freqSec}s — sending reminder (attempt ${this._reminderAttempts})`);
       this.history.push({
@@ -1662,11 +1710,12 @@ class CallSession {
       this.activeTurn = turnId;
       this.turnState = { id: turnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
       this._generateTurn(turnId, Date.now(), { isNodeEntry: false });
-    }, freqSec * 1000);
+    }, delayMs);
   }
 
   async _onUserTurnComplete(userText) {
     this._reminderAttempts = 0; // real activity — the silence streak is over
+    this._silenceSince = null;
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
     // Cycle-2 mystery-shopper finding (see MYSTERY_SHOPPER_DECISIONS.md):
     // close() only disconnects once the audio queue drains, but nothing
@@ -1841,6 +1890,21 @@ class CallSession {
   // this.systemPrompt every other turn uses, and the LLM signals when to
   // advance by calling the transition_flow tool rather than us guessing from
   // the model's prose.
+  // globalSettings.fillerWords (true | string[]): one short phrase if a tool
+  // node is still running after 1.2s and nothing has been spoken this turn.
+  _startToolFiller(node, turnId) {
+    const fw = this.flow?.globalSettings?.fillerWords;
+    if (!fw || !['function', 'code', 'mcp', 'knowledge_base'].includes(node?.type)) return null;
+    const phrases = Array.isArray(fw) ? fw.filter((p) => typeof p === 'string' && p.trim()) : ['One moment.', 'Let me check that.'];
+    if (phrases.length === 0) return null;
+    return setTimeout(() => {
+      if (this.activeTurn !== turnId || this._closing || this.turnState?.id !== turnId || this.turnState.startedSpeaking) return;
+      const phrase = phrases[Math.floor(Math.random() * phrases.length)].trim();
+      console.log(`[call-loop] turn ${turnId} tool filler: "${phrase}"`);
+      this._speak(phrase, turnId, Date.now());
+    }, 1200);
+  }
+
   async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set() } = {}) {
     if (!anthropic) {
       this.send({ type: 'error', message: 'ANTHROPIC_API_KEY not configured' });
@@ -1849,6 +1913,9 @@ class CallSession {
     }
 
     const node = this.flow ? this.flowNodesById.get(this.currentNodeId) : null;
+    if (node?.params?.model && !VALID_LLM_MODELS.has(node.params.model)) {
+      console.warn(`[call-loop] node "${node.id}" params.model "${node.params.model}" not supported — using ${this.llmModel}`);
+    }
     if (this.turnState?.id === turnId) {
       this.turnState.nodeType = node?.type || null;
       // Whose audio is (about to be) playing — see _resolveInterruptionSensitivity.
@@ -1874,20 +1941,15 @@ class CallSession {
     // the caller asking a follow-up before transitioning away) would re-run
     // the webhook, which is wrong — it's a one-time side effect of arriving
     // at the node, not a per-turn one.
-    if (node?.type === 'function' && isNodeEntry) {
-      await this._executeFunctionNode(node);
-    }
-    if (node?.type === 'knowledge_base' && isNodeEntry) {
-      await this._executeKnowledgeBaseNode(node);
-    }
-    if (node?.type === 'sms' && isNodeEntry) {
-      await this._executeSmsNode(node);
-    }
-    if (node?.type === 'code' && isNodeEntry) {
-      await this._executeCodeNode(node);
-    }
-    if (node?.type === 'mcp' && isNodeEntry) {
-      await this._executeMcpNode(node);
+    const fillerTimer = isNodeEntry ? this._startToolFiller(node, turnId) : null;
+    try {
+      if (node?.type === 'function' && isNodeEntry) await this._executeFunctionNode(node);
+      if (node?.type === 'knowledge_base' && isNodeEntry) await this._executeKnowledgeBaseNode(node);
+      if (node?.type === 'sms' && isNodeEntry) await this._executeSmsNode(node);
+      if (node?.type === 'code' && isNodeEntry) await this._executeCodeNode(node);
+      if (node?.type === 'mcp' && isNodeEntry) await this._executeMcpNode(node);
+    } finally {
+      if (fillerTimer) clearTimeout(fillerTimer);
     }
 
     const systemPrompt = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
@@ -2052,7 +2114,7 @@ class CallSession {
 
     try {
       const stream = anthropic.messages.stream({
-        model: this.llmModel,
+        model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
         system: systemPrompt,
         max_tokens: 300,
         messages: this.history,
@@ -4113,6 +4175,7 @@ class CallSession {
     if (this.activeTurn === 0 && this.clientWs.isSpeaking?.() !== true) return;
     console.log(`[call-loop] barge-in — cancelling turn ${this.activeTurn}`);
     this.activeTurn = 0; // no active turn is allowed to speak until the next final transcript
+    this._silenceSince = null;
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; } // caller is clearly not silent
     if (this._httpTtsAborts) {
       for (const controller of this._httpTtsAborts) controller.abort();
@@ -4125,9 +4188,49 @@ class CallSession {
     this.send({ type: 'barge_in' });
   }
 
+  // Waits (up to 10s) for the agent to finish its sentence, then hangs up.
+  _endCallGracefully(reason, waited = 0) {
+    if (this._closed) return;
+    this._closing = true;
+    if (this.activeTurn === 0 && this.clientWs.isSpeaking?.() !== true || waited >= 10000) {
+      console.log(`[call-loop] ending call: ${reason}`);
+      this.close();
+      return;
+    }
+    setTimeout(() => this._endCallGracefully(reason, waited + 500), 500);
+  }
+
+  // Twilio async AMD result (see /twilio/amd-status). Acts only when the
+  // flow opted in via globalSettings.voicemailDetection.
+  onAnsweredBy(answeredBy) {
+    this.collectedData.answered_by = answeredBy;
+    const gs = this.flow?.globalSettings || {};
+    const mode = gs.voicemailDetection;
+    const isMachine = /^machine_end/.test(answeredBy) || answeredBy === 'fax';
+    if (!isMachine || (mode !== 'hangup' && mode !== 'leave_message') || this._closing || this._closed) return;
+    console.log(`[call-loop] answered_by=${answeredBy}, voicemailDetection=${mode}`);
+    if (this.callSid) updateCallLogByCallSid(this.callSid, { outcome: 'voicemail' }).catch(() => {});
+    const message = typeof gs.voicemailMessage === 'string' ? gs.voicemailMessage.trim() : '';
+    if (mode !== 'leave_message' || !message || answeredBy === 'fax') {
+      this._bargeIn();
+      this._endCallGracefully('voicemail detected');
+      return;
+    }
+    this._bargeIn();
+    if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
+    this._closing = true; // no new LLM turns; retiring this goodbye turn hangs up
+    this.history.push({ role: 'assistant', content: message });
+    const turnId = ++this.turnSeq;
+    this.activeTurn = turnId;
+    this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false, nodeType: 'goodbye' };
+    this._speak(message, turnId, Date.now());
+    setTimeout(() => this._endCallGracefully('voicemail message timeout', 0), 60000);
+  }
+
   close() {
     if (this._closed) return;
     this._closed = true;
+    if (this._maxDurationTimer) { clearTimeout(this._maxDurationTimer); this._maxDurationTimer = null; }
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
     if (this._pendingResponseTimer) { clearTimeout(this._pendingResponseTimer); this._pendingResponseTimer = null; }
     this.dgConnection?.close();
