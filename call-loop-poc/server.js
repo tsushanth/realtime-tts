@@ -2509,7 +2509,11 @@ class CallSession {
     prompt +=
       'Keep replies to 1-2 short sentences unless asked for more detail. Never use markdown, ' +
       'bullet points, or emoji — this is spoken audio. Always say at least one sentence out ' +
-      'loud on every turn, even if you are also calling a tool — never respond with nothing.';
+      'loud on every turn, even if you are also calling a tool — never respond with nothing. ' +
+      'When reading a phone number back to the caller (e.g. to confirm a callback number), say ' +
+      'the digits individually, grouped naturally (e.g. "four two five, six two eight, four ' +
+      'eight eight seven") — never as one large number ("four billion..."); the same goes for ' +
+      'any other long digit string like a confirmation code.';
     return prompt;
   }
 
@@ -2626,7 +2630,15 @@ class CallSession {
     // These node types act as soon as the flow enters them (run a webhook,
     // look something up, say goodbye and hang up, transfer the call) rather
     // than waiting for the caller to speak first.
-    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp']);
+    // subflow_ref belongs here too — like logic_split/press_digit, it never
+    // waits on the caller; it immediately redirects into the subflow's own
+    // start node (see _enterSubflow). Missing this meant a fresh arrival at
+    // a subflow_ref node just sat on it waiting for the caller to speak,
+    // and the caller's next turn then got generated directly against the
+    // bare subflow_ref node (no prompt, only its OWN edges) instead of ever
+    // entering the subflow — found via a real test call where a
+    // subflow_ref was skipped over entirely.
+    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref']);
     // An 'extraction' node normally waits for the caller's next utterance —
     // correct when it still needs to ask something the caller hasn't
     // answered yet, since the current turn's own text already asked it
