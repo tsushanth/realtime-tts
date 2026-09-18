@@ -1851,6 +1851,8 @@ class CallSession {
     const node = this.flow ? this.flowNodesById.get(this.currentNodeId) : null;
     if (this.turnState?.id === turnId) {
       this.turnState.nodeType = node?.type || null;
+      // Whose audio is (about to be) playing — see _resolveInterruptionSensitivity.
+      this._audioNode = node || null;
       this.turnState.nodeParams = node?.params || null;
     }
 
@@ -4073,15 +4075,21 @@ class CallSession {
   // default (Settings) > platform default (medium). 'off' = never interrupt
   // (greetings, disclosures, payment prompts). "Allow interruptions" was only
   // ever a prompt hint ("complete your sentences") — enforced here too.
-  _resolveInterruptionSensitivity(node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null) {
+  // Judged by the node whose audio is still PLAYING, not the current node:
+  // a flow transition lands as soon as TTS synthesis finishes, seconds before
+  // the caller has heard the audio, so an 'off' step's tail was being judged
+  // by the NEXT node's (default) sensitivity. Live call finding 2026-09-18.
+  _resolveInterruptionSensitivity(node) {
+    if (node === undefined) {
+      node = (this.clientWs.isSpeaking?.() && this._audioNode) || (this.flow ? this.flowNodesById?.get(this.currentNodeId) : null);
+    }
     const gs = this.flow?.globalSettings || {};
     if (gs.allowInterruptions === false) return 'off';
     return node?.params?.interruptionSensitivity || gs.interruptionSensitivity || this._tenantInterruptionSensitivity || 'medium';
   }
 
   _transcriptMeetsInterruptionThreshold(text) {
-    const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
-    const sensitivity = this._resolveInterruptionSensitivity(node);
+    const sensitivity = this._resolveInterruptionSensitivity();
     if (sensitivity === 'off') return false;
     const minWords = sensitivity === 'low' ? 3 : sensitivity === 'medium' ? 2 : 1;
     const wordCount = text.split(/\s+/).filter(Boolean).length;
