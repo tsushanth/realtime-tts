@@ -1714,6 +1714,14 @@ class CallSession {
   }
 
   async _onUserTurnComplete(userText) {
+    // Voicemail greetings are recognisable from their words well before Twilio's
+    // async machine detection reports, and this adds no delay for live callers.
+    const vmMode = this.flow?.globalSettings?.voicemailDetection;
+    if ((vmMode === 'hangup' || vmMode === 'leave_message') && (this._vmUserTurns = (this._vmUserTurns || 0) + 1) <= 3 &&
+        /leave (a|your) (message|name)|after the (beep|tone)|at the tone|not available (right now|to take)|(voice ?mail|mailbox)|can'?t take your call|record your message/i.test(userText)) {
+      this.onAnsweredBy('machine_end_transcript');
+      return;
+    }
     this._reminderAttempts = 0; // real activity — the silence streak is over
     this._silenceSince = null;
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
