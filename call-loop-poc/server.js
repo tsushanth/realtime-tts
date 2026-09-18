@@ -3045,9 +3045,33 @@ class CallSession {
       });
       hostFetchHandle.consume((fn) => context.setProp(context.global, '__hostFetch', fn));
 
+      // QuickJS has no Intl, so local time in an IANA zone (DST-aware) is computed on the host.
+      const hostLocalTimeHandle = context.newFunction('__hostLocalTime', (tzHandle) => {
+        const tz = context.getString(tzHandle);
+        try {
+          const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+            .formatToParts(new Date()).reduce((o, p) => { o[p.type] = p.value; return o; }, {});
+          const hour = Number(parts.hour) % 24;
+          const minute = Number(parts.minute);
+          return context.newString(JSON.stringify({
+            timezone: tz, hour, minute, hourDecimal: hour + minute / 60,
+            weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday),
+            date: `${parts.year}-${parts.month}-${parts.day}`,
+          }));
+        } catch (err) {
+          return context.newString(JSON.stringify({ error: `invalid timezone "${tz}"` }));
+        }
+      });
+      hostLocalTimeHandle.consume((fn) => context.setProp(context.global, '__hostLocalTime', fn));
+
       const wrapped =
         `function fetch(url, options) {\n` +
         `  return JSON.parse(__hostFetch(String(url), JSON.stringify(options || {})));\n` +
+        `}\n` +
+        `function localTime(tz) {\n` +
+        `  const r = JSON.parse(__hostLocalTime(String(tz || 'UTC')));\n` +
+        `  if (r.error) throw new Error(r.error);\n` +
+        `  return r;\n` +
         `}\n` +
         `(() => {\n${code}\n})();`;
 
