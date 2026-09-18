@@ -5,11 +5,24 @@ primary_region = "sjc"
 
 [env]
   ORT_INTRA_THREADS = "4"
-  HOST = "::"
   PORT = "8080"
+  MAX_CONNECTIONS = "4"
+  USAGE_REPORT_URL = "https://api.readaloudai.org/admin/usage/report"
 
-# Deliberately NO [http_service]/[[services]]: private only, reached over Fly's
-# 6PN network as ws://piper-tts-sjc.internal:8080/tts from other apps in this org.
+# Public endpoint (wss://piper-tts-sjc.fly.dev/tts) for the ReadAloud API: clients get a
+# short-lived session token from api.readaloudai.org/tts/authorize {engine:"piper"} and
+# connect directly. Also still reachable privately via piper-tts-sjc.internal:8080 with the
+# static AUTH_TOKEN. Never auto-stop: a stopped machine would reintroduce cold starts.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 4
+    hard_limit = 6
 
 [[vm]]
   size = "shared-cpu-4x"

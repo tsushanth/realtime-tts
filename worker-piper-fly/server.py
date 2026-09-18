@@ -22,7 +22,7 @@ Other env: MODEL_PATH (default /models/full_ft.onnx; the .json config must sit b
 ORT_INTRA_THREADS (default 2), MAX_CONNECTIONS (default 4: beyond it new sockets get a
 clean "at capacity" error + close 1013 instead of everyone slowing to a crawl - see the
 capacity numbers in worker-modal-piper/README.md), MAX_TEXT_CHARS (default 5000), PORT (default 8080),
-HOST (default "::" - dual-stack/IPv6, which Fly private networking needs; use 0.0.0.0 on IPv4-only hosts).
+HOST (unset => bind both 0.0.0.0 and :: explicitly; set to force a single address).
 """
 import asyncio
 import base64
@@ -226,4 +226,24 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=os.environ.get("HOST", "::"), port=int(os.environ.get("PORT", "8080")), log_level="info")
+    import socket
+    port = int(os.environ.get("PORT", "8080"))
+    host = os.environ.get("HOST")
+    if host:
+        uvicorn.run(app, host=host, port=port, log_level="info")
+    else:
+        # Fly's edge proxy dials the machine over IPv4 while 6PN private traffic is IPv6, and
+        # a lone "::" socket only served the latter there (proxy: "instance refused connection").
+        # So bind one socket per stack explicitly.
+        socks = []
+        for fam, addr in ((socket.AF_INET, "0.0.0.0"), (socket.AF_INET6, "::")):
+            try:
+                sk = socket.socket(fam, socket.SOCK_STREAM)
+                sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if fam == socket.AF_INET6:
+                    sk.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                sk.bind((addr, port))
+                socks.append(sk)
+            except OSError as e:
+                print(f"skip {addr}: {e}")
+        uvicorn.Server(uvicorn.Config(app, log_level="info")).run(sockets=socks)
