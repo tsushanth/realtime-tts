@@ -341,3 +341,17 @@ export async function findTenantIdByCallSid(callSid) {
   const rows = await pg('calldesk_call_logs', `select=tenant_id&retell_call_id=eq.${encodeURIComponent(callSid)}&limit=1`);
   return rows?.[0]?.tenant_id || null;
 }
+
+// Latest published poc-engine version of another agent in the SAME tenant, as a runnable flow (for the agent_transfer node).
+export async function resolveAgentFlow(agentId, tenantId) {
+  const agents = await pg('calldesk_agents', `id=eq.${encodeURIComponent(agentId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&select=id`);
+  if (!agents?.length) return null;
+  const versions = await pg('calldesk_agent_versions', `agent_id=eq.${encodeURIComponent(agentId)}&voice_engine=eq.poc&flow_id=not.is.null&order=version_number.desc&limit=1&select=flow_id,agent_id`);
+  const version = versions?.[0];
+  if (!version) return null;
+  const flows = await pg('calldesk_conversation_flows', `id=eq.${version.flow_id}&select=nodes,global_settings`);
+  const flowRow = flows?.[0];
+  if (!flowRow?.nodes?.length) return null;
+  const nodes = await attachKnowledgeBaseIds(flowRow.nodes, version.agent_id);
+  return { flow: { nodes, startNodeId: flowRow.global_settings?.startNodeId || nodes[0].id, globalSettings: flowRow.global_settings || {} } };
+}

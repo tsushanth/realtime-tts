@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid } from './tenantLookup.js';
+import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -283,8 +283,38 @@ async function withRetry(fn, attempts = 4) {
   }
 }
 
+// The default self-hosted voice had no cached filler clips, so backchanneling
+// silently did nothing on it. Synthesize them once per boot through the gateway.
+function synthKokoroPcm(text) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(TTS_GATEWAY_WS_URL, TTS_GATEWAY_API_KEY ? { headers: { Authorization: `Bearer ${TTS_GATEWAY_API_KEY}` } } : undefined);
+    const chunks = [];
+    const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('timed out')); }, 60_000);
+    const done = (err) => { clearTimeout(timer); try { ws.close(); } catch {} err ? reject(err) : resolve(Buffer.concat(chunks)); };
+    ws.on('open', () => ws.send(JSON.stringify({ type: 'synthesize', text, voice: TTS_VOICE, speed: 1.0 })));
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) { chunks.push(Buffer.from(data)); return; }
+      try { const m = JSON.parse(data.toString()); if (m.type === 'done') done(); else if (m.type === 'error') done(new Error(m.message || 'tts error')); } catch { /* ignore */ }
+    });
+    ws.on('error', (err) => done(err));
+  });
+}
+
+async function prewarmKokoroFillers() {
+  for (const text of BACKCHANNEL_WORDS_DEFAULT) {
+    try {
+      const buf = await withRetry(() => synthKokoroPcm(text), 2);
+      if (buf.length > 0) fillerCache.set(`kokoro::${TTS_VOICE}::${text}`, buf);
+    } catch (err) {
+      console.warn(`[call-loop] filler prewarm (kokoro, "${text}") failed:`, err.message);
+    }
+  }
+  console.log('[call-loop] kokoro filler clips cached');
+}
+
 async function prewarmFillerCache() {
   const jobs = [];
+  if (TTS_BACKEND === 'kokoro') jobs.push(prewarmKokoroFillers());
   for (const text of [...BACKCHANNEL_WORDS_DEFAULT, CALENDAR_LOOKUP_FILLER_PHRASE]) {
     if (ELEVENLABS_API_KEY) {
       jobs.push(
@@ -1567,6 +1597,10 @@ class CallSession {
         this.flow = msg.flow;
         this.flowNodesById = new Map(this.flow.nodes.map((n) => [n.id, n]));
         this.currentNodeId = msg.flow.startNodeId || this.flow.nodes[0].id;
+        const bcs = this.flow.globalSettings || {};
+        if (typeof bcs.backchannelEnabled === 'boolean') this.backchannelEnabled = bcs.backchannelEnabled;
+        if (typeof bcs.backchannelFrequency === 'number' && bcs.backchannelFrequency >= 0 && bcs.backchannelFrequency <= 1) this.backchannelFrequency = bcs.backchannelFrequency;
+        if (typeof bcs.backchannelDelayMs === 'number' && bcs.backchannelDelayMs > 0) this.backchannelDelayMs = bcs.backchannelDelayMs;
         console.log(`[call-loop] flow set — ${this.flow.nodes.length} nodes, starting at "${this.currentNodeId}"`);
         this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
         // Transcription Mode reconnect — this arrives essentially
@@ -1976,7 +2010,7 @@ class CallSession {
     }
 
     // A transfer/goodbye step with a fixed message says exactly that, without the model.
-    const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye') && typeof node.params?.spokenMessage === 'string'
+    const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye' || node?.type === 'agent_transfer') && typeof node.params?.spokenMessage === 'string'
       ? node.params.spokenMessage.trim() : '';
     if (fixedLine && this.turnState?.id === turnId) {
       this.history.push({ role: 'assistant', content: fixedLine });
@@ -2271,7 +2305,7 @@ class CallSession {
         // generic but real spoken line is always safe here, unlike
         // vocalizing whatever a flow author happened to write as the
         // node's prompt.
-        if (!assistantText && (node?.type === 'goodbye' || node?.type === 'transfer')) {
+        if (!assistantText && (node?.type === 'goodbye' || node?.type === 'transfer' || node?.type === 'agent_transfer')) {
           console.warn(`[call-loop] node "${node.id}" (${node.type}) produced no speech — falling back to a generic line`);
           assistantText = node.type === 'goodbye'
             ? 'Thank you so much for calling. Have a great day!'
@@ -2801,7 +2835,7 @@ class CallSession {
     // bare subflow_ref node (no prompt, only its OWN edges) instead of ever
     // entering the subflow — found via a real test call where a
     // subflow_ref was skipped over entirely.
-    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref']);
+    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref', 'agent_transfer']);
     // An 'extraction' node normally waits for the caller's next utterance —
     // correct when it still needs to ask something the caller hasn't
     // answered yet, since the current turn's own text already asked it
@@ -3230,6 +3264,28 @@ class CallSession {
   // phone call (TwilioCallAdapter exposes .callSid; a browser call has
   // nothing to redirect) and only with Twilio credentials configured.
   // Otherwise falls back to hanging up rather than silently doing nothing.
+  // Hands the live call to another agent: same call, history and collected
+  // data; only the flow (and its global settings) is swapped. Voice/TTS backend
+  // stay the same as the agent that answered.
+  async _executeAgentTransfer(params) {
+    const targetId = params?.targetAgentId;
+    this._agentTransferCount = (this._agentTransferCount || 0) + 1;
+    const target = this._agentTransferCount <= 3 && this._tenantId && targetId ? await resolveAgentFlow(targetId, this._tenantId) : null;
+    if (!target) {
+      console.warn(`[call-loop] agent transfer to ${targetId || 'unset'} not possible (count=${this._agentTransferCount}, tenant=${this._tenantId || 'none'}) — hanging up`);
+      this.close();
+      return;
+    }
+    console.log(`[call-loop] agent transfer -> agent ${targetId}, ${target.flow.nodes.length} nodes, starting at "${target.flow.startNodeId}"`);
+    this.collectedData.transferred_from_node = this.currentNodeId;
+    this.flow = target.flow;
+    this.flowNodesById = new Map(this.flow.nodes.map((n) => [n.id, n]));
+    this._subflowStack = [];
+    this.currentNodeId = this.flow.startNodeId;
+    this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
+    this._runNodeTurn(this.currentNodeId);
+  }
+
   async _executeTransfer(params) {
     const to = params?.transferTo;
     const callSid = this.clientWs?.callSid;
@@ -3658,6 +3714,17 @@ class CallSession {
         console.log('[call-loop] flow reached goodbye node — hanging up');
         this._closing = true;
         this.close();
+        return;
+      }
+      if (this.turnState.nodeType === 'agent_transfer') {
+        const params = this.turnState.nodeParams;
+        const startedWaiting = Date.now();
+        const go = () => {
+          if (this._closed) return;
+          if (this.clientWs?.isSpeaking?.() && Date.now() - startedWaiting < 12000) { setTimeout(go, 100); return; }
+          this._executeAgentTransfer(params).catch((err) => console.error('[call-loop] agent transfer failed', err));
+        };
+        go();
         return;
       }
       if (this.turnState.nodeType === 'transfer') {
