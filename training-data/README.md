@@ -340,3 +340,11 @@ blocking runs were cancelled when the local client process died.
 
 Samples: `piper_full_output/sample_0.wav` .. `sample_4.wav`. Not yet
 ear-verified at the time of writing.
+
+## Licence-clean candidate: Piper's LJ Speech checkpoint (synthesize_ljspeech.py)
+
+`rhasspy/piper-checkpoints` en_US/ljspeech/medium: trained from scratch on the public-domain
+LJ Speech dataset (model card: "public domain"), same medium architecture/22.05 kHz as our
+Lessac-based model. CPU ONNX RTF 0.048-0.068 on 4 cores - same speed as the current voice.
+Compare by ear with `compare_lj_vs_current.sh`. Unverified: the checkpoint repo's own licence
+metadata reads "mit"; confirm terms before relying on it commercially.
