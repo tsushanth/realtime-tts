@@ -327,7 +327,7 @@ export async function dispatchTenantWebhook(tenantId, event, data) {
           body,
           signal: AbortSignal.timeout(8000),
         });
-        if (!res.ok) console.error(`[webhook] ${wh.id} ${event} -> HTTP ${res.status}`);
+        console.log(`[webhook] ${wh.id} ${event} -> HTTP ${res.status}`);
       } catch (err) {
         console.error(`[webhook] ${wh.id} ${event} failed: ${err.message}`);
       }
