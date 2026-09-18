@@ -1209,6 +1209,15 @@ class CallSession {
     this.flowNodesById = null;
     this.currentNodeId = null;
     this.collectedData = {};
+    // Subflows (2026-09-18) — real subroutine semantics, not a visual-only
+    // grouping: entering a 'subflow_ref' node swaps flowNodesById to that
+    // subflow's own (embedded-at-publish-time) node map and pushes a frame
+    // here; reaching one of the subflow's own terminal nodes (no edges of
+    // its own) pops back to the parent's node map and hands the model the
+    // ORIGINAL subflow_ref node's real edges to choose from, exactly as if
+    // the subflow_ref node itself were the one transitioning. See
+    // _enterSubflow/_buildTransitionTool/_applyTransition.
+    this._subflowStack = [];
     // Set via the {"type":"context"} message's `stripeCustomerId` field —
     // present only when this call belongs to a real billed tenant (browser
     // demo calls and flow-MCP test calls have none, and simply don't get
@@ -1730,6 +1739,13 @@ class CallSession {
       await this._executePressDigit(entryNode);
       return;
     }
+    // subflow_ref never talks or calls the LLM itself either — it's a pure
+    // redirect into the referenced subflow's own node graph, same shape as
+    // logic_split above. See _enterSubflow.
+    if (entryNode && entryNode.type === 'subflow_ref') {
+      await this._enterSubflow(entryNode);
+      return;
+    }
     this.currentNodeId = nodeId;
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
@@ -1828,8 +1844,15 @@ class CallSession {
     // turn (function/knowledge_base/goodbye/transfer auto-advance, or the
     // greeting reached via a real transition) keeps the tool as normal.
     const tools = [];
-    if (node && node.edges.length > 0 && !suppressTransitionTool) {
-      tools.push(this._buildTransitionTool(node));
+    // A node reached inside a subflow with no edges of its own is a
+    // subflow-internal terminal, not a dead end — the valid "next" targets
+    // are the original subflow_ref node's real edges back in the parent flow.
+    const inSubflowAtTerminal = node && node.edges.length === 0 && this._subflowStack.length > 0;
+    if (node && !suppressTransitionTool && (node.edges.length > 0 || inSubflowAtTerminal)) {
+      const toolNode = inSubflowAtTerminal
+        ? this._subflowStack[this._subflowStack.length - 1].returnNode
+        : node;
+      tools.push(this._buildTransitionTool(toolNode));
     }
     // Real bug found via mystery-shopper testing: this.collectedData was
     // only ever populated as a side effect of transition_flow, meaning a
@@ -2490,6 +2513,32 @@ class CallSession {
     return prompt;
   }
 
+  // subflow_ref is a pure redirect: it embeds a snapshot of another flow's
+  // nodes (taken at publish time) and swaps them in as the active node map,
+  // then immediately runs the subflow's own start node. Reaching one of the
+  // subflow's own terminal (zero-edge) nodes pops back to the parent scope
+  // and exposes the ORIGINAL subflow_ref node's real edges as the transition
+  // tool (see the tool-attachment gate below and the fallback in
+  // _applyTransition) — so a subflow can have multiple distinct exit paths,
+  // not just one synthetic "return".
+  async _enterSubflow(node) {
+    let subflowNodes;
+    try {
+      subflowNodes = JSON.parse(node.params?.subflowNodes || '[]');
+    } catch {
+      console.error(`[call-loop] subflow_ref "${node.id}" has invalid embedded subflowNodes JSON`);
+      return;
+    }
+    const startId = node.params?.subflowStartNodeId;
+    if (!Array.isArray(subflowNodes) || subflowNodes.length === 0 || !startId) {
+      console.error(`[call-loop] subflow_ref "${node.id}" has no embedded nodes — skipping`);
+      return;
+    }
+    this._subflowStack.push({ parentNodesById: this.flowNodesById, returnNode: node });
+    this.flowNodesById = new Map(subflowNodes.map((n) => [n.id, n]));
+    await this._runNodeTurn(startId);
+  }
+
   // The current node's real edges become the tool's actual enum of valid
   // targets (and their natural-language conditions become the tool's
   // description) — the model picks one instead of us parsing free text to
@@ -2530,7 +2579,15 @@ class CallSession {
     if (extracted && typeof extracted === 'object') {
       Object.assign(this.collectedData, extracted);
     }
-    const nextNode = this.flowNodesById.get(next_node_id);
+    let nextNode = this.flowNodesById.get(next_node_id);
+    // Not found in the current (possibly subflow-local) scope — if we're
+    // inside a subflow, the model was actually choosing one of the return
+    // node's real parent-flow edges, so pop back out and look again there.
+    if (!nextNode && this._subflowStack.length > 0) {
+      const frame = this._subflowStack.pop();
+      this.flowNodesById = frame.parentNodesById;
+      nextNode = this.flowNodesById.get(next_node_id);
+    }
     if (!nextNode) {
       console.warn(`[call-loop] flow transition to unknown node "${next_node_id}" — ignoring`);
       return;
