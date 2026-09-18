@@ -25,6 +25,8 @@ const AUTO_MODE = process.env.GATEWAY_MODE === "auto";
 const USE_RUNPOD = !AUTO_MODE && runpodConfigured();
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
 const MODAL_WORKER_URL = process.env.MODAL_READALOUD_WS_URL;
+// Optional CPU Piper engine (worker-piper-fly). Opt-in per request via {engine:"piper"}; unset => engine unavailable.
+const PIPER_WORKER_URL = process.env.PIPER_WORKER_URL;
 const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
 // Separate from ADMIN_SECRET on purpose — this only lets the holder report
 // usage numbers for a key it already has the ID for, not manage keys at all.
@@ -123,7 +125,17 @@ const server = http.createServer(async (req, res) => {
   // to /admin/usage/report after synthesis, not by this endpoint.
   if (url.pathname === "/tts/authorize" && req.method === "POST") {
     const body = await readBody(req);
-    const { key } = body ? JSON.parse(body) : {};
+    const { key, engine } = body ? JSON.parse(body) : {};
+    if (engine !== undefined && engine !== "kokoro" && engine !== "piper") {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: 'engine must be "kokoro" or "piper"' }));
+      return;
+    }
+    if (engine === "piper" && !PIPER_WORKER_URL) {
+      res.writeHead(501, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "piper engine not available" }));
+      return;
+    }
     if (!keys.isValidKey(key)) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "invalid or missing API key" }));
@@ -139,7 +151,7 @@ const server = http.createServer(async (req, res) => {
     }
     const id = keys.getIdForKey(key);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ token: keys.createSessionToken(id), url: MODAL_WORKER_URL }));
+    res.end(JSON.stringify({ token: keys.createSessionToken(id), url: engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL }));
     return;
   }
 

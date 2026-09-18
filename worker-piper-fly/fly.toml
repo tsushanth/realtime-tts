@@ -1,0 +1,16 @@
+app = "piper-tts-sjc"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  ORT_INTRA_THREADS = "4"
+  HOST = "::"
+  PORT = "8080"
+
+# Deliberately NO [http_service]/[[services]]: private only, reached over Fly's
+# 6PN network as ws://piper-tts-sjc.internal:8080/tts from other apps in this org.
+
+[[vm]]
+  size = "shared-cpu-4x"
+  memory = "2gb"

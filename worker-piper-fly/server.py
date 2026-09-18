@@ -12,15 +12,27 @@ changing TTS_GATEWAY_WS_URL only:
 See worker-modal-piper/README.md for the design reasons (24kHz resample, working `stop`,
 phonemization serialized, inference off the event loop).
 
-Env: AUTH_TOKEN (required), MODEL_PATH (default /models/full_ft.onnx; the .json config
-must sit beside it), ORT_INTRA_THREADS (default 2), PORT (default 8080),
+Auth (at least one of these two must be set):
+  SESSION_SECRET  - HMAC secret shared with gateway/keys.js. Accepts the short-lived session
+                    tokens api.readaloudai.org's /tts/authorize issues; completed requests are
+                    billed len(text) chars via USAGE_REPORT_URL/USAGE_REPORT_SECRET, exactly
+                    like worker-modal-readaloud/app.py (cancelled requests are not billed).
+  AUTH_TOKEN      - static bearer for private internal clients (call-loop-poc); not metered.
+Other env: MODEL_PATH (default /models/full_ft.onnx; the .json config must sit beside it),
+ORT_INTRA_THREADS (default 2), MAX_CONNECTIONS (default 4: beyond it new sockets get a
+clean "at capacity" error + close 1013 instead of everyone slowing to a crawl - see the
+capacity numbers in worker-modal-piper/README.md), MAX_TEXT_CHARS (default 5000), PORT (default 8080),
 HOST (default "::" - dual-stack/IPv6, which Fly private networking needs; use 0.0.0.0 on IPv4-only hosts).
 """
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import os
 import threading
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 
@@ -32,7 +44,14 @@ from scipy.signal import resample_poly
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/models/full_ft.onnx")
 ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
-AUTH_TOKEN = os.environ["AUTH_TOKEN"]
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
+SESSION_SECRET = os.environ.get("SESSION_SECRET")
+USAGE_REPORT_URL = os.environ.get("USAGE_REPORT_URL", "https://api.readaloudai.org/admin/usage/report")
+USAGE_REPORT_SECRET = os.environ.get("USAGE_REPORT_SECRET")
+MAX_CONNECTIONS = int(os.environ.get("MAX_CONNECTIONS", "4"))
+MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "5000"))
+if not (AUTH_TOKEN or SESSION_SECRET):
+    raise SystemExit("Set AUTH_TOKEN and/or SESSION_SECRET - refusing to start an unauthenticated TTS server")
 OUT_SR = 24000
 WARMUP_TEXT = "Thanks for calling, I can help you with that. Let me pull up your account details right now."
 
@@ -72,21 +91,69 @@ for _ids in engine.sentences(WARMUP_TEXT):  # pay first-inference costs at start
     engine.synth(_ids)
 pool = ThreadPoolExecutor(max_workers=os.cpu_count() or 2)
 app = FastAPI()
+_active = 0  # open, authenticated sockets (single event loop, so plain int is safe)
+
+
+def verify_session_token(token: str):
+    """Mirrors gateway/keys.js verifySessionToken exactly (HMAC-SHA256 over the base64url
+    payload string, unpadded base64url). Returns the API-key id, or None if invalid/expired."""
+    if not SESSION_SECRET or not token:
+        return None
+    try:
+        payload_b64, sig_b64 = token.split(".")
+    except ValueError:
+        return None
+    expected = base64.urlsafe_b64encode(
+        hmac.new(SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256).digest()
+    ).decode().rstrip("=")
+    if not hmac.compare_digest(sig_b64, expected):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
+    except Exception:
+        return None
+    if "id" not in payload or "exp" not in payload or time.time() * 1000 > payload["exp"]:
+        return None
+    return payload["id"]
+
+
+def report_usage(key_id: str, chars: int):
+    """Best-effort, off the request path (runs in the thread pool): a failed report must never
+    affect the caller's session. Same endpoint/payload the Modal worker uses."""
+    if not key_id or not chars or not USAGE_REPORT_SECRET:
+        return
+    try:
+        req = urllib.request.Request(
+            USAGE_REPORT_URL, data=json.dumps({"id": key_id, "chars": chars}).encode(),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {USAGE_REPORT_SECRET}"},
+            method="POST")
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception as e:  # noqa: BLE001
+        print(f"usage report failed for key {key_id}: {e}")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model": "piper-full-ft", "device": "cpu"}
+    return {"status": "healthy", "model": "piper-full-ft", "device": "cpu", "active": _active, "max": MAX_CONNECTIONS}
 
 
 @app.websocket("/tts")
 async def tts(ws: WebSocket, token: str = Query(default="")):
+    global _active
     auth_header = ws.headers.get("authorization", "")
     bearer = auth_header.removeprefix("Bearer ") if auth_header.startswith("Bearer ") else ""
-    if not (token == AUTH_TOKEN or bearer == AUTH_TOKEN):
+    presented = token or bearer
+    key_id = verify_session_token(presented)  # metered API-key session, or None
+    static_ok = bool(AUTH_TOKEN) and bool(presented) and hmac.compare_digest(presented.encode(), AUTH_TOKEN.encode())
+    if key_id is None and not static_ok:
         await ws.close(code=4401)
         return
     await ws.accept()
+    if _active >= MAX_CONNECTIONS:
+        await ws.send_json({"type": "error", "message": "at capacity, retry shortly"})
+        await ws.close(code=1013)
+        return
+    _active += 1
 
     loop = asyncio.get_running_loop()
     inbox: asyncio.Queue = asyncio.Queue()
@@ -127,6 +194,9 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
             cancel.clear()
             text = msg.get("text", "")
             speed = float(msg.get("speed", 1.0))
+            if len(text) > MAX_TEXT_CHARS:
+                await ws.send_json({"type": "error", "message": f"text too long (max {MAX_TEXT_CHARS} chars)"})
+                continue
             try:
                 sentences = await loop.run_in_executor(pool, engine.sentences, text)
                 cancelled = False
@@ -143,12 +213,15 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
                     })
                     await ws.send_bytes(pcm)
                 await ws.send_json({"type": "cancelled" if cancelled else "done"})
+                if key_id and not cancelled:  # cancelled requests are not billed (matches the Modal worker)
+                    pool.submit(report_usage, key_id, len(text))
             except WebSocketDisconnect:
                 break
             except Exception as e:  # noqa: BLE001 - report to client, keep the process alive
                 await ws.send_json({"type": "error", "message": str(e)})
     finally:
         reader_task.cancel()
+        _active -= 1
 
 
 if __name__ == "__main__":
