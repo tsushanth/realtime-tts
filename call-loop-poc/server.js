@@ -3637,7 +3637,15 @@ class CallSession {
         return;
       }
       if (this.turnState.nodeType === 'transfer') {
-        this._executeTransfer(this.turnState.nodeParams);
+        // The redirect replaces the audio stream, so let queued speech finish first.
+        const params = this.turnState.nodeParams;
+        const startedWaiting = Date.now();
+        const go = () => {
+          if (this._closed) return;
+          if (this.clientWs?.isSpeaking?.() && Date.now() - startedWaiting < 12000) { setTimeout(go, 100); return; }
+          setTimeout(() => { if (!this._closed) this._executeTransfer(params); }, 400);
+        };
+        go();
         return;
       }
       // _paymentAwaitingResume guards against re-triggering the SAME <Pay>
