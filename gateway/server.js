@@ -162,8 +162,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/admin/usage/report" && req.method === "POST") {
     if (!requireUsageReportSecret(req, res)) return;
     const body = await readBody(req);
-    const { id, chars } = body ? JSON.parse(body) : {};
-    const ok = keys.recordUsageById(id, chars);
+    const { id, chars, engine } = body ? JSON.parse(body) : {};
+    const ok = keys.recordUsageById(id, chars, engine);
     res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify({ recorded: ok }));
     return;

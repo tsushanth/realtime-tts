@@ -124,7 +124,7 @@ def report_usage(key_id: str, chars: int):
         return
     try:
         req = urllib.request.Request(
-            USAGE_REPORT_URL, data=json.dumps({"id": key_id, "chars": chars}).encode(),
+            USAGE_REPORT_URL, data=json.dumps({"id": key_id, "chars": chars, "engine": "piper"}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {USAGE_REPORT_SECRET}"},
             method="POST")
         urllib.request.urlopen(req, timeout=5).read()

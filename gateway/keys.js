@@ -198,9 +198,16 @@ export function listKeys() {
   }));
 }
 
-function applyUsage(entry, chars) {
+// `engine` is "piper" for the cheaper CPU engine, anything else counts as the default.
+// usageCharsSinceLastReport stays the TOTAL across engines (so a billing job that has not
+// learned about engines yet still bills every char, at the standard rate - never free);
+// usagePiperCharsSinceLastReport is the Piper subset so it can be priced lower.
+function applyUsage(entry, chars, engine) {
   if (entry.billingEnabled) {
     entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
+    if (engine === "piper") {
+      entry.usagePiperCharsSinceLastReport = (entry.usagePiperCharsSinceLastReport || 0) + chars;
+    }
     return;
   }
   // Free-tier usage isn't billed and never reported to Stripe — tracked
@@ -222,12 +229,12 @@ export function recordUsage(key, chars) {
 // used by the /admin/usage/report callback from Modal (see
 // worker-modal-readaloud/app.py), which only ever sees the ID embedded in a
 // session token, never the raw key itself.
-export function recordUsageById(id, chars) {
+export function recordUsageById(id, chars, engine) {
   if (!id || !chars) return false;
   const keys = load();
   const entry = keys.find((k) => k.id === id && !k.revoked);
   if (!entry) return false;
-  applyUsage(entry, chars);
+  applyUsage(entry, chars, engine);
   save(keys);
   return true;
 }
@@ -278,8 +285,8 @@ export function drainUsage() {
   const keys = load();
   const result = keys
     .filter((k) => k.usageCharsSinceLastReport > 0)
-    .map((k) => ({ id: k.id, chars: k.usageCharsSinceLastReport }));
-  for (const k of keys) k.usageCharsSinceLastReport = 0;
+    .map((k) => ({ id: k.id, chars: k.usageCharsSinceLastReport, piperChars: k.usagePiperCharsSinceLastReport || 0 }));
+  for (const k of keys) { k.usageCharsSinceLastReport = 0; k.usagePiperCharsSinceLastReport = 0; }
   save(keys);
   return result;
 }
