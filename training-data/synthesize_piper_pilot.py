@@ -142,21 +142,36 @@ def train_and_synthesize():
     # reuse the config written during training (same voice/phoneme config).
     shutil.copy("/pilot/config.json", onnx_path + ".json")
 
+    # Only the base `onnxruntime` package is installed in this image (never
+    # onnxruntime-gpu), so this inference step is already pure CPU even
+    # though the earlier Lightning training step above ran on the T4 - a
+    # real, not assumed, CPU benchmark for the trained voice.
+    import time
     from piper import PiperVoice
+    t0 = time.time()
     voice = PiperVoice.load(onnx_path)
+    print(f"Model load time: {time.time() - t0:.2f}s")
+
     results = []
     for i, text in enumerate(TEST_SENTENCES):
-        audio_chunks = list(voice.synthesize(text))
         import numpy as np
         import soundfile as sf
+
+        t0 = time.time()
+        audio_chunks = list(voice.synthesize(text))
         pcm = np.concatenate([c.audio_int16_array for c in audio_chunks])
+        synth_time = time.time() - t0
+
+        audio_sec = len(pcm) / voice.config.sample_rate
+        rtf = synth_time / audio_sec
+        print(f"[{i}] chars={len(text):3d}  synth={synth_time*1000:7.1f}ms  audio={audio_sec:.2f}s  RTF={rtf:.3f}")
+
         wav_path = f"/tmp/piper_pilot_sample_{i}.wav"
         sf.write(wav_path, pcm, voice.config.sample_rate, "PCM_16")
         import base64
         with open(wav_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        results.append({"text": text, "audio_b64": b64})
-        print(f"Synthesized [{i}]: {text}")
+        results.append({"text": text, "audio_b64": b64, "synth_ms": synth_time * 1000, "audio_sec": audio_sec, "rtf": rtf})
 
     return results
 
@@ -173,4 +188,4 @@ def main():
         path = os.path.join(out_dir, f"sample_{i}.wav")
         with open(path, "wb") as f:
             f.write(base64.b64decode(r["audio_b64"]))
-        print(f"Saved: {path}  -  \"{r['text']}\"")
+        print(f"Saved: {path}  -  RTF={r['rtf']:.3f}  ({r['synth_ms']:.0f}ms for {r['audio_sec']:.2f}s audio)  \"{r['text']}\"")
