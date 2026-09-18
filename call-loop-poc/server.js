@@ -4286,9 +4286,40 @@ class CallSession {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
       }).catch((err) => console.error('[call-loop] call log finalize failed', err));
+      this._runPostCallAnalysis(transcript).catch((err) => console.error('[call-loop] post-call analysis failed', err));
     }
   }
 }
+
+
+// Post-call analysis: extract the flow's globalSettings.postCallAnalysis.fields
+// from the transcript into call_logs.analysis. Off unless fields are configured.
+CallSession.prototype._runPostCallAnalysis = async function (transcript) {
+  const rawFields = this.flow?.globalSettings?.postCallAnalysis?.fields;
+  if (!anthropic || !this.callSid || !Array.isArray(rawFields) || transcript.length === 0) return;
+  const fields = rawFields.filter((f) => f && typeof f.name === 'string' && f.name.trim() && ['text', 'boolean', 'number', 'enum'].includes(f.type) && (f.type !== 'enum' || (Array.isArray(f.options) && f.options.length)));
+  if (!fields.length) return;
+  const properties = {};
+  for (const f of fields) {
+    const description = f.description || undefined;
+    if (f.type === 'enum') properties[f.name] = { type: ['string', 'null'], enum: [...f.options, null], description };
+    else properties[f.name] = { type: [f.type === 'text' ? 'string' : f.type, 'null'], description };
+  }
+  const text = transcript.map((m) => `${m.role === 'user' ? 'Caller' : 'Agent'}: ${m.content}`).join('\n');
+  const res = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    system: 'You extract structured data from a phone call transcript. Return a value for every requested field, or null when the transcript does not support one. Never guess.',
+    tools: [{ name: 'record_analysis', description: 'Record the extracted fields', input_schema: { type: 'object', properties, required: fields.map((f) => f.name) } }],
+    tool_choice: { type: 'tool', name: 'record_analysis' },
+    messages: [{ role: 'user', content: `Call transcript:\n\"\"\"\n${text}\n\"\"\"` }],
+  });
+  const block = res.content.find((b) => b.type === 'tool_use');
+  if (!block) return;
+  const analysis = {};
+  for (const f of fields) analysis[f.name] = block.input?.[f.name] ?? null;
+  await updateCallLogByCallSid(this.callSid, { analysis });
+};
 
 server.listen(PORT, () => {
   console.log(`[call-loop] listening on http://localhost:${PORT}`);
