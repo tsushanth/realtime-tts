@@ -694,6 +694,29 @@ app.post('/twilio/recording-status', express.urlencoded({ extended: false }), as
   res.sendStatus(200);
 });
 
+// The action= callback on _executeTransfer's <Dial> — Twilio POSTs here once
+// the transfer leg resolves, with the real outcome (DialCallStatus) and, if
+// answered, DialCallDuration (the answered portion only, not ring time).
+// startedAt (round-tripped through the action URL's own query string, not
+// server-side state) plus the request's own arrival time gives total
+// elapsed; subtracting the answered duration leaves the ring/wait portion.
+// Twilio expects a TwiML response here to know what to do next — the
+// transfer is already over either way, so this just ends the call cleanly.
+const DIAL_STATUS_MAP = { completed: 'answered', busy: 'busy', 'no-answer': 'no_answer', failed: 'failed', canceled: 'canceled' };
+app.post('/twilio/dial-status', express.urlencoded({ extended: false }), async (req, res) => {
+  const { CallSid, DialCallStatus, DialCallDuration } = req.body || {};
+  const startedAt = Number(req.query.startedAt);
+  if (CallSid && DialCallStatus && Number.isFinite(startedAt)) {
+    const transferStatus = DIAL_STATUS_MAP[DialCallStatus] || DialCallStatus;
+    const answeredMs = (Number(DialCallDuration) || 0) * 1000;
+    const totalElapsedMs = Date.now() - startedAt;
+    const waitMs = Math.max(0, totalElapsedMs - answeredMs);
+    updateCallLogByCallSid(CallSid, { transfer_status: transferStatus, transfer_wait_ms: Math.round(waitMs) })
+      .catch((err) => console.error('[call-loop] transfer status update failed', err));
+  }
+  res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+});
+
 // Proxies a Twilio recording's audio bytes through this server's own Twilio
 // credentials — the browser can't fetch a Twilio recording URL directly, it
 // requires HTTP Basic Auth with the account's SID/token, which obviously
@@ -2941,7 +2964,16 @@ class CallSession {
       return;
     }
     try {
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial>${to}</Dial></Response>`;
+      // Transfer Success Rate / Transfer Wait Time (2026-09-18) — action=
+      // makes Twilio POST the real DialCallStatus (answered/busy/no-answer/
+      // failed/canceled) and DialCallDuration once this leg resolves, to
+      // /twilio/dial-status below. startedAt is round-tripped through the
+      // URL itself rather than kept in any server-side state — simplest way
+      // to correlate "how long from initiating the transfer to it
+      // resolving" without a new Map to clean up.
+      const startedAt = Date.now();
+      const actionUrl = `https://${PUBLIC_HOST}/twilio/dial-status?startedAt=${startedAt}`;
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial action="${actionUrl}" method="POST">${to}</Dial></Response>`;
       const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
       const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls/${callSid}.json`,
@@ -2954,7 +2986,8 @@ class CallSession {
       console.log(`[call-loop] transfer -> ${to} (Twilio responded HTTP ${res.status})`);
       if (res.ok) this.cost.addBillableEvent('transfer');
       // Twilio's own <Dial> now owns the call — our media-stream WS leg will
-      // get a 'stop' event and close() normally once that dial ends.
+      // get a 'stop' event and close() normally once that dial ends. The
+      // action= callback (not this WS) is what learns the real outcome.
     } catch (err) {
       console.error('[call-loop] transfer failed', err);
       this.close();
