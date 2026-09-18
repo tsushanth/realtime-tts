@@ -1846,13 +1846,18 @@ class CallSession {
     const tools = [];
     // A node reached inside a subflow with no edges of its own is a
     // subflow-internal terminal, not a dead end — the valid "next" targets
-    // are the original subflow_ref node's real edges back in the parent flow.
-    const inSubflowAtTerminal = node && node.edges.length === 0 && this._subflowStack.length > 0;
+    // are the original subflow_ref node's real edges back in the parent
+    // flow. But if the subflow_ref itself has NO edges either (a subflow
+    // whose whole point is to end the call itself — e.g. a shared "transfer
+    // or take a callback" block invoked from many places, never returning
+    // control anywhere), there's nothing to hand back to: don't attach a
+    // transition tool with an empty enum, which some providers reject as
+    // an invalid tool schema. The node just ends the call normally (every
+    // node here is goodbye/transfer, both already call-ending types).
+    const returnNode = this._subflowStack[this._subflowStack.length - 1]?.returnNode;
+    const inSubflowAtTerminal = node && node.edges.length === 0 && this._subflowStack.length > 0 && returnNode?.edges.length > 0;
     if (node && !suppressTransitionTool && (node.edges.length > 0 || inSubflowAtTerminal)) {
-      const toolNode = inSubflowAtTerminal
-        ? this._subflowStack[this._subflowStack.length - 1].returnNode
-        : node;
-      tools.push(this._buildTransitionTool(toolNode));
+      tools.push(this._buildTransitionTool(inSubflowAtTerminal ? returnNode : node));
     }
     // Real bug found via mystery-shopper testing: this.collectedData was
     // only ever populated as a side effect of transition_flow, meaning a
