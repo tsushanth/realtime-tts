@@ -2287,6 +2287,15 @@ class CallSession {
       `"the day after", "next Tuesday"), resolve it to a specific calendar date yourself and ` +
       `say the actual date out loud (e.g. "that's Thursday the 18th") — never just repeat the ` +
       `caller's relative phrasing back as if it were a booked date.\n\n`;
+    // Agent Handbook (2026-09-18, builder parity Phase 2) — reference
+    // material that applies across the WHOLE flow, not one node's own
+    // instructions (node.prompt below). Included on every node's turn, same
+    // as Retell's own "Global Prompt" being agent-wide rather than
+    // per-step. Kept as its own clearly-labeled block so the model can tell
+    // it apart from this step's actual task.
+    if (gs.handbook?.trim()) {
+      prompt += `Reference handbook (background knowledge for this business — consult as needed, don't recite it verbatim unless asked):\n${gs.handbook.trim()}\n\n`;
+    }
     // Resumed from this node's own Pay detour (see _executePayment /
     // _paymentAwaitingResume) — this is the turn generated right after the
     // caller finished (or canceled/failed) Twilio's real card-entry flow.
@@ -2411,6 +2420,20 @@ class CallSession {
         `wondering what to say next: if the next step needs information from the caller, ask for ` +
         `it yourself, in this same reply — don't just acknowledge and wait, since nothing else ` +
         `will proactively ask on your behalf.\n`;
+      // Transition Flexibility (2026-09-18, builder parity Phase 2) — how
+      // literally to read an edge's condition text. Default (unset/
+      // 'flexible') is today's existing behavior: use judgment on a
+      // reasonably close match. 'strict' is a new, more conservative mode
+      // for flows where a wrong transition is costly (e.g. routing to the
+      // wrong department) and staying on the current step to ask a
+      // clarifying question is preferable to guessing.
+      prompt += gs.transitionFlexibility === 'strict'
+        ? `Only call transition_flow when a condition below is clearly and unambiguously met by ` +
+          `what the caller actually said — do not transition on a plausible guess or a partial ` +
+          `match. If it's ambiguous which edge applies, ask a clarifying question instead of ` +
+          `transitioning.\n`
+        : `Use your judgment: if what the caller said reasonably matches the intent of a condition ` +
+          `below, even if not a verbatim match, transition on it rather than demanding exact phrasing.\n`;
     }
     // Real pattern found across mystery-shopper runs: a non-goodbye node
     // would sometimes phrase its own line as if the call were already
