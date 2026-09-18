@@ -302,3 +302,41 @@ remains documented and working up through checkpoint training and
 inference - if revisited, start by comparing our config's `hop_length`/
 `sr`/frame-rate settings against Kokoro's original training config before
 assuming more epochs will help.
+
+## Piper full-corpus fine-tune - done (2026-09-18)
+
+`piper_full_finetune.py` (training) + `synthesize_piper_full.py` (ONNX export +
+CPU benchmark from the persisted checkpoint). 21,791 train / 220 val samples,
+`max_steps=20000`, batch_size=8, T4, warm-started from `en_US-lessac-medium`.
+Checkpoints + voice `config.json` live on the `tts-checkpoints` Modal volume at
+`piper_full_ft/lightning_logs/version_1/checkpoints/` (`last.ckpt`).
+
+**Step-count lesson (I got this wrong mid-run):** Piper's VITS training is a GAN
+with two optimizers, and Lightning's `max_steps` counts *optimizer updates*, not
+batches - so 20,000 steps = ~10,000 batches = ~4.2 epochs of this corpus, not
+~8. That is why the run finished in ~2.5h instead of the ~4.6h estimated from
+"20,000 steps at 1.2 it/s", and why mid-run progress reports (e.g. "35% done at
+epoch 2") were wrong. Matcha-TTS uses a single optimizer, so its 20,000 steps
+= ~7 epochs: the two full runs are NOT equal amounts of training. For any
+future estimate, divide max_steps by the number of optimizers first.
+
+**Validation:** `val_mel` 0.3538 -> 0.3469 -> 0.3337 -> 0.3343 -> 0.3343
+(plateaued over the last epochs; pilot was ~0.42).
+
+**Preprocessing stall (fixed, see `piper_full_finetune.py` docstring):** an
+earlier attempt sat 8+ hours on `prepare_data()` with no log output. Fixes:
+copy WAVs from the Volume to local disk first (95s for 22,011 files) and patch
+in progress logging every 500 utterances (`patch_piper_progress.py`).
+Also: use `.spawn()` not a blocking `.remote()` for multi-hour jobs - two
+blocking runs were cancelled when the local client process died.
+
+**CPU inference (4 vCPU, no GPU), same 5 test sentences:**
+
+| Model | RTF | Speed vs. realtime | Model load |
+|---|---|---|---|
+| Piper (full corpus) | 0.043-0.064 | ~16-23x | ~1.3s |
+| Piper (pilot) | 0.10-0.11 | ~9-10x | ~1.7s |
+| Matcha-TTS (full corpus) | 0.53-0.61 | 1.6-1.9x | ~3.1s |
+
+Samples: `piper_full_output/sample_0.wav` .. `sample_4.wav`. Not yet
+ear-verified at the time of writing.
