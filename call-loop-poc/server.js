@@ -1715,7 +1715,15 @@ class CallSession {
     // legitimately interrupt — queue the new utterance and let
     // _maybeRetireTurn replay it the moment the in-flight turn finishes,
     // instead of discarding it.
-    if (this.activeTurn !== 0 && this.turnState?.id === this.activeTurn && !this.turnState.startedSpeaking) {
+    // Live-call finding (2026-09-18): with interruptions 'off', a caller's
+    // words during the agent's message still started a NEW turn that
+    // superseded the current one — cutting off its remaining sentences even
+    // though barge-in was disabled, and answering each utterance
+    // separately. When the current step can't be interrupted, hold what the
+    // caller says exactly like the not-yet-spoken case below and replay it
+    // once this turn finishes.
+    const uninterruptible = this._resolveInterruptionSensitivity() === 'off';
+    if (this.activeTurn !== 0 && this.turnState?.id === this.activeTurn && (!this.turnState.startedSpeaking || uninterruptible)) {
       this._queuedUserText = this._queuedUserText ? `${this._queuedUserText} ${userText}` : userText;
       console.log(`[call-loop] turn ${this.activeTurn} hasn't spoken yet — queuing instead of preempting: "${userText}"`);
       return;
@@ -4054,18 +4062,19 @@ class CallSession {
   // real caller doing the same could hang up without ever hearing their
   // full confirmation. 'medium' (2 words) is still fast enough to feel
   // responsive but filters out exactly this class of short acknowledgment.
+  // Precedence: this step's own setting > the flow's default > the tenant's
+  // default (Settings) > platform default (medium). 'off' = never interrupt
+  // (greetings, disclosures, payment prompts). "Allow interruptions" was only
+  // ever a prompt hint ("complete your sentences") — enforced here too.
+  _resolveInterruptionSensitivity(node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null) {
+    const gs = this.flow?.globalSettings || {};
+    if (gs.allowInterruptions === false) return 'off';
+    return node?.params?.interruptionSensitivity || gs.interruptionSensitivity || this._tenantInterruptionSensitivity || 'medium';
+  }
+
   _transcriptMeetsInterruptionThreshold(text) {
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
-    const gs = this.flow?.globalSettings || {};
-    // "Allow interruptions" was only ever a prompt hint ("complete your
-    // sentences") — never enforced here, so unchecking it still let the
-    // caller cut the agent off. Enforce it.
-    if (gs.allowInterruptions === false) return false;
-    // Precedence: this step's own setting > the flow's default > the
-    // tenant's default (Settings) > platform default (medium). 'off' = never
-    // interrupt (greetings, disclosures, payment prompts).
-    const sensitivity =
-      node?.params?.interruptionSensitivity || gs.interruptionSensitivity || this._tenantInterruptionSensitivity || 'medium';
+    const sensitivity = this._resolveInterruptionSensitivity(node);
     if (sensitivity === 'off') return false;
     const minWords = sensitivity === 'low' ? 3 : sensitivity === 'medium' ? 2 : 1;
     const wordCount = text.split(/\s+/).filter(Boolean).length;
