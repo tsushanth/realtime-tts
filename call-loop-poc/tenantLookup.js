@@ -31,11 +31,20 @@ async function pg(table, query) {
 // across every tenant, and this app runs multiple Fly machines, so an
 // in-memory counter wouldn't be safe. See calldesktech's
 // supabase/migrations/023_rate_limiters.sql for the shared atomic-token-
-// bucket implementation both repos call into. Conservative guessed
-// defaults, NOT verified against this account's actual approved CPS/
-// concurrency limits — tune via env once that's confirmed.
-const TWILIO_GLOBAL_CAPACITY = Number(process.env.TWILIO_GLOBAL_BURST ?? 4);
-const TWILIO_GLOBAL_REFILL_PER_SEC = Number(process.env.TWILIO_GLOBAL_CPS ?? 2);
+// bucket implementation both repos call into.
+//
+// Verified against the real account (2026-09-18, Twilio Console -> Voice ->
+// Settings -> General -> "Calls per second (CPS)"): Current CPS
+// configuration is 1 — Twilio's own default, never raised. Capacity=1 (no
+// burst) matches this exactly rather than guessing a buffer above it;
+// Twilio's own text says it queues/throttles excess REST requests to this
+// rate rather than hard-rejecting them, but relying on their queue instead
+// of our own would just move the backlog somewhere we can't see it. Raise
+// both once/if the account's real CPS is increased (Console has an "Edit
+// CPS" control — this is a paid, non-trial account, so that's a real,
+// available lever if throughput ever needs to go up).
+const TWILIO_GLOBAL_CAPACITY = Number(process.env.TWILIO_GLOBAL_BURST ?? 1);
+const TWILIO_GLOBAL_REFILL_PER_SEC = Number(process.env.TWILIO_GLOBAL_CPS ?? 1);
 
 export async function acquireTwilioGlobalToken(maxWaitMs = 30000) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return true; // fail open, same reasoning as pg()
