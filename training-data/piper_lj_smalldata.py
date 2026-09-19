@@ -56,7 +56,7 @@ VARIANTS = {"small": {"minutes": 10, "steps": 3000}, "full": {"minutes": 1000, "
 
 
 @app.function(gpu="T4", timeout=6 * 3600, volumes={"/checkpoints": checkpoint_volume})
-def run_all(only: str = ""):
+def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
     import csv, glob, os, runpy, shutil, subprocess, sys, time
     from collections import defaultdict
 
@@ -82,6 +82,16 @@ def run_all(only: str = ""):
             continue
         dur[spk] += d
         utts[spk].append((wav, txt, d))
+    if gender:
+        # LibriTTS-R ships speakers.tsv: READER<TAB>GENDER<TAB>SUBSET<TAB>NAME
+        spk_gender = {}
+        for tsv in glob.glob(f"{root}/**/speakers.tsv", recursive=True):
+            for line in open(tsv):
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) >= 2:
+                    spk_gender[parts[0]] = parts[1]
+        dur = {k: v for k, v in dur.items() if spk_gender.get(k) == gender}
+        assert dur, f"no speakers with gender {gender}"
     spk = max(dur, key=dur.get)
     print(f"chosen speaker {spk}: {dur[spk]/60:.1f} min in {len(utts[spk])} clips (of {len(dur)} speakers)", flush=True)
     clips = sorted(utts[spk])
@@ -93,7 +103,8 @@ def run_all(only: str = ""):
     import piper.train.__main__ as piper_main
     from piper import PiperVoice
 
-    for name, cfg in VARIANTS.items():
+    variants = {name: {"minutes": 1000, "steps": steps}} if name else VARIANTS
+    for name, cfg in variants.items():
         if only and name != only:
             continue
         out = f"/checkpoints/lj_small/{name}"
@@ -145,5 +156,5 @@ def run_all(only: str = ""):
 
 
 @app.local_entrypoint()
-def main(only: str = ""):
-    print("Spawned:", run_all.spawn(only).object_id)
+def main(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
+    print("Spawned:", run_all.spawn(only, gender, steps, name).object_id)
