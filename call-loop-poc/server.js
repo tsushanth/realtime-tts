@@ -1608,6 +1608,7 @@ class CallSession {
         this.flowNodesById = new Map(this.flow.nodes.map((n) => [n.id, n]));
         this.currentNodeId = msg.flow.startNodeId || this.flow.nodes[0].id;
         const bcs = this.flow.globalSettings || {};
+        if (bcs.calendarTools === false) this.calendar = null; // per-agent switch: no live calendar lookups or bookings
         if (typeof bcs.backchannelEnabled === 'boolean') this.backchannelEnabled = bcs.backchannelEnabled;
         if (typeof bcs.backchannelFrequency === 'number' && bcs.backchannelFrequency >= 0 && bcs.backchannelFrequency <= 1) this.backchannelFrequency = bcs.backchannelFrequency;
         if (typeof bcs.backchannelDelayMs === 'number' && bcs.backchannelDelayMs > 0) this.backchannelDelayMs = bcs.backchannelDelayMs;
