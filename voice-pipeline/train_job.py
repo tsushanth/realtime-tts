@@ -7,8 +7,8 @@ Reads a customer dataset from the `voice-datasets` Volume:
 and writes to the `voice-models` Volume under /<voice_id>/:
     model.onnx, model.onnx.json, samples/sample_N.wav, manifest.json  (or error.json on rejection)
 
-Fine-tunes from Piper's public-domain LJ Speech checkpoint (see training-data/synthesize_ljspeech.py),
-which keeps the base licence-clean. NOT YET VALIDATED BY EAR: training-data/piper_lj_smalldata.py
+Fine-tunes from a public-domain Piper checkpoint chosen by the speaker's pitch: LJ Speech (female) or
+`john` (male) - a female-to-male jump from the LJ base gave shaky voices in testing. NOT YET VALIDATED BY EAR: training-data/piper_lj_smalldata.py
 produces 10-min and ~25-min test voices; whether they sound good is still to be judged.
 
 The consent file is a hard gate: no consent.json with consent=true means no training. It is a
@@ -45,6 +45,9 @@ image = (
         "'https://huggingface.co/datasets/rhasspy/piper-checkpoints/resolve/main/"
         "en/en_US/ljspeech/medium/lj-med_1000.ckpt'"
     )
+    .run_commands(
+        "wget -q -O /ckpt/john_medium.ckpt https://huggingface.co/datasets/rhasspy/piper-checkpoints/resolve/main/en/en_US/john/medium/john-2599.ckpt"
+    )
     .pip_install("scipy", "soundfile")
 )
 
@@ -59,12 +62,39 @@ TEST_SENTENCES = [
     "Is there anything else I can help you with today?",
     "Your extension is six six three five.",
 ]
-MIN_MINUTES, MAX_MINUTES = 20.0, 90.0  # 10 min from the LJ base sounded robotic/shaky (male speaker, by ear); raise/lower with the 25-min result
+MIN_MINUTES, MAX_MINUTES = 20.0, 90.0  # 25 min validated by ear (female, and 2 male speakers from a male base); 10 min under test
 
 
 def steps_for(minutes: float) -> int:
     # 10 min -> 3000 and 25 min -> 4000 are the points being tried (unjudged); extend gently, cap for cost.
     return int(min(6000, max(2000, 2000 + 80 * minutes)))
+
+
+BASES = {  # both public-domain, from rhasspy/piper-checkpoints; chosen by the speaker's median pitch
+    "F": "/ckpt/lj_medium.ckpt",
+    "M": "/ckpt/john_medium.ckpt",
+}
+
+
+def median_f0(clips_dir: str, files, max_files: int = 40) -> float:
+    """Crude autocorrelation pitch estimate (60-400 Hz) over voiced frames; enough to tell male
+    (~85-155 Hz) from female (~165-255 Hz) speakers. Returns 0.0 if nothing voiced was found."""
+    import numpy as np
+    import soundfile as sf
+    f0s = []
+    for fn in files[:max_files]:
+        x, sr = sf.read(f"{clips_dir}/{fn}")
+        n = int(0.04 * sr)
+        for st in range(0, len(x) - n, n):
+            fr = x[st:st + n] - np.mean(x[st:st + n])
+            if np.sqrt(np.mean(fr ** 2)) < 0.02:
+                continue
+            ac = np.correlate(fr, fr, "full")[n - 1:]
+            lo, hi = int(sr / 400), int(sr / 60)
+            k = lo + int(np.argmax(ac[lo:hi]))
+            if ac[k] / (ac[0] + 1e-9) > 0.5:
+                f0s.append(sr / k)
+    return float(np.median(f0s)) if f0s else 0.0
 
 
 def reject(voice_id: str, reason: str, **extra):
@@ -147,6 +177,10 @@ def train_voice(voice_id: str):
     import piper.train.__main__ as piper_main
     from piper import PiperVoice
 
+    f0 = median_f0("/tmp/wavs", [fn for fn, _ in rows])
+    gender = "F" if f0 >= 165 else "M"
+    base_ckpt = BASES[gender]
+    print(f"median F0 {f0:.0f} Hz -> base {gender} ({base_ckpt})", flush=True)
     out = f"/tmp/run"
     steps = steps_for(minutes)
     os.chdir("/opt/piper-src")
@@ -155,7 +189,7 @@ def train_voice(voice_id: str):
         "--data.csv_path", "/tmp/train.csv", "--data.audio_dir", "/tmp/wavs",
         "--data.espeak_voice", "en-us", "--data.cache_dir", "/tmp/cache",
         "--data.config_path", f"{out}/config.json", "--data.batch_size", "8",
-        "--model.sample_rate", "22050", "--model.warmstart_ckpt", "/ckpt/lj_medium.ckpt",
+        "--model.sample_rate", "22050", "--model.warmstart_ckpt", base_ckpt,
         "--trainer.max_steps", str(steps), "--trainer.default_root_dir", out,
     ]
     piper_main._DEFAULT_CALLBACKS = piper_main._DEFAULT_CALLBACKS[:1]
@@ -180,7 +214,7 @@ def train_voice(voice_id: str):
         sf.write(f"{dest}/samples/sample_{i}.wav", pcm, voice.config.sample_rate, "PCM_16")
     manifest = {
         "status": "ready", "voice_id": voice_id, "speaker_name": consent["speaker_name"],
-        "base": "piper ljspeech medium (public domain)", "clips": len(rows),
+        "base": base_ckpt, "median_f0_hz": round(f0), "base_gender": gender, "clips": len(rows),
         "minutes": round(minutes, 1), "steps": steps, "skipped": skipped,
         "train_seconds": round(time.time() - t0),
     }

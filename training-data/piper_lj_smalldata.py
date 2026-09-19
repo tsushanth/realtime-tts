@@ -56,7 +56,7 @@ VARIANTS = {"small": {"minutes": 10, "steps": 3000}, "full": {"minutes": 1000, "
 
 
 @app.function(gpu="T4", timeout=6 * 3600, volumes={"/checkpoints": checkpoint_volume})
-def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0):
+def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0, minutes: int = 1000):
     import csv, glob, os, runpy, shutil, subprocess, sys, time
     from collections import defaultdict
 
@@ -107,7 +107,7 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", ba
     import piper.train.__main__ as piper_main
     from piper import PiperVoice
 
-    variants = {name: {"minutes": 1000, "steps": steps}} if name else VARIANTS
+    variants = {name: {"minutes": minutes, "steps": steps}} if name else VARIANTS
     for name, cfg in variants.items():
         if only and name != only:
             continue
@@ -160,5 +160,5 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", ba
 
 
 @app.local_entrypoint()
-def main(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0):
-    print("Spawned:", run_all.spawn(only, gender, steps, name, base, rank).object_id)
+def main(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0, minutes: int = 1000):
+    print("Spawned:", run_all.spawn(only, gender, steps, name, base, rank, minutes).object_id)
