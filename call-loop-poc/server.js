@@ -2274,7 +2274,7 @@ class CallSession {
 
       const final = await stream.finalMessage();
       if (final.usage) {
-        this.cost.addLlmUsage(this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+        this.cost.addLlmUsage(VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
         console.log(`[llm-usage] turn ${turnId} node=${node?.id}(${node?.type}) in=${final.usage.input_tokens} out=${final.usage.output_tokens} sysChars=${systemPrompt.length} histMsgs=${this.history.length} histChars=${JSON.stringify(this.history).length} tools=${tools.length}`);
       }
       // Real bug found via mystery-shopper: this used to live inside the
