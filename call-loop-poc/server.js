@@ -1976,7 +1976,8 @@ class CallSession {
   // node is still running after 1.2s and nothing has been spoken this turn.
   _startToolFiller(node, turnId) {
     const fw = this.flow?.globalSettings?.fillerWords;
-    if (!fw || !['function', 'code', 'mcp', 'knowledge_base'].includes(node?.type)) return null;
+    // On by default for slow tool steps; fillerWords: false turns it off.
+    if (fw === false || !['function', 'code', 'mcp', 'knowledge_base'].includes(node?.type)) return null;
     const phrases = Array.isArray(fw) ? fw.filter((p) => typeof p === 'string' && p.trim()) : ['One moment.', 'Let me check that.'];
     if (phrases.length === 0) return null;
     return setTimeout(() => {
@@ -2473,9 +2474,11 @@ class CallSession {
     return `${this.ttsBackend}::${voice}::${text}`;
   }
 
-  _maybeSpeakBackchannel(turnId) {
+  _maybeSpeakBackchannel(turnId, only) {
     if (this.activeTurn !== turnId) return; // barge-in or turn already resolved
-    const word = this.backchannelWords[Math.floor(Math.random() * this.backchannelWords.length)];
+    const pool = only ? this.backchannelWords.filter((w) => only.includes(w)) : this.backchannelWords;
+    if (!pool.length) return;
+    const word = pool[Math.floor(Math.random() * pool.length)];
     const buf = fillerCache.get(this._fillerCacheKey(word));
     // No cached clip for this backend/voice — skip rather than synthesize
     // live, which would be just as slow as the real response it's meant to
@@ -2918,6 +2921,8 @@ class CallSession {
       if ((nextNode.type === 'extraction' || nextNode.type === 'greeting') && this.turnState && !this.turnState.spokeText && !this._closing) {
         console.log(`[call-loop] silent transition into "${next_node_id}" — running its opening turn`);
         this._runNodeTurn(next_node_id);
+        // The caller would otherwise wait out a second model call in silence; a cached one-word acknowledgement covers it.
+        if (this.backchannelEnabled) this._maybeSpeakBackchannel(this.activeTurn, ['Got it.', 'Sure thing.']);
       }
     }
   }
@@ -3940,7 +3945,7 @@ class CallSession {
             // fact, whether or not every field technically has a value.
             const missing = fields.filter((f) => !this.collectedData[f]);
             const fallback = missing.length > 0
-              ? `Sorry, I want to make sure I get this right — could you tell me ${missing.join(' and ')} one more time?`
+              ? `Sorry, I want to make sure I get this right — could you tell me ${missing.map((f) => f.replace(/_/g, ' ')).join(' and ')} one more time?`
               : `Sorry, let me just double check — ${fields.map((f) => `${f.replace(/_/g, ' ')}: ${this.collectedData[f]}`).join(', ')}. Is that all correct?`;
             const fallbackTurnId = ++this.turnSeq;
             this.activeTurn = fallbackTurnId;
