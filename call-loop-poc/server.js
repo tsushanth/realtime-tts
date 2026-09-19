@@ -3053,7 +3053,7 @@ class CallSession {
     const qa = items.map((it, i) => `${i + 1}. Q: ${it.question}\n   A: ${it.answer}`).join('\n');
     this.history.push({
       role: 'user',
-      content: `[System note: knowledge base content for this step — answer using these facts when relevant, otherwise say you're not sure and offer to have someone follow up:\n${qa}]`,
+      content: this._applyVariables(`[System note: knowledge base content for this step — answer using these facts when relevant, otherwise say you're not sure and offer to have someone follow up:\n${qa}]`),
     });
   }
 
