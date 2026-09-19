@@ -8,8 +8,8 @@ and writes to the `voice-models` Volume under /<voice_id>/:
     model.onnx, model.onnx.json, samples/sample_N.wav, manifest.json  (or error.json on rejection)
 
 Fine-tunes from Piper's public-domain LJ Speech checkpoint (see training-data/synthesize_ljspeech.py),
-which keeps the base licence-clean. Validated by training-data/piper_lj_smalldata.py: 10 minutes of
-one speaker gave a voice judged good by ear.
+which keeps the base licence-clean. NOT YET VALIDATED BY EAR: training-data/piper_lj_smalldata.py
+produces 10-min and ~25-min test voices; whether they sound good is still to be judged.
 
 The consent file is a hard gate: no consent.json with consent=true means no training. It is a
 record of attestation, not identity verification - that belongs to the intake service.
@@ -63,7 +63,7 @@ MIN_MINUTES, MAX_MINUTES = 5.0, 90.0
 
 
 def steps_for(minutes: float) -> int:
-    # 10 min -> 3000 and 25 min -> 4000 were the validated points; extend gently, cap for cost.
+    # 10 min -> 3000 and 25 min -> 4000 are the points being tried (unjudged); extend gently, cap for cost.
     return int(min(6000, max(2000, 2000 + 80 * minutes)))
 
 
