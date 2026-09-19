@@ -1709,6 +1709,7 @@ class CallSession {
     const resp = Number(this.flow?.globalSettings?.responsiveness);
     const globalWaitMs = Number.isFinite(resp) && resp >= 0 && resp <= 1 && this.flow?.globalSettings?.responsiveness != null ? Math.round((1 - resp) * 1500) : 0;
     const waitMs = Math.max(0, Math.min(10000, Number(node?.params?.responseWaitTimeMs) || globalWaitMs));
+    if (waitMs > 0) console.log(`[call-loop] waiting ${waitMs}ms before replying (responsiveness/response wait)`);
     if (waitMs <= 0) {
       this._onUserTurnComplete(text);
       return;
@@ -2199,7 +2200,7 @@ class CallSession {
             backchannelTimer = null;
           }
           if (this._latency?.turnStart) this._latency.llmFirstToken = firstTokenAt;
-          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms`);
+          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms (model ${VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel})`);
         }
         assistantText += delta;
         chunker.push(delta);
