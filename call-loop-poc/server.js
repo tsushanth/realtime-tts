@@ -569,6 +569,17 @@ async function sandboxSafeFetch(urlString, options) {
 // either-party hangup check, killing a call mid-booking before it ever
 // reached a real conclusion. Dropped the bare "thanks" branch entirely —
 // only real, close-to-complete farewell phrases count now.
+// A caller reading a phone number pauses between digit groups and the speech model ends the
+// turn at each pause. Given the agent just asked for a phone number, hold a short digit-only
+// fragment so the rest of the number can join it before the agent replies.
+const PHONE_ASK_RE = /\b(phone|cell|mobile|callback)\b[^.?!]{0,40}\bnumber\b|\bnumber\b[^.?!]{0,40}\b(reach|call) you\b|\bbest number\b/i;
+const DIGIT_HOLD_MS = 2200;
+function shouldHoldForDigits(lastAssistantText, callerText) {
+  if (!lastAssistantText || !PHONE_ASK_RE.test(lastAssistantText)) return false;
+  const stripped = callerText.replace(/[^0-9a-z]/gi, '');
+  const digits = (callerText.match(/\d/g) || []).length;
+  return digits >= 2 && stripped.length > 0 && digits / stripped.length >= 0.4 && digits < 7;
+}
 const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) day)\b|\bbye\b/i;
 
 // Flux decides "they're done talking" from the words themselves, not just
@@ -1715,6 +1726,18 @@ class CallSession {
     if (this._pendingResponseTimer) {
       clearTimeout(this._pendingResponseTimer);
       this._pendingResponseTimer = null;
+    }
+    if (this._pendingDigitText) { text = `${this._pendingDigitText} ${text}`; this._pendingDigitText = null; }
+    const lastAssistant = [...this.history].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
+    if (shouldHoldForDigits(lastAssistant?.content, text)) {
+      console.log(`[call-loop] holding partial phone number "${text}" for the rest of the digits`);
+      this._pendingDigitText = text;
+      this._pendingResponseTimer = setTimeout(() => {
+        this._pendingResponseTimer = null;
+        const held = this._pendingDigitText; this._pendingDigitText = null;
+        this._onUserTurnComplete(held);
+      }, DIGIT_HOLD_MS);
+      return;
     }
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
     const resp = Number(this.flow?.globalSettings?.responsiveness);
