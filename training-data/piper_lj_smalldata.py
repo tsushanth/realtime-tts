@@ -56,7 +56,7 @@ VARIANTS = {"small": {"minutes": 10, "steps": 3000}, "full": {"minutes": 1000, "
 
 
 @app.function(gpu="T4", timeout=6 * 3600, volumes={"/checkpoints": checkpoint_volume})
-def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
+def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = ""):
     import csv, glob, os, runpy, shutil, subprocess, sys, time
     from collections import defaultdict
 
@@ -64,6 +64,10 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
     import soundfile as sf
     from scipy.signal import resample_poly
 
+    base_ckpt = "/ckpt/lj_medium.ckpt"
+    if base:  # e.g. en/en_US/john/medium/john-2599.ckpt from rhasspy/piper-checkpoints
+        base_ckpt = "/tmp/base.ckpt"
+        subprocess.run(f"wget -q -O {base_ckpt} https://huggingface.co/datasets/rhasspy/piper-checkpoints/resolve/main/{base}", shell=True, check=True)
     root = "/tmp/libri"
     os.makedirs(root, exist_ok=True)
     t0 = time.time()
@@ -131,7 +135,7 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
             "--data.csv_path", f"/tmp/{name}.csv", "--data.audio_dir", wavs,
             "--data.espeak_voice", "en-us", "--data.cache_dir", f"/tmp/cache_{name}",
             "--data.config_path", f"{out}/config.json", "--data.batch_size", "8",
-            "--model.sample_rate", "22050", "--model.warmstart_ckpt", "/ckpt/lj_medium.ckpt",
+            "--model.sample_rate", "22050", "--model.warmstart_ckpt", base_ckpt,
             "--trainer.max_steps", str(cfg["steps"]), "--trainer.default_root_dir", out,
         ]
         piper_main._DEFAULT_CALLBACKS = piper_main._DEFAULT_CALLBACKS[:1]
@@ -156,5 +160,5 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
 
 
 @app.local_entrypoint()
-def main(only: str = "", gender: str = "", steps: int = 0, name: str = ""):
-    print("Spawned:", run_all.spawn(only, gender, steps, name).object_id)
+def main(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = ""):
+    print("Spawned:", run_all.spawn(only, gender, steps, name, base).object_id)
