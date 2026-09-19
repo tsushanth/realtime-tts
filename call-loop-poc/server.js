@@ -1865,6 +1865,20 @@ class CallSession {
     this.history.push({ role: 'user', content: userText });
     this.send({ type: 'user_turn', turnId, text: userText });
 
+    // An opening step whose only exit is "always" has nothing left to do once the caller
+    // responds; move on deterministically instead of hoping the model calls transition_flow.
+    const cur = this.flow ? this.flowNodesById.get(this.currentNodeId) : null;
+    if (cur?.type === 'greeting' && cur.edges?.length === 1 && /^\s*always\s*$/i.test(String(cur.edges[0].condition || '')) && this.flowNodesById.has(cur.edges[0].target)) {
+      const target = cur.edges[0].target;
+      const nextType = this.flowNodesById.get(target).type;
+      console.log(`[call-loop] "always" exit from "${cur.id}" -> "${target}"`);
+      if (['knowledge_base', 'function', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref', 'agent_transfer', 'extract_variable', 'logic_split'].includes(nextType)) {
+        this._applyTransition({ next_node_id: target });
+        return;
+      }
+      this.currentNodeId = target;
+    }
+
     await this._generateTurn(turnId, turnStartedAt);
   }
 
