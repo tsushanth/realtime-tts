@@ -463,6 +463,9 @@ const SHOPPER_SYSTEM_PROMPT =
   'call will be ended automatically after your goodbye. Keep replies short ' +
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
+// A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
+// is the model narrating, not speaking; never voice it.
+const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
 const SHOPPER_PERSONA_RULES =
@@ -1983,7 +1986,7 @@ class CallSession {
     }, 1200);
   }
 
-  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set() } = {}) {
+  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set(), forceTransition = false } = {}) {
     if (!anthropic) {
       this.send({ type: 'error', message: 'ANTHROPIC_API_KEY not configured' });
       if (this.turnState?.id === turnId) this.turnState.llmDone = true;
@@ -2167,6 +2170,10 @@ class CallSession {
     const chunker = new SentenceChunker((sentence) => {
       if (this.activeTurn !== turnId) {
         console.log(`[call-loop] turn ${turnId} sentence chunk dropped — activeTurn is now ${this.activeTurn}: "${sentence}"`);
+        return;
+      }
+      if (isStageDirection(sentence)) {
+        console.log(`[call-loop] turn ${turnId} dropped a stage direction instead of speaking it: "${sentence}"`);
         return;
       }
       this._speak(sentence, turnId, turnStartedAt);
@@ -2415,6 +2422,27 @@ class CallSession {
         const toolUse = final.content.find((b) => b.type === 'tool_use' && b.name === 'transition_flow');
         if (toolUse && this.turnState?.id === turnId) {
           this.turnState.transition = toolUse.input;
+        } else if (forceTransition && this.turnState?.id === turnId) {
+          // The nudge got a spoken summary but no transition_flow call, which would leave the call
+          // stuck on this node while the agent says it is moving on. Ask for the transition alone.
+          const tt = tools.find((t) => t.name === 'transition_flow');
+          if (tt) {
+            try {
+              const last = this.history[this.history.length - 1];
+              const msgs = last?.role === 'user' ? this.history : [...this.history, { role: 'user', content: '[System note: choose the next step now.]' }];
+              const r = await anthropic.messages.create({
+                model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+                system: systemPrompt, max_tokens: 120, messages: msgs, tools: [tt], tool_choice: { type: 'tool', name: 'transition_flow' },
+              });
+              const tu = r.content.find((b) => b.type === 'tool_use');
+              if (tu && this.turnState?.id === turnId) {
+                this.turnState.transition = tu.input;
+                console.log(`[call-loop] forced transition after nudge -> ${JSON.stringify(tu.input)}`);
+              }
+            } catch (err) {
+              console.error('[call-loop] forced transition failed', err.message);
+            }
+          }
         }
       }
     } catch (err) {
@@ -2618,6 +2646,7 @@ class CallSession {
       // what "confirmed" means, instead of leaving the model to treat its
       // own capture as sufficient.
       prompt += `${stepNum++}. Names and numbers are easy to mishear. Before treating any field as final, you MUST ask the caller a direct yes/no question repeating back exactly what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?"). Calling record_field is NOT confirmation — it only means you heard something. Wait for the caller to actually say yes (or correct you) before moving on.\n`;
+      prompt += `${stepNum++}. Phone numbers and IDs read out digit by digit can arrive with gaps or fragments. Read the number back once. If the caller says it is wrong and repeats it, take their latest complete digit string and confirm it at most ONE more time; never confirm the same field more than twice — after that, accept the caller's latest version and move on.\n`;
       // Real call finding (2026-09-17): the generic "read back" rule above
       // didn't stop a mis-transcribed email (an extra letter added) from
       // going straight into a real booking with no confirmation at all —
@@ -3896,7 +3925,7 @@ class CallSession {
             const nudgeTurnId = ++this.turnSeq;
             this.activeTurn = nudgeTurnId;
             this.turnState = { id: nudgeTurnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
-            this._generateTurn(nudgeTurnId, Date.now(), { isNodeEntry: false });
+            this._generateTurn(nudgeTurnId, Date.now(), { isNodeEntry: false, forceTransition: allCaptured });
           } else {
             console.warn(`[call-loop] node "${node.id}" still silent after ${MAX_NUDGE_ATTEMPTS} nudges — forcing a spoken fallback instead of deadlocking`);
             // Real bug found via mystery-shopper: allCaptured only means
@@ -4549,6 +4578,12 @@ server.listen(PORT, () => {
   // and the prewarm cost (a handful of short TTS calls, once, at startup)
   // is trivial either way.
   prewarmFillerCache();
+  // Optional: keep the TTS worker warm between calls (costs idle worker time). Off unless TTS_KEEPALIVE_MINUTES is set.
+  const keepaliveMin = Number(process.env.TTS_KEEPALIVE_MINUTES);
+  if (TTS_BACKEND === 'kokoro' && keepaliveMin > 0) {
+    setInterval(() => warmTtsGateway('keepalive'), keepaliveMin * 60 * 1000);
+    console.log(`[call-loop] TTS keepalive every ${keepaliveMin} min`);
+  }
   // Every 6 hours is frequent enough that a 30-day retention setting is
   // enforced within a fraction of a day of expiring, without hammering
   // Twilio/Supabase on every process restart the way "run once at boot,
