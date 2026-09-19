@@ -56,7 +56,7 @@ VARIANTS = {"small": {"minutes": 10, "steps": 3000}, "full": {"minutes": 1000, "
 
 
 @app.function(gpu="T4", timeout=6 * 3600, volumes={"/checkpoints": checkpoint_volume})
-def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = ""):
+def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0):
     import csv, glob, os, runpy, shutil, subprocess, sys, time
     from collections import defaultdict
 
@@ -96,7 +96,7 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", ba
                     spk_gender[parts[0]] = parts[1]
         dur = {k: v for k, v in dur.items() if spk_gender.get(k) == gender}
         assert dur, f"no speakers with gender {gender}"
-    spk = max(dur, key=dur.get)
+    spk = sorted(dur, key=dur.get, reverse=True)[rank]  # rank 0 = speaker with the most audio
     print(f"chosen speaker {spk}: {dur[spk]/60:.1f} min in {len(utts[spk])} clips (of {len(dur)} speakers)", flush=True)
     clips = sorted(utts[spk])
 
@@ -160,5 +160,5 @@ def run_all(only: str = "", gender: str = "", steps: int = 0, name: str = "", ba
 
 
 @app.local_entrypoint()
-def main(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = ""):
-    print("Spawned:", run_all.spawn(only, gender, steps, name, base).object_id)
+def main(only: str = "", gender: str = "", steps: int = 0, name: str = "", base: str = "", rank: int = 0):
+    print("Spawned:", run_all.spawn(only, gender, steps, name, base, rank).object_id)
