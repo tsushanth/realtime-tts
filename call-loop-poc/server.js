@@ -2821,7 +2821,7 @@ class CallSession {
       'the digits individually, grouped naturally (e.g. "four two five, six two eight, four ' +
       'eight eight seven") — never as one large number ("four billion..."); the same goes for ' +
       'any other long digit string like a confirmation code.';
-    return prompt;
+    return this._applyVariables(prompt);
   }
 
   // subflow_ref is a pure redirect: it embeds a snapshot of another flow's
@@ -3624,8 +3624,22 @@ class CallSession {
   // codebase does, kept minimal on purpose: no expressions, no nesting,
   // just a literal lookup, since the result is sanitized to DTMF characters
   // immediately after anyway.
+  // Values the agent's owner configured (globalSettings.variables), e.g. business_name and agent_name.
+  // Only names with a configured, non-empty value are replaced; anything else stays for the model
+  // (extracted fields such as {{patient_name}} keep working as before).
+  _applyVariables(text) {
+    const vars = this.flow?.globalSettings?.variables;
+    if (!vars || typeof vars !== 'object') return text;
+    return String(text).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, name) => {
+      const v = vars[name];
+      return typeof v === 'string' && v.trim() !== '' ? v : match;
+    });
+  }
+
   _interpolateFields(template) {
     return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, field) => {
+      const cfg = this.flow?.globalSettings?.variables?.[field];
+      if (typeof cfg === 'string' && cfg.trim() !== '') return cfg;
       const value = this.collectedData?.[field];
       return value === undefined || value === null ? '' : String(value);
     });
@@ -4507,7 +4521,7 @@ class CallSession {
     this._vmHandled = true;
     console.log(`[call-loop] answered_by=${answeredBy}, voicemailDetection=${mode}`);
     if (this.callSid) updateCallLogByCallSid(this.callSid, { outcome: 'voicemail' }).catch(() => {});
-    const message = typeof gs.voicemailMessage === 'string' ? gs.voicemailMessage.trim() : '';
+    const message = typeof gs.voicemailMessage === 'string' ? this._interpolateFields(gs.voicemailMessage).trim() : '';
     if (mode !== 'leave_message' || !message || answeredBy === 'fax') {
       this._bargeIn();
       this._endCallGracefully('voicemail detected');
