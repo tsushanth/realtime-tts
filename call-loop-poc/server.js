@@ -463,6 +463,12 @@ const SHOPPER_SYSTEM_PROMPT =
   'call will be ended automatically after your goodbye. Keep replies short ' +
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
+// Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
+const shopperPersonas = new Map();
+const SHOPPER_PERSONA_RULES =
+  ' You are NOT an AI — you are a real person on a phone call. Wait for the business to speak first and answer only what is asked, one thing at a time, in whatever order they ask; do not volunteer details early. ' +
+  'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
+  'Never break character or mention an AI, a test, or a script.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
 // How many times _maybeRetireTurn will nudge a silent/stalled extraction
 // node before giving up and forcing a hard-coded spoken fallback instead —
@@ -699,7 +705,7 @@ app.post('/twilio/voice', async (req, res) => {
   // for why this reuses /twilio/voice + the normal CallSession machinery
   // instead of a separate service.
   if (req.query.mode === 'shopper' && callSid) {
-    pendingCallContext.set(callSid, { isShopper: true, createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -925,7 +931,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona } = req.body || {};
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
   // whatever business we're dialing (our own number, or a competitor's).
@@ -1013,6 +1019,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     // fully pinned down, so this sidesteps that uncertainty rather than
     // depending on it. Best-effort, fire-and-forget — never blocks the
     // response on this.
+    if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper) {
       findTenantIdByNumber(toNumber)
         .then((tenantId) => {
@@ -1221,7 +1228,7 @@ twilioWss.on('connection', (twilioWs) => {
       session.isShopper = true;
       session.onClientMessage(JSON.stringify({
         type: 'context',
-        systemPrompt: SHOPPER_SYSTEM_PROMPT,
+        systemPrompt: resolved.persona ? resolved.persona + SHOPPER_PERSONA_RULES : SHOPPER_SYSTEM_PROMPT,
         ttsBackend: 'elevenlabs',
       }), false);
       // Safety net (see decision 5): a flow-less session never hangs up on
