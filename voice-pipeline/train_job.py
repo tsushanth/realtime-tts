@@ -59,7 +59,7 @@ TEST_SENTENCES = [
     "Is there anything else I can help you with today?",
     "Your extension is six six three five.",
 ]
-MIN_MINUTES, MAX_MINUTES = 5.0, 90.0
+MIN_MINUTES, MAX_MINUTES = 20.0, 90.0  # 10 min from the LJ base sounded robotic/shaky (male speaker, by ear); raise/lower with the 25-min result
 
 
 def steps_for(minutes: float) -> int:
