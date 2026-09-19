@@ -2883,6 +2883,12 @@ class CallSession {
       this._runNodeTurn(next_node_id);
     } else {
       this.currentNodeId = next_node_id;
+      // A transition made without saying anything would leave the new step waiting
+      // for a caller who has nothing to react to (both sides silent). Have it speak now.
+      if ((nextNode.type === 'extraction' || nextNode.type === 'greeting') && this.turnState && !this.turnState.spokeText && !this._closing) {
+        console.log(`[call-loop] silent transition into "${next_node_id}" — running its opening turn`);
+        this._runNodeTurn(next_node_id);
+      }
     }
   }
 
@@ -3946,6 +3952,7 @@ class CallSession {
   }
 
   _speak(text, turnId, turnStartedAt) {
+    if (this.turnState?.id === turnId) this.turnState.spokeText = true;
     this.cost.addTtsChars(text.length);
     // Reserve this turn's "still speaking" slot immediately, synchronously —
     // not inside a possibly-deferred dispatch. On a session's first turn,
