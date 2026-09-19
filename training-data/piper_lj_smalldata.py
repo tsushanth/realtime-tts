@@ -56,7 +56,7 @@ VARIANTS = {"small": {"minutes": 10, "steps": 3000}, "full": {"minutes": 1000, "
 
 
 @app.function(gpu="T4", timeout=6 * 3600, volumes={"/checkpoints": checkpoint_volume})
-def run_all():
+def run_all(only: str = ""):
     import csv, glob, os, runpy, shutil, subprocess, sys, time
     from collections import defaultdict
 
@@ -94,6 +94,8 @@ def run_all():
     from piper import PiperVoice
 
     for name, cfg in VARIANTS.items():
+        if only and name != only:
+            continue
         out = f"/checkpoints/lj_small/{name}"
         wavs = f"/tmp/{name}_wavs"
         os.makedirs(wavs, exist_ok=True)
@@ -143,5 +145,5 @@ def run_all():
 
 
 @app.local_entrypoint()
-def main():
-    print("Spawned:", run_all.spawn().object_id)
+def main(only: str = ""):
+    print("Spawned:", run_all.spawn(only).object_id)
