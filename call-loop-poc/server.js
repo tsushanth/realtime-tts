@@ -2273,7 +2273,10 @@ class CallSession {
       });
 
       const final = await stream.finalMessage();
-      if (final.usage) this.cost.addLlmUsage(this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+      if (final.usage) {
+        this.cost.addLlmUsage(this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+        console.log(`[llm-usage] turn ${turnId} node=${node?.id}(${node?.type}) in=${final.usage.input_tokens} out=${final.usage.output_tokens} sysChars=${systemPrompt.length} histMsgs=${this.history.length} histChars=${JSON.stringify(this.history).length} tools=${tools.length}`);
+      }
       // Real bug found via mystery-shopper: this used to live inside the
       // `if (this.activeTurn === turnId)` block below, alongside the
       // speaking/logging logic that's correctly gated on it (a superseded
