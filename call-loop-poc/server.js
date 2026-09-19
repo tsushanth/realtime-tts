@@ -2424,6 +2424,25 @@ class CallSession {
         const toolUse = final.content.find((b) => b.type === 'tool_use' && b.name === 'transition_flow');
         if (toolUse && this.turnState?.id === turnId) {
           this.turnState.transition = toolUse.input;
+        } else if (!toolUse && this.turnState?.id === turnId && !forceTransition && this._claimsHandoff(node, assistantText)) {
+          // The agent told the caller they are being transferred but never moved to the transfer step.
+          const tt0 = tools.find((t) => t.name === 'transition_flow');
+          const targets = (node.edges || []).map((e) => e.target).filter((id) => ['transfer', 'agent_transfer'].includes(this.flowNodesById.get(id)?.type));
+          if (tt0 && targets.length) {
+            try {
+              const tt = { ...tt0, input_schema: { ...tt0.input_schema, properties: { ...tt0.input_schema.properties, next_node_id: { ...tt0.input_schema.properties.next_node_id, enum: targets } } } };
+              const last = this.history[this.history.length - 1];
+              const msgs = last?.role === 'user' ? this.history : [...this.history, { role: 'user', content: '[System note: you told the caller you are transferring them. Do it now.]' }];
+              const r = await anthropic.messages.create({
+                model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+                system: systemPrompt, max_tokens: 120, messages: msgs, tools: [tt], tool_choice: { type: 'tool', name: 'transition_flow' },
+              });
+              const tu = r.content.find((b) => b.type === 'tool_use');
+              if (tu) { this.turnState.transition = tu.input; console.log(`[call-loop] forced handoff after spoken claim -> ${JSON.stringify(tu.input)}`); }
+            } catch (err) {
+              console.error('[call-loop] forced handoff failed', err.message);
+            }
+          }
         } else if (forceTransition && this.turnState?.id === turnId) {
           // The nudge got a spoken summary but no transition_flow call, which would leave the call
           // stuck on this node while the agent says it is moving on. Ask for the transition alone.
@@ -3330,6 +3349,14 @@ class CallSession {
   // Hands the live call to another agent: same call, history and collected
   // data; only the flow (and its global settings) is swapped. Voice/TTS backend
   // stay the same as the agent that answered.
+  // True when this node can hand off and the agent's words say it is doing so.
+  _claimsHandoff(node, text) {
+    if (!text || !node?.edges?.some((e) => ['transfer', 'agent_transfer'].includes(this.flowNodesById.get(e.target)?.type))) return false;
+    const re = /\b(transfer(ring)?|connect(ing)?|put(ting)? you through|patch(ing)? you)\b[^.?!]{0,40}\byou\b|\bget(ting)? you (connected|transferred|through)\b|\bconnect(ing)? you (with|to)\b|\btransfer(ring)? you\b/i;
+    // A question ("Would you like me to transfer you?") offers a hand-off; only a statement claims one.
+    return text.split(/(?<=[.!?])\s+/).some((sentence) => !/\?\s*$/.test(sentence) && re.test(sentence));
+  }
+
   async _executeAgentTransfer(params) {
     const targetId = params?.targetAgentId;
     this._agentTransferCount = (this._agentTransferCount || 0) + 1;
