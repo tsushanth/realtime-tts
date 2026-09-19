@@ -1907,6 +1907,19 @@ class CallSession {
       await this._enterSubflow(entryNode);
       return;
     }
+    // extract_variable never talks: it reads what the caller already said into
+    // named variables, then moves on through its first edge.
+    if (entryNode && entryNode.type === 'extract_variable') {
+      this.currentNodeId = nodeId;
+      await this._executeExtractVariable(entryNode);
+      const target = entryNode.edges?.[0]?.target;
+      if (!target) {
+        console.warn(`[call-loop] extract_variable "${nodeId}" has no outgoing edge — flow stalled here`);
+        return;
+      }
+      this._applyTransition({ next_node_id: target });
+      return;
+    }
     this.currentNodeId = nodeId;
     const turnId = ++this.turnSeq;
     this.activeTurn = turnId;
@@ -2011,7 +2024,7 @@ class CallSession {
     }
 
     // A transfer/goodbye step with a fixed message says exactly that, without the model.
-    const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye' || node?.type === 'agent_transfer') && typeof node.params?.spokenMessage === 'string'
+    const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye' || node?.type === 'agent_transfer' || node?.type === 'greeting') && typeof node.params?.spokenMessage === 'string'
       ? node.params.spokenMessage.trim() : '';
     if (fixedLine && this.turnState?.id === turnId) {
       this.history.push({ role: 'assistant', content: fixedLine });
@@ -2836,7 +2849,7 @@ class CallSession {
     // bare subflow_ref node (no prompt, only its OWN edges) instead of ever
     // entering the subflow — found via a real test call where a
     // subflow_ref was skipped over entirely.
-    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref', 'agent_transfer']);
+    const AUTO_ADVANCE_TYPES = new Set(['function', 'knowledge_base', 'goodbye', 'transfer', 'payment', 'press_digit', 'sms', 'code', 'mcp', 'subflow_ref', 'agent_transfer', 'extract_variable']);
     // An 'extraction' node normally waits for the caller's next utterance —
     // correct when it still needs to ask something the caller hasn't
     // answered yet, since the current turn's own text already asked it
@@ -2858,7 +2871,8 @@ class CallSession {
         const value = this.collectedData[field];
         return value !== undefined && value !== null && String(value).trim() !== '';
       });
-    if (AUTO_ADVANCE_TYPES.has(nextNode.type) || extractionFullySatisfied) {
+    const hasFixedOpener = nextNode.type === 'greeting' && typeof nextNode.params?.spokenMessage === 'string' && nextNode.params.spokenMessage.trim() !== '';
+    if (AUTO_ADVANCE_TYPES.has(nextNode.type) || extractionFullySatisfied || hasFixedOpener) {
       this._runNodeTurn(next_node_id);
     } else {
       this.currentNodeId = next_node_id;
@@ -3285,6 +3299,39 @@ class CallSession {
     this.currentNodeId = this.flow.startNodeId;
     this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
     this._runNodeTurn(this.currentNodeId);
+  }
+
+  async _executeExtractVariable(node) {
+    const fields = Object.entries(node.extract || {}).filter(([k]) => k && k.trim());
+    if (!anthropic || fields.length === 0) return;
+    const properties = {};
+    for (const [name, type] of fields) {
+      const t = type === 'number' || type === 'boolean' ? type : 'string';
+      properties[name] = { type: [t, 'null'] };
+    }
+    const text = this.history
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .map((m) => `${m.role === 'user' ? 'Caller' : 'Agent'}: ${m.content}`).join('\n');
+    try {
+      const res = await anthropic.messages.create({
+        model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+        max_tokens: 400,
+        system: 'You extract named values from a phone call so far. Return a value for every field, or null when the conversation does not clearly state it. Never guess.' +
+          (typeof node.prompt === 'string' && node.prompt.trim() ? `\nGuidance: ${node.prompt.trim()}` : ''),
+        tools: [{ name: 'record_variables', description: 'Record the extracted values', input_schema: { type: 'object', properties, required: fields.map(([k]) => k) } }],
+        tool_choice: { type: 'tool', name: 'record_variables' },
+        messages: [{ role: 'user', content: `Conversation so far:\n\"\"\"\n${text || '(nothing said yet)'}\n\"\"\"` }],
+      });
+      const block = res.content.find((b) => b.type === 'tool_use');
+      const got = {};
+      for (const [name] of fields) {
+        const v = block?.input?.[name];
+        if (v !== undefined && v !== null && String(v).trim() !== '') { this.collectedData[name] = v; got[name] = v; }
+      }
+      console.log(`[call-loop] extract_variable "${node.id}" -> ${JSON.stringify(got)}`);
+    } catch (err) {
+      console.error(`[call-loop] extract_variable "${node.id}" failed:`, err.message);
+    }
   }
 
   async _executeTransfer(params) {
