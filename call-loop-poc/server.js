@@ -2025,7 +2025,7 @@ class CallSession {
 
     // A transfer/goodbye step with a fixed message says exactly that, without the model.
     const fixedLine = isNodeEntry && (node?.type === 'transfer' || node?.type === 'goodbye' || node?.type === 'agent_transfer' || node?.type === 'greeting') && typeof node.params?.spokenMessage === 'string'
-      ? node.params.spokenMessage.trim() : '';
+      ? this._interpolateFields(node.params.spokenMessage).trim() : '';
     if (fixedLine && this.turnState?.id === turnId) {
       this.history.push({ role: 'assistant', content: fixedLine });
       console.log(`[call-loop] [call ${this.callSid || this.id}] turn ${turnId} assistant: "${fixedLine}"`);
