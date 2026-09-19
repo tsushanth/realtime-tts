@@ -573,7 +573,7 @@ async function sandboxSafeFetch(urlString, options) {
 // turn at each pause. Given the agent just asked for a phone number, hold a short digit-only
 // fragment so the rest of the number can join it before the agent replies.
 const PHONE_ASK_RE = /\b(phone|cell|mobile|callback)\b[^.?!]{0,40}\bnumber\b|\bnumber\b[^.?!]{0,40}\b(reach|call) you\b|\bbest number\b/i;
-const DIGIT_HOLD_MS = 2200;
+const DIGIT_HOLD_MS = 3000;
 function shouldHoldForDigits(lastAssistantText, callerText) {
   if (!lastAssistantText || !PHONE_ASK_RE.test(lastAssistantText)) return false;
   const stripped = callerText.replace(/[^0-9a-z]/gi, '');
@@ -2706,7 +2706,7 @@ class CallSession {
       // what "confirmed" means, instead of leaving the model to treat its
       // own capture as sufficient.
       prompt += `${stepNum++}. Names and numbers are easy to mishear. Before treating any field as final, you MUST ask the caller a direct yes/no question repeating back exactly what you captured (e.g. "Got it, Alex, for 3pm — did I get that right?"). Calling record_field is NOT confirmation — it only means you heard something. Wait for the caller to actually say yes (or correct you) before moving on.\n`;
-      prompt += `${stepNum++}. Phone numbers and IDs read out digit by digit can arrive with gaps or fragments. Read the number back once. If the caller says it is wrong and repeats it, take their latest complete digit string and confirm it at most ONE more time; never confirm the same field more than twice — after that, accept the caller's latest version and move on.\n`;
+      prompt += `${stepNum++}. Phone numbers and IDs read out digit by digit can arrive with gaps or fragments. If the caller gives a number in pieces across several replies, join the pieces in order and only ask for what is still missing; never ask them to repeat digits they already gave. Read the complete number back once. If the caller says it is wrong and repeats it, take their latest complete digit string and confirm it at most ONE more time; never confirm the same field more than twice — after that, accept the caller's latest version and move on.\n`;
       // Real call finding (2026-09-17): the generic "read back" rule above
       // didn't stop a mis-transcribed email (an extra letter added) from
       // going straight into a real booking with no confirmation at all —
