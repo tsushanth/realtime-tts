@@ -466,7 +466,7 @@ const SHOPPER_SYSTEM_PROMPT =
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
 // What is actually said aloud: the model's silence marker and *action* notes are dropped.
-const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*[^*\n]{1,80}\*/g, '').replace(/\s{2,}/g, ' ').trim();
+const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*([^*\n]{1,80})\*/g, (_m, inner) => (inner.trim().split(/\s+/).length >= 3 ? '' : inner)).replace(/\s{2,}/g, ' ').trim();
 const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
