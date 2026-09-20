@@ -24,6 +24,11 @@ const KEYS_PATH = process.env.KEYS_PATH || "/data/keys.json";
 // today's volume; revisit if abuse is observed.
 const FREE_TIER_CHARS = parseInt(process.env.FREE_TIER_CHARS || "10000", 10);
 
+// Speech-to-text is metered in audio seconds but shares the character meter and the single free
+// allowance. $0.11 per audio hour at $0.01 per 1,000 chars = 11,000 char-equivalents/hour = 3.0556/s.
+// MUST stay in sync with STT_CHARS_PER_SECOND in ReadAloudAI/backend/src/lib/realtimeTtsBilling.ts.
+export const STT_CHARS_PER_SECOND = 3.0556;
+
 // Signs/verifies short-lived session tokens for the direct-to-Modal fast path
 // (see server.js's /tts/authorize and worker-modal-readaloud/app.py). Separate
 // from ADMIN_SECRET deliberately — Modal only needs the narrow ability to
@@ -202,17 +207,25 @@ export function listKeys() {
 // usageCharsSinceLastReport stays the TOTAL across engines (so a billing job that has not
 // learned about engines yet still bills every char, at the standard rate - never free);
 // usagePiperCharsSinceLastReport is the Piper subset so it can be priced lower.
-function applyUsage(entry, chars, engine) {
+// STT usage arrives as `audioSeconds` and is kept in its own counter (NOT added to chars), billed
+// by the backend at STT_CHARS_PER_SECOND. For free-tier keys it is converted to char-equivalents
+// so the one shared allowance keeps working.
+function applyUsage(entry, chars, engine, audioSeconds = 0) {
   if (entry.billingEnabled) {
-    entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
-    if (engine === "piper") {
-      entry.usagePiperCharsSinceLastReport = (entry.usagePiperCharsSinceLastReport || 0) + chars;
+    if (chars) {
+      entry.usageCharsSinceLastReport = (entry.usageCharsSinceLastReport || 0) + chars;
+      if (engine === "piper") {
+        entry.usagePiperCharsSinceLastReport = (entry.usagePiperCharsSinceLastReport || 0) + chars;
+      }
+    }
+    if (audioSeconds) {
+      entry.usageAudioSecondsSinceLastReport = (entry.usageAudioSecondsSinceLastReport || 0) + audioSeconds;
     }
     return;
   }
   // Free-tier usage isn't billed and never reported to Stripe — tracked
   // separately so drainUsage()'s output stays exactly "what to invoice."
-  entry.freeCharsUsed = (entry.freeCharsUsed || 0) + chars;
+  entry.freeCharsUsed = (entry.freeCharsUsed || 0) + (chars || 0) + (audioSeconds || 0) * STT_CHARS_PER_SECOND;
   if (entry.freeCharsUsed >= FREE_TIER_CHARS) entry.freeTierExhausted = true;
 }
 
@@ -229,12 +242,13 @@ export function recordUsage(key, chars) {
 // used by the /admin/usage/report callback from Modal (see
 // worker-modal-readaloud/app.py), which only ever sees the ID embedded in a
 // session token, never the raw key itself.
-export function recordUsageById(id, chars, engine) {
-  if (!id || !chars) return false;
+export function recordUsageById(id, chars, engine, audioSeconds) {
+  const secs = Number.isFinite(audioSeconds) && audioSeconds > 0 ? audioSeconds : 0;
+  if (!id || (!chars && !secs)) return false;
   const keys = load();
   const entry = keys.find((k) => k.id === id && !k.revoked);
   if (!entry) return false;
-  applyUsage(entry, chars, engine);
+  applyUsage(entry, chars, engine, secs);
   save(keys);
   return true;
 }
@@ -284,9 +298,16 @@ export function verifySessionToken(token) {
 export function drainUsage() {
   const keys = load();
   const result = keys
-    .filter((k) => k.usageCharsSinceLastReport > 0)
-    .map((k) => ({ id: k.id, chars: k.usageCharsSinceLastReport, piperChars: k.usagePiperCharsSinceLastReport || 0 }));
-  for (const k of keys) { k.usageCharsSinceLastReport = 0; k.usagePiperCharsSinceLastReport = 0; }
+    .filter((k) => k.usageCharsSinceLastReport > 0 || k.usageAudioSecondsSinceLastReport > 0)
+    .map((k) => ({
+      id: k.id,
+      chars: k.usageCharsSinceLastReport || 0,
+      piperChars: k.usagePiperCharsSinceLastReport || 0,
+      audioSeconds: Math.round((k.usageAudioSecondsSinceLastReport || 0) * 1000) / 1000,
+    }));
+  for (const k of keys) {
+    k.usageCharsSinceLastReport = 0; k.usagePiperCharsSinceLastReport = 0; k.usageAudioSecondsSinceLastReport = 0;
+  }
   save(keys);
   return result;
 }
