@@ -106,6 +106,18 @@ def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
         sub_parts = [p.strip() for p in _SUBSPLIT_RE.split(chunks[0]) if p.strip()]
         if len(sub_parts) > 1:
             chunks = [sub_parts[0], " ".join(sub_parts[1:])] + chunks[1:]
+
+    # No comma to split on (most short sentences) -> the first chunk was the whole
+    # sentence, i.e. a 100-300 KB first PCM frame. Measured: on a fresh TCP/WebSocket
+    # connection (slow start) every extra ~50 KB in the first frame costs ~100 ms
+    # before the client sees "first audio". Cut at the last word boundary within
+    # first_chunk_max_chars so the first frame stays small; the rest follows as chunk 2
+    # (generated in ~100 ms, far less than the first chunk's playback time).
+    if chunks and len(chunks[0]) > first_chunk_max_chars:
+        head = chunks[0][: first_chunk_max_chars + 1]
+        cut = head.rfind(" ")
+        if cut >= 12 and len(chunks[0]) - cut > 10:  # no tiny first chunk / dangling one-word tail
+            chunks = [chunks[0][:cut].strip(), chunks[0][cut:].strip()] + chunks[1:]
     return chunks
 
 
@@ -139,7 +151,15 @@ def web():
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
     from kokoro import KPipeline
 
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
     web_app = FastAPI()
+    # One inference thread: keeps the asyncio loop free (previously the blocking
+    # pipeline() call stalled every other socket on this container, up to 8 with
+    # max_inputs=8) while still serializing GPU/phonemizer use as before, since
+    # KPipeline's thread-safety is not established.
+    gpu_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kokoro")
     pipeline = KPipeline(lang_code="a")
     AUTH_TOKEN = os.environ["TTS_WS_AUTH_TOKEN"]
     SESSION_SECRET = os.environ["MODAL_SESSION_SECRET"]
@@ -147,6 +167,10 @@ def web():
     USAGE_REPORT_URL = os.environ.get(
         "USAGE_REPORT_URL", "https://realtime-tts-gateway.fly.dev/admin/usage/report"
     )
+
+    def synth_clause(clause, voice, speed):
+        _gs, _ps, audio = next(pipeline(clause, voice=voice, speed=speed))
+        return audio
 
     def b64url_decode(s: str) -> bytes:
         return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
@@ -214,6 +238,7 @@ def web():
             return
 
         await ws.accept()
+        loop = asyncio.get_running_loop()
         cancel = False
 
         try:
@@ -237,6 +262,8 @@ def web():
                 text = msg.get("text", "")
                 voice = msg.get("voice", "af_heart")
                 speed = float(msg.get("speed", 1.0))
+                frame_ms = int(msg.get("frame_ms", 0) or 0)
+                frame_bytes = (max(20, min(frame_ms, 1000)) * 24 * 2) & ~1 if frame_ms else 0
 
                 try:
                     for clause in chunk_text(text):
@@ -244,8 +271,7 @@ def web():
                             await ws.send_json({"type": "cancelled"})
                             break
                         t0 = time.perf_counter()
-                        gen = pipeline(clause, voice=voice, speed=speed)
-                        _gs, _ps, audio = next(gen)
+                        audio = await loop.run_in_executor(gpu_pool, synth_clause, clause, voice, speed)
                         gen_ms = (time.perf_counter() - t0) * 1000
                         audio_s = len(audio) / 24000
                         await ws.send_json({
@@ -255,7 +281,16 @@ def web():
                             "audio_s": audio_s,
                             "providers": ["modal-t4-cuda"],
                         })
-                        await ws.send_bytes(to_pcm16(audio))
+                        pcm = to_pcm16(audio)
+                        if frame_bytes and len(pcm) > frame_bytes:
+                            # Opt-in (client sends "frame_ms"): several small binary frames
+                            # per chunk_meta so the first bytes arrive before slow start
+                            # has opened the window for the whole chunk. Clients that treat
+                            # every binary frame as PCM (all in this repo) need no change.
+                            for i in range(0, len(pcm), frame_bytes):
+                                await ws.send_bytes(pcm[i : i + frame_bytes])
+                        else:
+                            await ws.send_bytes(pcm)
                     else:
                         await ws.send_json({"type": "done"})
                         # Only session-token clients get metered this way — the
