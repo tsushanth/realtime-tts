@@ -215,7 +215,8 @@ console.log("--- websocket: billing unchanged");
   reports.length = 0;
   const s = wsSession(OWNER); await s.opened;
   const w = await s.synth({ text: SHORT, format: "mulaw_8000" }); await sleep(1500);
-  ok("ws done => billed len(text)", w.end.type === "done" && reports.length === 1 && reports[0].chars === SHORT.length);
+  const mine = reports.filter((r) => r.id === "owner-id");  // a late report from the previous test's other-id session may land here
+  ok("ws done => billed len(text)", w.end.type === "done" && mine.length === 1 && mine[0].chars === SHORT.length, JSON.stringify({ end: w.end.type, reports }));
   s.ws.close();
 }
 
