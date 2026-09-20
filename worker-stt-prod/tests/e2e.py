@@ -32,9 +32,9 @@ mp = (f'--{bd}\r\nContent-Disposition: form-data; name="language"\r\n\r\nen\r\n-
       f'Content-Type: audio/wav\r\n\r\n').encode() + rd("c10.wav") + f"\r\n--{bd}--\r\n".encode()
 st, b, _ = post(base, tok, mp, "", f"multipart/form-data; boundary={bd}"); check("multipart", st == 200 and b["language"] == "en", (st, str(b)[:200]))
 st, b, _ = post(base, tok, b"--x--", "", "multipart/form-data; boundary=x"); check("multipart without file -> 400", st == 400, (st, b))
-# limits
-st, b, _ = post(base, tok, b"\xff" * (8000 * (3 * 3600 + 60)), "?format=mulaw_8000"); check("3h+1min mulaw -> 413", st == 413, (st, b))
+# limits (large uploads are slow from a laptop: opt in with BIG=1, or use cloud_client.py which runs inside Modal)
 if os.environ.get("BIG"):
+    st, b, _ = post(base, tok, b"\xff" * (8000 * (3 * 3600 + 60)), "?format=mulaw_8000"); check("3h+1min mulaw -> 413", st == 413, (st, b))
     st, b, _ = post(base, tok, b"\0" * (201 * 1024 * 1024), "?format=pcm_16000"); check("201 MB -> 413", st == 413, (st, b))
 print("FAILED:", fails if fails else "none")
 sys.exit(1 if fails else 0)

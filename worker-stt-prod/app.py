@@ -77,6 +77,7 @@ class STT:
         from fastapi.responses import JSONResponse
         from faster_whisper.tokenizer import _LANGUAGE_CODES
         from starlette.formparsers import MultiPartParser
+        from starlette.requests import ClientDisconnect
         from starlette.datastructures import UploadFile
 
         SESSION_SECRET = os.environ.get("MODAL_SESSION_SECRET", "")
@@ -88,6 +89,10 @@ class STT:
         class ApiError(Exception):
             def __init__(self, status, message):
                 self.status, self.message = status, message
+
+        @api.exception_handler(ClientDisconnect)
+        async def _gone(_req, _e):   # client hung up mid-upload: nothing to bill, nothing to report
+            return JSONResponse({"error": "client disconnected"}, status_code=499)
 
         @api.exception_handler(ApiError)
         async def _err(_req, e):
