@@ -468,6 +468,7 @@ const SHOPPER_SYSTEM_PROMPT =
 const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
+const shopperSpeakFirst = new Set();
 const SHOPPER_PERSONA_RULES =
   ' You are NOT an AI — you are a real person on a phone call. Wait for the business to speak first and answer only what is asked, one thing at a time, in whatever order they ask; do not volunteer details early. ' +
   'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
@@ -719,7 +720,7 @@ app.post('/twilio/voice', async (req, res) => {
   // for why this reuses /twilio/voice + the normal CallSession machinery
   // instead of a separate service.
   if (req.query.mode === 'shopper' && callSid) {
-    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), speakFirst: shopperSpeakFirst.has(callSid), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -945,7 +946,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst } = req.body || {};
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
   // whatever business we're dialing (our own number, or a competitor's).
@@ -1034,6 +1035,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     // depending on it. Best-effort, fire-and-forget — never blocks the
     // response on this.
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
+    if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
     if (shopper) {
       findTenantIdByNumber(toNumber)
         .then((tenantId) => {
@@ -1242,9 +1244,13 @@ twilioWss.on('connection', (twilioWs) => {
       session.isShopper = true;
       session.onClientMessage(JSON.stringify({
         type: 'context',
-        systemPrompt: resolved.persona ? resolved.persona + SHOPPER_PERSONA_RULES : SHOPPER_SYSTEM_PROMPT,
+        systemPrompt: resolved.persona ? resolved.persona + (resolved.speakFirst ? SHOPPER_PERSONA_RULES.replace('Wait for the business to speak first and answer', 'You speak first when the call connects, then answer') : SHOPPER_PERSONA_RULES) : SHOPPER_SYSTEM_PROMPT,
         ttsBackend: 'elevenlabs',
       }), false);
+      // A caller who opens the conversation (e.g. the person who answers an outbound call): nudge a first turn.
+      if (resolved.speakFirst) {
+        setTimeout(() => session._onUserTurnComplete('[The call just connected and the other side has not spoken yet. Begin the conversation in character now.]'), 900);
+      }
       // Safety net (see decision 5): a flow-less session never hangs up on
       // its own — normally fine, since the real business side ends the call
       // — but if something on either end gets stuck, this stops a live PSTN
