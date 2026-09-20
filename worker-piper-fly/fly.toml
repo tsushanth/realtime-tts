@@ -7,6 +7,7 @@ primary_region = "sjc"
   ORT_INTRA_THREADS = "4"
   PORT = "8080"
   MAX_CONNECTIONS = "4"
+  VOICES_DIR = "/voices"
   USAGE_REPORT_URL = "https://api.readaloudai.org/admin/usage/report"
 
 # Public endpoint (wss://piper-tts-sjc.fly.dev/tts) for the ReadAloud API: clients get a
@@ -23,6 +24,11 @@ primary_region = "sjc"
     type = "connections"
     soft_limit = 4
     hard_limit = 6
+
+# Customer voices (voice-pipeline pushes them via PUT /admin/voices/<id>); survives deploys.
+[mounts]
+  source = "voices"
+  destination = "/voices"
 
 [[vm]]
   size = "shared-cpu-4x"
