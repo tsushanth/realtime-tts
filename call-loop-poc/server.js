@@ -4296,7 +4296,8 @@ class CallSession {
         }
       );
       if (!res.ok || !res.body) {
-        console.error(`[call-loop] ElevenLabs request failed: ${res.status}`);
+        const detail = await res.text().catch(() => '');
+        console.error(`[call-loop] ElevenLabs request failed: ${res.status} ${detail.slice(0, 220)}`);
         return;
       }
       for await (const chunk of res.body) {
