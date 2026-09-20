@@ -151,7 +151,16 @@ const server = http.createServer(async (req, res) => {
     }
     const id = keys.getIdForKey(key);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ token: keys.createSessionToken(id), url: engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL }));
+    const out = { token: keys.createSessionToken(id), url: engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL };
+    if (engine === "piper") {
+      // wss://host/tts -> https://host/v1/tts/stream (HTTP streaming endpoint on the same worker)
+      try {
+        const u = new URL(PIPER_WORKER_URL);
+        u.protocol = u.protocol === "ws:" ? "http:" : "https:";
+        out.http_url = `${u.protocol}//${u.host}/v1/tts/stream`;
+      } catch { /* malformed PIPER_WORKER_URL: omit http_url */ }
+    }
+    res.end(JSON.stringify(out));
     return;
   }
 
