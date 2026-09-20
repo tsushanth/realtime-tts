@@ -496,6 +496,8 @@ const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
 const shopperSpeakFirst = new Set();
+// Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
+const demoFlows = new Map();
 const SHOPPER_PERSONA_RULES =
   ' You are NOT an AI — you are a real person on a phone call. Wait for the business to speak first and answer only what is asked, one thing at a time, in whatever order they ask; do not volunteer details early. ' +
   'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
@@ -746,7 +748,21 @@ app.post('/twilio/voice', async (req, res) => {
   // resolveInboundCall entirely. See MYSTERY_SHOPPER_DECISIONS.md decision 3
   // for why this reuses /twilio/voice + the normal CallSession machinery
   // instead of a separate service.
-  if (req.query.mode === 'shopper' && callSid) {
+  if (req.query.mode === 'demo' && callSid) {
+    const demo = demoFlows.get(callSid);
+    demoFlows.delete(callSid);
+    if (demo) {
+      pendingCallContext.set(callSid, {
+        tenantId: demo.tenantId,
+        flow: { nodes: demo.nodes, startNodeId: demo.startNodeId, globalSettings: { ...(demo.globalSettings || {}), maxCallDurationSec: 240 } },
+        recordingEnabled: false,
+        fromNumber: req.body.From || null,
+        tenantNumber: req.body.From || null,
+        direction: 'outbound',
+        createdAt: Date.now(),
+      });
+    }
+  } else if (req.query.mode === 'shopper' && callSid) {
     pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), speakFirst: shopperSpeakFirst.has(callSid), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
@@ -968,16 +984,28 @@ app.get('/active-calls', (req, res) => {
 // debug WS path directly rather than a real phone call. Same admin-secret
 // guard as /active-calls (Bearer token; 401 when unset or mismatched) —
 // this places real, billable calls, not just reads state.
+app.get('/call-status/:sid', async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) return res.status(401).json({ error: 'unauthorized' });
+  if (!/^CA[0-9a-f]{32}$/.test(req.params.sid)) return res.status(400).json({ error: 'bad sid' });
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls/${req.params.sid}.json`, {
+    headers: { Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64') },
+  });
+  const b = await r.json().catch(() => ({}));
+  res.status(r.ok ? 200 : r.status).json({ status: b.status, duration: Number(b.duration) || 0 });
+});
+
 app.post('/place-test-call', express.json(), async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow } = req.body || {};
+  const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
   // whatever business we're dialing (our own number, or a competitor's).
-  if (!toNumber || (!routeAs && !shopper)) {
+  if (!toNumber || (!routeAs && !shopper && !isDemo)) {
     return res.status(400).json({ error: 'toNumber is required, plus either routeAs or shopper:true' });
   }
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
@@ -986,7 +1014,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
 
   try {
     const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-    let fromNumber = routeAs;
+    let fromNumber = routeAs || process.env.DEMO_FROM_NUMBER;
     if (!fromNumber) {
       // Only shopper mode reaches here — no specific number to test, so ask
       // Twilio which number(s) this account owns and use the first one.
@@ -1007,7 +1035,9 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     }
 
     const outboundQuery = direction === 'outbound' ? '&direction=outbound' : '';
-    const voiceUrl = shopper
+    const voiceUrl = isDemo
+      ? `https://${req.headers.host}/twilio/voice?mode=demo`
+      : shopper
       ? `https://${req.headers.host}/twilio/voice?mode=shopper`
       : `https://${req.headers.host}/twilio/voice?routeAs=${encodeURIComponent(routeAs)}${outboundQuery}`;
     const params = new URLSearchParams({ To: toNumber, From: fromNumber, Url: voiceUrl });
@@ -1061,6 +1091,10 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     // fully pinned down, so this sidesteps that uncertainty rather than
     // depending on it. Best-effort, fire-and-forget — never blocks the
     // response on this.
+    if (isDemo) {
+      demoFlows.set(callBody.sid, { nodes: demoFlow.nodes, startNodeId: demoFlow.startNodeId, globalSettings: demoFlow.globalSettings, tenantId: demoFlow.tenantId });
+      setTimeout(() => demoFlows.delete(callBody.sid), 120_000).unref?.();
+    }
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
     if (shopper) {
