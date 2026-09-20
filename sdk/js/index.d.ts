@@ -6,7 +6,9 @@ export class CapacityError extends ApiError { retryAfter?: number; }
 export class VoiceError extends ApiError {}
 
 export type Engine = 'piper' | 'kokoro';
-export type AudioFormat = 'pcm_24000' | 'pcm_8000' | 'mulaw_8000' | 'alaw_8000' | 'opus' | (string & {});
+export type AudioFormat = 'pcm_24000' | 'pcm_8000' | 'mulaw_8000' | 'alaw_8000' | (string & {});
+/** 'default', a built-in voice name, or 'custom:<id>'. */
+export type Voice = 'default' | `custom:${string}` | (string & {});
 
 export interface ReadAloudOptions {
   apiKey: string;
@@ -18,7 +20,7 @@ export interface ReadAloudOptions {
 }
 
 export interface SynthesizeOptions {
-  voice?: string;
+  voice?: Voice;
   speed?: number;
   format?: AudioFormat;
   signal?: AbortSignal;
@@ -30,6 +32,8 @@ export class ReadAloud {
   constructor(opts: ReadAloudOptions);
   authorize(signal?: AbortSignal): Promise<Authorization>;
   stream(text: string, opts?: SynthesizeOptions): AsyncGenerator<Uint8Array, void, undefined>;
+  /** HTTP chunked streaming (Piper only; throws ApiError if the server offers no http_url). */
+  streamHttp(text: string, opts?: SynthesizeOptions): AsyncGenerator<Uint8Array, void, undefined>;
   convert(text: string, opts?: SynthesizeOptions): Promise<Uint8Array>;
 }
 

@@ -50,6 +50,6 @@ def from_status(status: int, message: str, retry_after: float | None = None) -> 
         return QuotaError(message, status)
     if status == 503:
         return CapacityError(message, status, retry_after)
-    if status == 400 and "voice" in message.lower():
+    if status in (400, 404) and "voice" in message.lower():
         return VoiceError(message, status)
     return ApiError(message, status)

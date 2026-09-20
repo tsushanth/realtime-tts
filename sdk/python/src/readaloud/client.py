@@ -58,9 +58,12 @@ class ReadAloud:
     def stream(self, text: str, voice: str = "default", speed: float = 1.0,
                format: str = "pcm_24000") -> Iterator[bytes]:
         """Yield audio chunks. Closing the generator early cancels synthesis."""
-        auth = self.authorize()
-        ws = connect(f"{auth['url']}?token={auth['token']}", max_size=None,
+        yield from self._ws_stream(self.authorize(), text, voice, speed, format)
+
+    def _ws_stream(self, auth: dict, text, voice, speed, format) -> Iterator[bytes]:
+        cm = connect(f"{auth['url']}?token={auth['token']}", max_size=None,
                      open_timeout=self.timeout)
+        ws = cm.__enter__()   # websockets >= 15 deprecates using connect() without `with`
         with self._lock:
             self._ws = ws
         try:
@@ -84,7 +87,7 @@ class ReadAloud:
                 ws.send(json.dumps({"type": "stop"}))
             except Exception:
                 pass
-            ws.close()
+            cm.__exit__(None, None, None)
             with self._lock:
                 if self._ws is ws:
                     self._ws = None
@@ -104,8 +107,9 @@ class ReadAloud:
                       format: str = "pcm_24000") -> AsyncIterator[bytes]:
         """Async variant of stream(). Breaking out of the loop cancels synthesis."""
         auth = await _to_thread(self.authorize)
-        ws = await aconnect(f"{auth['url']}?token={auth['token']}", max_size=None,
-                            open_timeout=self.timeout)
+        acm = aconnect(f"{auth['url']}?token={auth['token']}", max_size=None,
+                       open_timeout=self.timeout)
+        ws = await acm.__aenter__()
         try:
             await ws.send(json.dumps(self._request(text, voice, speed, format)))
             while True:
@@ -127,7 +131,38 @@ class ReadAloud:
                 await ws.send(json.dumps({"type": "stop"}))
             except Exception:
                 pass
-            await ws.close()
+            await acm.__aexit__(None, None, None)
+
+    # -- HTTP streaming -----------------------------------------------------
+    def _http_stream(self, auth: dict, text, voice, speed, format,
+                     chunk_size: int) -> Iterator[bytes]:
+        http_url = auth.get("http_url")
+        if not http_url:
+            raise ApiError("HTTP streaming is not available for this engine; use stream()")
+        r = requests.post(http_url, headers={"Authorization": f"Bearer {auth['token']}"},
+                          json={"text": text, "voice": voice, "speed": speed, "format": format},
+                          timeout=self.timeout, stream=True)
+        try:
+            if r.status_code != 200:
+                ra = r.headers.get("Retry-After")
+                try:
+                    retry_after = float(ra) if ra else None
+                except ValueError:
+                    retry_after = None
+                raise from_status(r.status_code, _err_text(r), retry_after)
+            for chunk in r.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    yield chunk
+        finally:
+            r.close()
+
+    def stream_http(self, text: str, voice: str = "default", speed: float = 1.0,
+                    format: str = "pcm_24000", chunk_size: int = 4096) -> Iterator[bytes]:
+        """Yield audio bytes from the HTTP streaming endpoint (``POST http_url`` with a
+        Bearer token, chunked response). Available for Piper; raises ApiError otherwise.
+        Chunks are arbitrary byte slices, not sentence-aligned; for 16-bit formats
+        they may split a sample. Closing the generator drops the connection."""
+        yield from self._http_stream(self.authorize(), text, voice, speed, format, chunk_size)
 
     # -- convert ------------------------------------------------------------
     def convert(self, text: str, voice: str = "default", speed: float = 1.0,
@@ -135,16 +170,9 @@ class ReadAloud:
         """Return the complete audio. Uses the HTTP endpoint when the server offers it
         (Piper), otherwise collects the WebSocket stream."""
         auth = self.authorize()
-        http_url = auth.get("http_url")
-        if not http_url:
-            return b"".join(self.stream(text, voice, speed, format))
-        r = requests.post(http_url, headers={"Authorization": f"Bearer {auth['token']}"},
-                          json={"text": text, "voice": voice, "speed": speed, "format": format},
-                          timeout=self.timeout)
-        if r.status_code != 200:
-            ra = r.headers.get("Retry-After")
-            raise from_status(r.status_code, _err_text(r), float(ra) if ra and ra.replace(".", "").isdigit() else None)
-        return r.content
+        if auth.get("http_url"):
+            return b"".join(self._http_stream(auth, text, voice, speed, format, 65536))
+        return b"".join(self._ws_stream(auth, text, voice, speed, format))
 
 
 async def _to_thread(fn):
