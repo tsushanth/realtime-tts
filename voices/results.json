@@ -1,0 +1,635 @@
+{
+ "voices": {
+  "en-us-kristin": {
+   "id": "en-us-kristin",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en",
+   "export_s": 20.83469247817993,
+   "load_s": 1.326004981994629,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.24571537971496582,
+     "audio_s": 4.551111111111111,
+     "rtf": 0.05399019573815167
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.31887197494506836,
+     "audio_s": 6.0836281179138325,
+     "rtf": 0.0524147710485654
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.2220776081085205,
+     "audio_s": 4.365351473922902,
+     "rtf": 0.05087278983952042
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.14786791801452637,
+     "audio_s": 2.8444444444444446,
+     "rtf": 0.051984814926981926
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.14321470260620117,
+     "audio_s": 2.8444444444444446,
+     "rtf": 0.0503489188849926
+    }
+   ],
+   "mean_rtf": 0.051922298087642406,
+   "median_f0": 154.1958041958042
+  },
+  "de-de-mls": {
+   "id": "de-de-mls",
+   "sample_rate": 22050,
+   "num_speakers": 52,
+   "speaker_id": 0,
+   "espeak_voice": "nl",
+   "export_s": 22.417524099349976,
+   "load_s": 1.3021392822265625,
+   "onnx_mb": 77.550664,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Vielen Dank für Ihren Anruf, dabei kann ich Ihnen helfen. Ich rufe jetzt gleich Ihre Kontodaten auf.",
+     "synth_s": 0.5171902179718018,
+     "audio_s": 11.830566893424036,
+     "rtf": 0.043716435791363424
+    },
+    {
+     "n": 4,
+     "text": "Kann ich heute noch etwas für Sie tun?",
+     "synth_s": 0.27416443824768066,
+     "audio_s": 6.489977324263038,
+     "rtf": 0.04224428292263919
+    }
+   ],
+   "mean_rtf": 0.042980359357001306,
+   "median_f0": 148.98648648648648
+  },
+  "en-us-ljspeech": {
+   "id": "en-us-ljspeech",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en",
+   "export_s": 21.362183809280396,
+   "load_s": 1.385267972946167,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.31477808952331543,
+     "audio_s": 5.990748299319728,
+     "rtf": 0.05254403520158903
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.3349015712738037,
+     "audio_s": 6.350657596371882,
+     "rtf": 0.05273494377418999
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.27581787109375,
+     "audio_s": 5.630839002267574,
+     "rtf": 0.04898344118570544
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.1405484676361084,
+     "audio_s": 2.5193650793650795,
+     "rtf": 0.05578725718923153
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.14347100257873535,
+     "audio_s": 2.681904761904762,
+     "rtf": 0.05349593491039493
+    }
+   ],
+   "mean_rtf": 0.05270912245222219,
+   "median_f0": 210.0
+  },
+  "fr-fr-siwis": {
+   "id": "fr-fr-siwis",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "fr",
+   "export_s": 18.739726066589355,
+   "load_s": 1.063284158706665,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Merci de votre appel, je peux vous aider avec cela. Je consulte les détails de votre compte tout de suite.",
+     "synth_s": 0.18012166023254395,
+     "audio_s": 5.5495691609977325,
+     "rtf": 0.03245687277823936
+    },
+    {
+     "n": 4,
+     "text": "Y a-t-il autre chose que je puisse faire pour vous aujourd'hui ?",
+     "synth_s": 0.08612585067749023,
+     "audio_s": 2.6354648526077096,
+     "rtf": 0.032679567170957116
+    }
+   ],
+   "mean_rtf": 0.03256821997459824,
+   "median_f0": 225.0
+  },
+  "de-de-thorsten": {
+   "id": "de-de-thorsten",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "de",
+   "export_s": 21.319812297821045,
+   "load_s": 1.3120052814483643,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Vielen Dank für Ihren Anruf, dabei kann ich Ihnen helfen. Ich rufe jetzt gleich Ihre Kontodaten auf.",
+     "synth_s": 0.27103209495544434,
+     "audio_s": 5.375419501133787,
+     "rtf": 0.05042064063991249
+    },
+    {
+     "n": 4,
+     "text": "Kann ich heute noch etwas für Sie tun?",
+     "synth_s": 0.09782171249389648,
+     "audio_s": 1.822766439909297,
+     "rtf": 0.053666619239908876
+    }
+   ],
+   "mean_rtf": 0.052043629939910685,
+   "median_f0": 123.87640449438203
+  },
+  "nl-nl-mls": {
+   "id": "nl-nl-mls",
+   "sample_rate": 22050,
+   "num_speakers": 52,
+   "speaker_id": 0,
+   "espeak_voice": "nl",
+   "export_s": 22.24936079978943,
+   "load_s": 1.3358514308929443,
+   "onnx_mb": 77.173831,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Bedankt voor uw telefoontje, daarbij kan ik u helpen. Ik haal uw accountgegevens er meteen bij.",
+     "synth_s": 0.419633150100708,
+     "audio_s": 8.092154195011338,
+     "rtf": 0.05185679115697079
+    },
+    {
+     "n": 4,
+     "text": "Kan ik u vandaag nog ergens anders mee helpen?",
+     "synth_s": 0.20262885093688965,
+     "audio_s": 3.924172335600907,
+     "rtf": 0.05163607344626499
+    }
+   ],
+   "mean_rtf": 0.05174643230161789,
+   "median_f0": 128.19767441860466
+  },
+  "nl-nl-pim": {
+   "id": "nl-nl-pim",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "nl",
+   "export_s": 22.94013023376465,
+   "load_s": 1.4159345626831055,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Bedankt voor uw telefoontje, daarbij kan ik u helpen. Ik haal uw accountgegevens er meteen bij.",
+     "synth_s": 0.37088584899902344,
+     "audio_s": 7.383945578231293,
+     "rtf": 0.05022868127474245
+    },
+    {
+     "n": 4,
+     "text": "Kan ik u vandaag nog ergens anders mee helpen?",
+     "synth_s": 0.1723191738128662,
+     "audio_s": 3.5062131519274375,
+     "rtf": 0.04914680492774343
+    }
+   ],
+   "mean_rtf": 0.04968774310124294,
+   "median_f0": 128.19767441860466
+  },
+  "en-us-john": {
+   "id": "en-us-john",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en",
+   "export_s": 20.896212577819824,
+   "load_s": 1.3161828517913818,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.33681678771972656,
+     "audio_s": 7.116916099773243,
+     "rtf": 0.0473262271182961
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.3222372531890869,
+     "audio_s": 7.163356009070295,
+     "rtf": 0.04498411816766718
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.2579686641693115,
+     "audio_s": 5.340589569160998,
+     "rtf": 0.04830340561254517
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.1508159637451172,
+     "audio_s": 2.972154195011338,
+     "rtf": 0.050742980965878814
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.1259164810180664,
+     "audio_s": 2.4380952380952383,
+     "rtf": 0.05164543166756629
+    }
+   ],
+   "mean_rtf": 0.04860043270639071,
+   "median_f0": 121.8232044198895
+  },
+  "es-es-davefx": {
+   "id": "es-es-davefx",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "es",
+   "export_s": 21.238214015960693,
+   "load_s": 1.3446645736694336,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Gracias por llamar, puedo ayudarle con eso. Permítame consultar los datos de su cuenta ahora mismo.",
+     "synth_s": 0.28462767601013184,
+     "audio_s": 5.259319727891157,
+     "rtf": 0.05411872461388837
+    },
+    {
+     "n": 4,
+     "text": "¿Hay algo más en lo que pueda ayudarle hoy?",
+     "synth_s": 0.10361433029174805,
+     "audio_s": 1.9272562358276644,
+     "rtf": 0.053762612550194
+    }
+   ],
+   "mean_rtf": 0.05394066858204119,
+   "median_f0": 123.87640449438203
+  },
+  "en-us-mike": {
+   "id": "en-us-mike",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en-us",
+   "export_s": 23.21514582633972,
+   "load_s": 1.4563078880310059,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.2646157741546631,
+     "audio_s": 4.446621315192743,
+     "rtf": 0.05950940172273092
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.28729248046875,
+     "audio_s": 4.794920634920635,
+     "rtf": 0.059916003275725806
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.22582054138183594,
+     "audio_s": 3.8080725623582765,
+     "rtf": 0.05930048277283587
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.14991354942321777,
+     "audio_s": 2.2058956916099772,
+     "rtf": 0.06796039812462895
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.13669610023498535,
+     "audio_s": 2.1710657596371883,
+     "rtf": 0.06296267150278716
+    }
+   ],
+   "mean_rtf": 0.06192979147974174,
+   "median_f0": 126.72413793103448
+  },
+  "ru-ru-denis": {
+   "id": "ru-ru-denis",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "ru",
+   "export_s": 26.500454425811768,
+   "load_s": 2.0462849140167236,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Спасибо за звонок, я могу вам с этим помочь. Сейчас я открою данные вашей учётной записи.",
+     "synth_s": 0.271364688873291,
+     "audio_s": 5.758548752834467,
+     "rtf": 0.04712379811662099
+    },
+    {
+     "n": 4,
+     "text": "Могу ли я вам ещё чем-нибудь помочь сегодня?",
+     "synth_s": 0.13173913955688477,
+     "audio_s": 2.705124716553288,
+     "rtf": 0.048699839512293945
+    }
+   ],
+   "mean_rtf": 0.04791181881445747,
+   "median_f0": 139.55696202531647
+  },
+  "pt-br-faber": {
+   "id": "pt-br-faber",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "pt-br",
+   "export_s": 26.306071281433105,
+   "load_s": 1.4183645248413086,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Obrigado por ligar, posso ajudá-lo com isso. Deixe-me abrir os dados da sua conta agora mesmo.",
+     "synth_s": 0.22276592254638672,
+     "audio_s": 4.876190476190477,
+     "rtf": 0.04568441770970821
+    },
+    {
+     "n": 4,
+     "text": "Há mais alguma coisa em que eu possa ajudar hoje?",
+     "synth_s": 0.10261392593383789,
+     "audio_s": 2.2175056689342405,
+     "rtf": 0.04627448189711071
+    }
+   ],
+   "mean_rtf": 0.045979449803409456,
+   "median_f0": 154.1958041958042
+  },
+  "pl-pl-gosia": {
+   "id": "pl-pl-gosia",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "pl",
+   "export_s": 21.678614139556885,
+   "load_s": 1.2714347839355469,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Dziękuję za telefon, chętnie w tym pomogę. Zaraz sprawdzę dane Państwa konta.",
+     "synth_s": 0.2861199378967285,
+     "audio_s": 5.468299319727891,
+     "rtf": 0.052323386334120085
+    },
+    {
+     "n": 4,
+     "text": "Czy mogę dziś jeszcze w czymś pomóc?",
+     "synth_s": 0.12140464782714844,
+     "audio_s": 2.182675736961451,
+     "rtf": 0.0556219349357676
+    }
+   ],
+   "mean_rtf": 0.05397266063494384,
+   "median_f0": 204.16666666666666
+  },
+  "es-mx-ald": {
+   "id": "es-mx-ald",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "es-419",
+   "export_s": 20.54602551460266,
+   "load_s": 1.3907897472381592,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Gracias por llamar, puedo ayudarle con eso. Permítame consultar los datos de su cuenta ahora mismo.",
+     "synth_s": 0.33190011978149414,
+     "audio_s": 6.15328798185941,
+     "rtf": 0.05393866186012637
+    },
+    {
+     "n": 4,
+     "text": "¿Hay algo más en lo que pueda ayudarle hoy?",
+     "synth_s": 0.13981342315673828,
+     "audio_s": 2.5658049886621317,
+     "rtf": 0.05449105593548641
+    }
+   ],
+   "mean_rtf": 0.05421485889780639,
+   "median_f0": 146.02649006622516
+  },
+  "en-us-sam": {
+   "id": "en-us-sam",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en-us",
+   "export_s": 21.257637977600098,
+   "load_s": 1.3301069736480713,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.29273366928100586,
+     "audio_s": 6.1184580498866215,
+     "rtf": 0.04784435341293717
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.3262174129486084,
+     "audio_s": 7.082086167800454,
+     "rtf": 0.0460623332192419
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.23995327949523926,
+     "audio_s": 5.201269841269841,
+     "rtf": 0.046133595606079325
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.14182829856872559,
+     "audio_s": 2.972154195011338,
+     "rtf": 0.04771902440552367
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.1359245777130127,
+     "audio_s": 2.9024943310657596,
+     "rtf": 0.0468302646651864
+    }
+   ],
+   "mean_rtf": 0.04691791426179369,
+   "median_f0": 147.0
+  },
+  "en-us-joe": {
+   "id": "en-us-joe",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "en-us",
+   "export_s": 21.450616598129272,
+   "load_s": 1.3443653583526611,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+     "synth_s": 0.2542393207550049,
+     "audio_s": 4.562721088435374,
+     "rtf": 0.05572098662778166
+    },
+    {
+     "n": 2,
+     "text": "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+     "synth_s": 0.28641366958618164,
+     "audio_s": 5.50312925170068,
+     "rtf": 0.05204560105464881
+    },
+    {
+     "n": 3,
+     "text": "I understand your frustration, let me see what I can do to make this right.",
+     "synth_s": 0.20484542846679688,
+     "audio_s": 3.7616326530612243,
+     "rtf": 0.05445652123954561
+    },
+    {
+     "n": 4,
+     "text": "Is there anything else I can help you with today?",
+     "synth_s": 0.12867212295532227,
+     "audio_s": 2.3568253968253967,
+     "rtf": 0.054595526307821274
+    },
+    {
+     "n": 5,
+     "text": "Your extension is six six three five.",
+     "synth_s": 0.12408232688903809,
+     "audio_s": 2.345215419501134,
+     "rtf": 0.05290871186384765
+    }
+   ],
+   "mean_rtf": 0.053945469418729,
+   "median_f0": 98.87892376681614
+  },
+  "it-it-serena": {
+   "id": "it-it-serena",
+   "sample_rate": 22050,
+   "num_speakers": 1,
+   "speaker_id": null,
+   "espeak_voice": "it",
+   "export_s": 20.637722969055176,
+   "load_s": 1.2549254894256592,
+   "onnx_mb": 63.531379,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Grazie per aver chiamato, posso aiutarla con questo. Apro subito i dettagli del suo account.",
+     "synth_s": 0.2415299415588379,
+     "audio_s": 5.270929705215419,
+     "rtf": 0.04582302460225406
+    },
+    {
+     "n": 4,
+     "text": "Posso aiutarla in qualcos'altro oggi?",
+     "synth_s": 0.08867740631103516,
+     "audio_s": 1.9388662131519274,
+     "rtf": 0.04573673299865094
+    }
+   ],
+   "mean_rtf": 0.045779878800452506,
+   "median_f0": 210.0
+  },
+  "fr-fr-mls": {
+   "id": "fr-fr-mls",
+   "sample_rate": 22050,
+   "num_speakers": 125,
+   "speaker_id": 0,
+   "espeak_voice": "fr",
+   "export_s": 22.598074913024902,
+   "load_s": 1.3313686847686768,
+   "onnx_mb": 77.323335,
+   "samples": [
+    {
+     "n": 1,
+     "text": "Merci de votre appel, je peux vous aider avec cela. Je consulte les détails de votre compte tout de suite.",
+     "synth_s": 0.30632472038269043,
+     "audio_s": 7.418775510204082,
+     "rtf": 0.041290469021654466
+    },
+    {
+     "n": 4,
+     "text": "Y a-t-il autre chose que je puisse faire pour vous aujourd'hui ?",
+     "synth_s": 0.17042803764343262,
+     "audio_s": 4.179591836734694,
+     "rtf": 0.040776239475235336
+    }
+   ],
+   "mean_rtf": 0.0410333542484449,
+   "median_f0": 110.25
+  }
+ },
+ "failed": {}
+}
