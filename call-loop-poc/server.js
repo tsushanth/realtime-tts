@@ -465,6 +465,8 @@ const SHOPPER_SYSTEM_PROMPT =
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
+// What is actually said aloud: the model's silence marker and *action* notes are dropped.
+const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*[^*\n]{1,80}\*/g, '').replace(/\s{2,}/g, ' ').trim();
 const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
@@ -2217,11 +2219,12 @@ class CallSession {
         console.log(`[call-loop] turn ${turnId} sentence chunk dropped — activeTurn is now ${this.activeTurn}: "${sentence}"`);
         return;
       }
-      if (isStageDirection(sentence)) {
-        console.log(`[call-loop] turn ${turnId} dropped a stage direction instead of speaking it: "${sentence}"`);
+      const said = speakableText(sentence);
+      if (isStageDirection(sentence) || !/[a-z0-9]/i.test(said)) {
+        console.log(`[call-loop] turn ${turnId} dropped a stage direction or silence marker instead of speaking it: "${sentence}"`);
         return;
       }
-      this._speak(sentence, turnId, turnStartedAt);
+      this._speak(said, turnId, turnStartedAt);
     });
 
     // Backchanneling. Used to be gated on !isNodeEntry ("no caller utterance
