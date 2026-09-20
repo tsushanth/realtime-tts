@@ -46,4 +46,4 @@ def build(voice_id: str, gender: str, rank: int):
 
 @app.local_entrypoint()
 def main(voice_id: str, gender: str = "M", rank: int = 2):
-    print(build.remote(voice_id, gender, rank))
+    print("Spawned:", build.spawn(voice_id, gender, rank).object_id)
