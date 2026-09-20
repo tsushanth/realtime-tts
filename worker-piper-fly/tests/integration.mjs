@@ -19,6 +19,9 @@ process.env.KEYS_PATH = path.join(os.tmpdir(), "rt-k.json");
 const keys = await import(path.join(HERE, "../../gateway/keys.js"));
 const OWNER = keys.createSessionToken("owner-id");
 const OTHER = keys.createSessionToken("other-id");
+const UA1 = keys.createSessionToken("ukey-1", "user-A");  // two different keys, same owning user
+const UA2 = keys.createSessionToken("ukey-2", "user-A");
+const UB = keys.createSessionToken("ukey-3", "user-B");
 const STATIC = "static";
 const auth = (t) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
 
@@ -32,7 +35,7 @@ http.createServer((req, res) => {
   let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => {
     reports.push({ auth: req.headers.authorization, ...JSON.parse(b) }); res.end("{}");
   });
-}).listen(9111);
+}).listen(parseInt(process.env.REPORT_PORT || "9111", 10));
 
 // ---- helpers ----
 const SHORT = "Thanks for calling, I can help you with that.";
@@ -91,10 +94,12 @@ async function putVoice(id, owner, expectStatus = 200) {
 console.log("--- admin owner.json validation");
 for (const [label, owner, want] of [
   ["key_ids ok", { key_ids: ["owner-id"] }, 200], ["public ok", { public: true }, 200],
+  ["user_ids ok", { user_ids: ["user-A"] }, 200], ["key_ids+user_ids ok", { key_ids: ["owner-id"], user_ids: ["user-A"] }, 200],
+  ["empty user_ids rejected", { user_ids: [] }, 400], ["non-string user_ids rejected", { user_ids: [1] }, 400],
   ["empty key_ids rejected", { key_ids: [] }, 400], ["public:false rejected", { public: false }, 400],
   ["public:'yes' rejected", { public: "yes" }, 400], ["empty object rejected", {}, 400], ["array rejected", [1], 400],
 ]) {
-  const id = label.startsWith("key_ids ok") ? "ownerv" : label === "public ok" ? "pubv" : "badv";
+  const id = label.startsWith("key_ids ok") ? "ownerv" : label === "user_ids ok" ? "userv" : label === "key_ids+user_ids ok" ? "bothv" : label === "public ok" ? "pubv" : "badv";
   const r = await putVoice(id, owner);
   ok(`PUT owner.json ${label}`, r.status === want, `status ${r.status} ${want === 400 ? r.body : ""}`);
 }
@@ -208,6 +213,30 @@ console.log("--- voices: public vs owner");
   w = await s.synth({ text: SHORT, voice: "custom:ownerv" }); ok("ws: owner voice denied for other key (same error)", w.end.type === "error" && w.end.message === "unknown voice");
   w = await s.synth({ text: SHORT }); ok("ws: still usable after voice error", w.end.type === "done");
   s.ws.close();
+}
+
+console.log("--- voices: user_ids ownership (uid embedded in session token)");
+{
+  const post = async (tok, voice) => { const r = await stream(tok, { text: SHORT, voice }); const t = await r.arrayBuffer(); return { status: r.status, len: t.byteLength, txt: r.status === 200 ? "" : new TextDecoder().decode(t) }; };
+  let r = await post(UA1, "custom:userv"); ok("owner user, key 1 can use user_ids voice", r.status === 200 && r.len > 1000);
+  r = await post(UA2, "custom:userv"); ok("owner user, NEW key 2 can use it too (no stale key list)", r.status === 200 && r.len > 1000);
+  r = await post(UB, "custom:userv"); const f = r; ok("other user denied", r.status === 404 && /unknown voice/.test(r.txt), r.txt);
+  r = await post(OTHER, "custom:userv"); ok("key without uid denied (same error)", r.status === 404 && r.txt === f.txt, r.txt);
+  r = await post(OWNER, "custom:userv"); ok("legacy key_id token without uid denied on user_ids-only voice", r.status === 404);
+  r = await post(STATIC, "custom:userv"); ok("static token may use any voice", r.status === 200);
+  r = await post(OWNER, "custom:bothv"); ok("both: listed key id (no uid) allowed", r.status === 200);
+  r = await post(UA2, "custom:bothv"); ok("both: listed user allowed via unlisted key", r.status === 200);
+  r = await post(UB, "custom:bothv"); ok("both: unrelated user+key denied", r.status === 404);
+  r = await post(UA1, "custom:ownerv"); ok("key_ids-only voice ignores uid (user A's other key not listed)", r.status === 404);
+  const s = wsSession(UA2); await s.opened;
+  let w = await s.synth({ text: SHORT, voice: "custom:userv" }); ok("ws: owner user allowed", w.end.type === "done" && w.chunks.length > 0);
+  s.ws.close();
+  const s2 = wsSession(UB); await s2.opened;
+  w = await s2.synth({ text: SHORT, voice: "custom:userv" }); ok("ws: other user denied", w.end.type === "error" && w.end.message === "unknown voice");
+  s2.ws.close();
+  const tok = keys.createSessionToken("x", "user-A");
+  const forged = tok.split(".")[0] + "." + keys.createSessionToken("y").split(".")[1];
+  r = await post(forged, "custom:userv"); ok("forged uid (bad signature) rejected", r.status === 401);
 }
 
 console.log("--- websocket: billing unchanged");

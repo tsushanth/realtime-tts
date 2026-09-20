@@ -92,6 +92,12 @@ export function getIdForKey(key) {
   return entry?.id || null;
 }
 
+export function getOwnerForKey(key) {
+  if (!key) return null;
+  const entry = load().find((k) => k.keyHash === hash(key) && !k.revoked);
+  return entry?.owner || null;
+}
+
 // Only billing-enabled keys may consume UNLIMITED paid GPU compute — see
 // server.js. A key exists in one of two states: freshly issued and not yet
 // enabled (the caller must explicitly opt it in — see setBillingEnabledById),
@@ -157,7 +163,24 @@ export function setBillingEnabledById(id, enabled) {
   return true;
 }
 
-export function issueKey(label) {
+// `owner` (optional) is the product-side user id (e.g. a Supabase uuid) that owns this key. It is
+// embedded in session tokens as `uid` so per-user resources (customer voices) follow the USER, not a
+// fixed list of key ids that goes stale when the user creates a new key. Keys issued without an owner
+// keep working exactly as before (tokens carry no uid).
+// Sets the owner of an existing key that has none yet (backfill for keys issued before owners existed).
+// Never overwrites a different owner. Returns "set" | "unchanged" | "conflict" | null (unknown key).
+export function setOwnerById(id, owner) {
+  const keys = load();
+  const entry = keys.find((k) => k.id === id);
+  if (!entry || !owner) return null;
+  if (entry.owner === String(owner)) return "unchanged";
+  if (entry.owner) return "conflict";
+  entry.owner = String(owner);
+  save(keys);
+  return "set";
+}
+
+export function issueKey(label, owner) {
   const id = crypto.randomUUID();
   const key = `rtts_${crypto.randomBytes(24).toString("hex")}`;
   const keys = load();
@@ -172,6 +195,7 @@ export function issueKey(label) {
     usageCharsSinceLastReport: 0,
     freeCharsUsed: 0,
     freeTierExhausted: false,
+    ...(owner ? { owner: String(owner) } : {}),
   });
   save(keys);
   return { id, key };
@@ -194,6 +218,7 @@ export function listKeys() {
     revoked: k.revoked,
     billingEnabled: !!k.billingEnabled,
     key_preview: k.keyPreview,
+    owner: k.owner || null,
     freeCharsRemaining: k.billingEnabled ? null : Math.max(0, FREE_TIER_CHARS - (k.freeCharsUsed || 0)),
   }));
 }
@@ -246,10 +271,10 @@ export function recordUsageById(id, chars, engine) {
 // and the actual billing-relevant number comes from Modal's own async report
 // of what it really synthesized, not anything the client declares upfront.
 // A short expiry is the only thing bounding how long a token is usable for.
-export function createSessionToken(id) {
+export function createSessionToken(id, uid) {
   if (!SESSION_TOKEN_SECRET) throw new Error("MODAL_SESSION_SECRET is not configured");
   const exp = Date.now() + SESSION_TOKEN_TTL_MS;
-  const payload = Buffer.from(JSON.stringify({ id, exp })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(uid ? { id, exp, uid: String(uid) } : { id, exp })).toString("base64url");
   const sig = crypto.createHmac("sha256", SESSION_TOKEN_SECRET).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
@@ -260,6 +285,11 @@ export function createSessionToken(id) {
 // earlier; re-checking here would just be the same TOCTOU race in a
 // different spot, not a real improvement over the issuance-time flag.
 export function verifySessionToken(token) {
+  return verifySessionClaims(token)?.id ?? null;
+}
+
+// Same verification, returns {id, uid|null} (uid = owning user, absent for keys issued without one).
+export function verifySessionClaims(token) {
   if (!SESSION_TOKEN_SECRET || !token) return null;
   const [payload, sig] = String(token).split(".");
   if (!payload || !sig) return null;
@@ -274,7 +304,7 @@ export function verifySessionToken(token) {
     return null;
   }
   if (!parsed.id || typeof parsed.exp !== "number" || Date.now() > parsed.exp) return null;
-  return parsed.id;
+  return { id: parsed.id, uid: typeof parsed.uid === "string" && parsed.uid ? parsed.uid : null };
 }
 
 // Returns accumulated usage per key since the last drain and resets the

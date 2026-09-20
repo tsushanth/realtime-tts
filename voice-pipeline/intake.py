@@ -2,8 +2,12 @@
 behalf of a signed-in user and is responsible for deciding WHICH user may touch WHICH voice id
 (this API only checks one shared secret). Everything is Bearer INTAKE_SECRET.
 
-  POST   /voices                       {owner_key_ids:[...], speaker_name, attested_by, consent:true}
+  POST   /voices                       {owner_user_id, speaker_name, attested_by, consent:true,
+                                        consent_text_version?, client_ip?, owner_key_ids?:[...]}
                                         -> {voice_id}. Stores the consent attestation with a timestamp.
+                                        owner_user_id (the product user, e.g. a Supabase uuid) is what the Piper
+                                        registry uses (owner.json user_ids) so access follows the user across keys.
+  GET    /voices?owner_user_id=        list that user's voices [{voice_id, speaker_name, status, created_at, ...}]
   PUT    /voices/{id}/dataset          body = zip (audio .wav/.flac + transcripts: a metadata.csv of
                                         `file|text`, or a <name>.txt next to each audio file). Starts training.
   GET    /voices/{id}                  status: created | training | ready | rejected | deployed (+ manifest/error)
@@ -13,21 +17,24 @@ behalf of a signed-in user and is responsible for deciding WHICH user may touch 
                                         returns {voice: "custom:<id>"} for the synthesize `voice` field
   DELETE /voices/{id}                  revoke: removes it from serving and deletes the training data + model
 
-Deploy:  modal deploy train_job.py && modal deploy intake.py
+Deploy:  modal deploy train_job.py && modal deploy intake.py   (VOICE_APP_SUFFIX=-x deploys a separate copy)
 Secret `voice-intake` must hold INTAKE_SECRET, PIPER_ADMIN_URL, PIPER_ADMIN_TOKEN.
 """
+import os as _os
 import modal
 
-image = modal.Image.debian_slim(python_version="3.11").pip_install("fastapi==0.109.0", "requests")
+APP_SUFFIX = _os.environ.get("VOICE_APP_SUFFIX", "")  # must match train_job.py; "" = production names
+# baked into the image: the container re-imports this module without the deploy-time environment
+image = modal.Image.debian_slim(python_version="3.11").pip_install("fastapi==0.109.0", "requests").env({"VOICE_APP_SUFFIX": APP_SUFFIX})
 preview_image = modal.Image.debian_slim(python_version="3.11").apt_install("espeak-ng").pip_install("piper-tts==1.8.0", "numpy<2")
-app = modal.App("voice-intake", image=image)
+app = modal.App("voice-intake" + APP_SUFFIX, image=image)
 datasets = modal.Volume.from_name("voice-datasets", create_if_missing=True)
 models = modal.Volume.from_name("voice-models", create_if_missing=True)
 secret = modal.Secret.from_name("voice-intake")
 
 MAX_ZIP_BYTES = 500 * 1024 * 1024
 MAX_FILES = 5000
-AUDIO_EXT = (".wav", ".flac")
+AUDIO_EXT = (".wav", ".flac", ".ogg", ".opus", ".mp3")  # compressed audio keeps browser uploads small; libsndfile decodes them
 
 
 @app.function(image=preview_image, volumes={"/models": models}, cpu=2, memory=2048, timeout=120)
@@ -79,6 +86,11 @@ def api():
         else:
             raise HTTPException(404, "unknown voice")
         out = {"voice_id": vid, "status": st}
+        try:
+            c = json.load(open(f"/datasets/{vid}/consent.json"))
+            out["owner_user_id"] = c.get("owner_user_id"); out["speaker_name"] = c.get("speaker_name"); out["created_at"] = c.get("recorded_at")
+        except Exception:
+            pass
         for name, key in (("manifest.json", "manifest"), ("error.json", "error")):
             if os.path.exists(f"{m}/{name}"):
                 out[key] = json.load(open(f"{m}/{name}"))
@@ -91,16 +103,46 @@ def api():
         auth(request)
         body = await request.json()
         owners = body.get("owner_key_ids")
-        if not (isinstance(owners, list) and owners and all(isinstance(o, str) for o in owners)):
-            raise HTTPException(400, "owner_key_ids must be a non-empty list of key ids")
+        uid = body.get("owner_user_id")
+        if owners is not None and not (isinstance(owners, list) and all(isinstance(o, str) for o in owners)):
+            raise HTTPException(400, "owner_key_ids must be a list of key ids")
+        if not (isinstance(uid, str) and 0 < len(uid) <= 128) and not owners:
+            raise HTTPException(400, "owner_user_id (or owner_key_ids) is required")
         if body.get("consent") is not True or not body.get("speaker_name") or not body.get("attested_by"):
             raise HTTPException(400, "consent=true, speaker_name and attested_by are required")
         vid = "v-" + pysecrets.token_hex(5)
         os.makedirs(f"/datasets/{vid}", exist_ok=True)
         json.dump({"consent": True, "speaker_name": body["speaker_name"], "attested_by": body["attested_by"],
-                   "owner_key_ids": owners, "recorded_at": int(time.time())}, open(f"/datasets/{vid}/consent.json", "w"))
+                   "owner_user_id": uid, "owner_key_ids": owners or [],
+                   "consent_text_version": str(body.get("consent_text_version", ""))[:64],
+                   "client_ip": str(body.get("client_ip", ""))[:64], "recorded_at": int(time.time())}, open(f"/datasets/{vid}/consent.json", "w"))
         datasets.commit()
         return {"voice_id": vid}
+
+    @web.get("/voices")
+    async def list_voices(request: Request, owner_user_id: str = ""):
+        auth(request)
+        if not owner_user_id:
+            raise HTTPException(400, "owner_user_id is required")
+        datasets.reload()
+        out = []
+        for name in sorted(os.listdir("/datasets")):
+            if not ID_RE.match(name):
+                continue
+            try:
+                c = json.load(open(f"/datasets/{name}/consent.json"))
+            except Exception:
+                continue
+            if c.get("owner_user_id") != owner_user_id:
+                continue
+            try:
+                st = status_of(name)
+            except HTTPException:
+                continue
+            m = st.get("manifest") or {}
+            out.append({"voice_id": name, "speaker_name": c.get("speaker_name"), "status": st["status"], "created_at": c.get("recorded_at"),
+                        "warnings": m.get("warnings", []), "error": st.get("error"), **({"voice": st["voice"]} if "voice" in st else {})})
+        return {"voices": out}
 
     @web.put("/voices/{vid}/dataset")
     async def upload(vid: str, request: Request):
@@ -147,7 +189,7 @@ def api():
         os.makedirs(f"/models/{vid}", exist_ok=True)
         json.dump({"started_at": int(time.time())}, open(f"/models/{vid}/training.json", "w"))
         models.commit()
-        modal.Function.from_name("voice-train", "train_voice").spawn(vid)
+        modal.Function.from_name("voice-train" + APP_SUFFIX, "train_voice").spawn(vid)
         return {"voice_id": vid, "status": "training", "clips": len(rows)}
 
     @web.get("/voices/{vid}")
@@ -186,7 +228,12 @@ def api():
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
             tf.add(f"/models/{vid}/model.onnx", arcname="model.onnx")
             tf.add(f"/models/{vid}/model.onnx.json", arcname="model.onnx.json")
-            owner = json.dumps({"key_ids": consent["owner_key_ids"]}).encode()
+            om = {}
+            if consent.get("owner_user_id"):
+                om["user_ids"] = [consent["owner_user_id"]]
+            if consent.get("owner_key_ids"):
+                om["key_ids"] = consent["owner_key_ids"]
+            owner = json.dumps(om).encode()
             ti = tarfile.TarInfo("owner.json"); ti.size = len(owner)
             tf.addfile(ti, io.BytesIO(owner))
         r = requests.put(f"{os.environ['PIPER_ADMIN_URL']}/admin/voices/{vid}", data=buf.getvalue(),
