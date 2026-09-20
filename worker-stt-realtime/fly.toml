@@ -1,0 +1,26 @@
+# Scale-to-zero test/prototype config. NOT a production name: create your own app (fly apps create <name>).
+app = "stt-rt-test"
+primary_region = "sjc"
+
+[env]
+  PORT = "8080"
+  NUM_THREADS = "1"
+  MAX_CONNECTIONS = "6"
+  ENGINE = "zipformer"
+
+# Machine stops after ~idle (Fly proxy auto-stop, no connections) and is started by the first request
+# (autostart) OR explicitly by the gateway's authorize call via the Machines API (see DESIGN.md "warm on authorize").
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 4
+    hard_limit = 6
+
+[[vm]]
+  size = "shared-cpu-4x"
+  memory = "2gb"
