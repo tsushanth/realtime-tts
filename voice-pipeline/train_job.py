@@ -161,11 +161,18 @@ def train_voice(voice_id: str):
     skipped = {"unreadable": 0, "too_short_or_long": 0, "clipped": 0, "duplicate": 0, "no_text": 0, "transcript_length_mismatch": 0}
     import gates
     snrs, bands, clip_f0s, cps_values = [], [], [], []
-    for i, line in enumerate(csv.reader(open(f"{d}/metadata.csv"), delimiter="|")):
+    for i, line in enumerate(csv.reader(open(f"{d}/metadata.csv"), delimiter="|", quoting=csv.QUOTE_NONE)):
         if len(line) < 2 or not line[1].strip():
             skipped["no_text"] += 1
             continue
-        fn, text = line[0], line[1].strip()
+        fn = line[0]
+        # QUOTE_NONE above + no quote characters below: a transcript starting with a double quote used to make
+        # csv.reader swallow the following lines into one giant "transcript" (found by the chars/sec gate on a real
+        # LibriTTS upload: 296 of 323 rows parsed), and Piper's own csv reader has the same quoting rules.
+        text = line[1].strip().replace('"', "").replace("\u201c", "").replace("\u201d", "")
+        if not text:
+            skipped["no_text"] += 1
+            continue
         if text.lower() in seen:
             skipped["duplicate"] += 1
             continue
@@ -219,7 +226,7 @@ def train_voice(voice_id: str):
                 break
         rows = rows[:cut]
     with open("/tmp/train.csv", "w", newline="") as f:
-        csv.writer(f, delimiter="|").writerows(rows)
+        csv.writer(f, delimiter="|", quoting=csv.QUOTE_NONE, escapechar="\\").writerows(rows)
 
     import torch
     _orig = torch.load

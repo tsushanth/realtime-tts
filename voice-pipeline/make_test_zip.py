@@ -13,6 +13,20 @@ def build(speaker: str, minutes: float, mismatch: bool, noise_db: float) -> byte
     import numpy as np, soundfile as sf
     root = "/tmp/libri"; os.makedirs(root, exist_ok=True)
     subprocess.run(f"wget -q -O - {URL} | tar xz -C {root}", shell=True, check=True)
+    if speaker.startswith("top:"):  # e.g. top:M = the male speaker with the most usable audio
+        from collections import defaultdict
+        g = {}
+        for tsv in glob.glob(f"{root}/**/speakers.tsv", recursive=True):
+            for line in open(tsv):
+                p = line.rstrip("\n").split("\t")
+                if len(p) >= 2: g[p[0]] = p[1]
+        dur = defaultdict(float)
+        for w in glob.glob(f"{root}/**/*.wav", recursive=True):
+            sp = os.path.basename(w).split("_")[0]
+            if g.get(sp) == speaker[4:]:
+                i = sf.info(w); d = i.frames / i.samplerate
+                if 1.0 <= d <= 15.0: dur[sp] += d
+        speaker = max(dur, key=dur.get); print("speaker", speaker, f"{dur[speaker]/60:.1f} min")
     clips = sorted(w for w in glob.glob(f"{root}/**/{speaker}_*.wav", recursive=True) if os.path.exists(w[:-4] + ".normalized.txt"))
     rows, total = [], 0.0
     buf = io.BytesIO(); z = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED)
