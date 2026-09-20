@@ -75,11 +75,11 @@ async function stream(token, body, opts = {}) {
 async function active() { return (await (await fetch(`http://${BASE}/health`)).json()).active; }
 
 // ---- admin: upload voices ----
-async function putVoice(id, owner, expectStatus = 200) {
+async function putVoice(id, owner, expectStatus = 200, modelBase = "full_ft") {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "voice-"));
   const models = path.join(HERE, "../models");
-  fs.copyFileSync(path.join(models, "full_ft.onnx"), path.join(d, "model.onnx"));
-  fs.copyFileSync(path.join(models, "full_ft.onnx.json"), path.join(d, "model.onnx.json"));
+  fs.copyFileSync(path.join(models, `${modelBase}.onnx`), path.join(d, "model.onnx"));
+  fs.copyFileSync(path.join(models, `${modelBase}.onnx.json`), path.join(d, "model.onnx.json"));
   fs.writeFileSync(path.join(d, "owner.json"), JSON.stringify(owner));
   execFileSync("tar", ["-cf", path.join(d, "v.tar"), "-C", d, "model.onnx", "model.onnx.json", "owner.json"]);
   const r = await fetch(`http://${BASE}/admin/voices/${id}`, { method: "PUT", headers: { authorization: "Bearer adm" }, body: fs.readFileSync(path.join(d, "v.tar")) });
@@ -209,6 +209,29 @@ console.log("--- voices: public vs owner");
   w = await s.synth({ text: SHORT }); ok("ws: still usable after voice error", w.end.type === "done");
   s.ws.close();
 }
+
+console.log("--- voices: speaker_id pinning (multi-speaker model = models/multi.onnx)");
+if (fs.existsSync(path.join(HERE, "../models/multi.onnx"))) {
+  const post = async (voice) => { const r = await stream(STATIC, { text: SHORT, voice }); const t = await r.arrayBuffer(); return { status: r.status, len: t.byteLength, txt: r.status === 200 ? "" : new TextDecoder().decode(t) }; };
+  for (const [id, owner, good] of [
+    ["spk3", { public: true, speaker_id: 3 }, true], ["spk0", { public: true, speaker_id: 0 }, true],
+    ["spknone", { public: true }, true], ["spkhigh", { public: true, speaker_id: 100000 }, false],
+    ["spkneg", { public: true, speaker_id: -1 }, false], ["spkstr", { public: true, speaker_id: "3" }, false],
+    ["spkbool", { public: true, speaker_id: true }, false],
+  ]) {
+    await putVoice(id, owner, 200, "multi");
+    const r = await post(`custom:${id}`);
+    ok(`speaker_id ${JSON.stringify(owner.speaker_id)} ${good ? "accepted" : "rejected"}`, good ? r.status === 200 && r.len > 1000 : r.status === 404 && /misconfigured/.test(r.txt), `${r.status} ${r.txt}`);
+  }
+  // single-speaker model with a non-zero speaker_id is a config error, not silently ignored
+  await putVoice("spk1single", { public: true, speaker_id: 1 });
+  const r = await post("custom:spk1single");
+  ok("speaker_id on single-speaker model rejected", r.status === 404 && /misconfigured/.test(r.txt), `${r.status} ${r.txt}`);
+  // different pinned speakers sound different: compare mean absolute sample-to-sample slope (pitch/brightness proxy) over several runs
+  const feat = async (voice) => { let acc = 0; for (let i = 0; i < 3; i++) { const t = await (await stream(STATIC, { text: SHORT, voice })).arrayBuffer(); const x = new Int16Array(t); let s = 0; for (let k = 1; k < x.length; k++) s += Math.abs(x[k] - x[k - 1]); acc += s / x.length; } return acc / 3; };
+  const f3 = await feat("custom:spk3"), f3b = await feat("custom:spk3"), f0 = await feat("custom:spk0");
+  ok("pinned speakers differ more than the same speaker vs itself", Math.abs(f3 - f0) > 3 * Math.abs(f3 - f3b), `spk3 ${f3.toFixed(1)}/${f3b.toFixed(1)} spk0 ${f0.toFixed(1)}`);
+} else console.log("SKIP  no models/multi.onnx");
 
 console.log("--- websocket: billing unchanged");
 {

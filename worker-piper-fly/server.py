@@ -73,8 +73,14 @@ WARMUP_TEXT = "Thanks for calling, I can help you with that. Let me pull up your
 
 
 class PiperEngine:
-    def __init__(self, model_path: str, intra_threads: int):
+    def __init__(self, model_path: str, intra_threads: int, speaker_id: int = None):
         self.voice = PiperVoice.load(model_path)
+        # Pinned speaker for multi-speaker models (owner.json "speaker_id"); None = model default (unchanged).
+        self.speaker_id = speaker_id
+        if speaker_id is not None:
+            n = int(getattr(self.voice.config, "num_speakers", 1) or 1)
+            if not 0 <= speaker_id < n:
+                raise ValueError(f"speaker_id {speaker_id} out of range for a {n}-speaker model")
         # PiperVoice.load builds a default SessionOptions, which sizes onnxruntime's
         # thread pool from the HOST core count - oversubscribes a small VM/container.
         so = onnxruntime.SessionOptions()
@@ -99,7 +105,8 @@ class PiperEngine:
 
     def synth(self, phoneme_ids: list[int], speed: float = 1.0, fmt: str = audiofmt.DEFAULT_FORMAT) -> tuple[bytes, float, int]:
         """Returns (encoded audio, duration in seconds, sample rate of the encoded audio)."""
-        cfg = SynthesisConfig(length_scale=self.voice.config.length_scale / max(speed, 0.1))
+        cfg = SynthesisConfig(length_scale=self.voice.config.length_scale / max(speed, 0.1),
+                              speaker_id=self.speaker_id)
         audio = self.voice.phoneme_ids_to_audio(phoneme_ids, cfg)
         peak = float(np.max(np.abs(audio)))
         audio = audio / peak if peak > 1e-8 else np.zeros_like(audio)  # piper's normalize_audio
@@ -163,15 +170,16 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
     model = os.path.join(d, "model.onnx")
     if not os.path.isfile(model):
         raise VoiceError("unknown voice")
+    meta = None
+    try:
+        meta = json.load(open(os.path.join(d, "owner.json")))
+    except (ValueError, OSError):
+        meta = None
+    if not isinstance(meta, dict):
+        meta = None
     if key_id is not None:
-        try:
-            meta = json.load(open(os.path.join(d, "owner.json")))
-        except FileNotFoundError:
+        if meta is None:
             raise VoiceError("unknown voice")  # customer voices must declare an owner
-        except (ValueError, OSError):
-            raise VoiceError("unknown voice")
-        if not isinstance(meta, dict):
-            raise VoiceError("unknown voice")
         if meta.get("public") is not True:  # {"public": true} = house voice, any authenticated client
             owners = meta.get("key_ids")
             if not isinstance(owners, list) or not owners or key_id not in owners:
@@ -181,7 +189,13 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
         if eng is not None:
             _voices.move_to_end(vid)
             return eng
-        eng = PiperEngine(model, ORT_INTRA_THREADS)
+        speaker = (meta or {}).get("speaker_id")
+        if speaker is not None and (isinstance(speaker, bool) or not isinstance(speaker, int) or speaker < 0):
+            raise VoiceError("voice misconfigured: speaker_id must be a non-negative integer")
+        try:
+            eng = PiperEngine(model, ORT_INTRA_THREADS, speaker)
+        except ValueError as e:
+            raise VoiceError(f"voice misconfigured: {e}")
         for _ids in eng.sentences(WARMUP_TEXT):
             eng.synth(_ids)
         _voices[vid] = eng

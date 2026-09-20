@@ -94,5 +94,62 @@ class Split(unittest.TestCase):
         self.assertEqual(on[2], off[1])  # later sentences untouched
 
 
+class SpeakerId(unittest.TestCase):
+    """owner.json speaker_id -> SynthesisConfig(speaker_id=...). Needs /models/multi.onnx (a multi-speaker
+    model, e.g. de-de-mls) in the image; the default single-speaker path must stay unchanged."""
+    MULTI = "/models/multi.onnx"
+
+    def _capture(self, eng):
+        seen = []
+        eng.voice.phoneme_ids_to_audio = lambda ids, cfg: (seen.append(cfg), np.ones(2205, np.float32) * 0.1)[1]
+        return seen
+
+    def test_default_engine_passes_speaker_none(self):
+        eng = server.engine
+        self.assertIsNone(eng.speaker_id)
+        orig = eng.voice.phoneme_ids_to_audio
+        try:
+            seen = self._capture(eng)
+            eng.synth([1, 2, 3], 1.0)
+            self.assertIsNone(seen[0].speaker_id)
+        finally:
+            eng.voice.phoneme_ids_to_audio = orig
+
+    def test_pinned_speaker_reaches_synthesis_config(self):
+        import os
+        if not os.path.exists(self.MULTI):
+            self.skipTest("no multi-speaker model in image")
+        eng = server.PiperEngine(self.MULTI, 1, speaker_id=7)
+        seen = self._capture(eng)
+        eng.synth([1, 2, 3], 1.5)
+        self.assertEqual(seen[0].speaker_id, 7)
+        self.assertAlmostEqual(seen[0].length_scale, eng.voice.config.length_scale / 1.5)
+
+    def test_out_of_range_speaker_rejected(self):
+        import os
+        if not os.path.exists(self.MULTI):
+            self.skipTest("no multi-speaker model in image")
+        n = server.PiperEngine(self.MULTI, 1).voice.config.num_speakers
+        self.assertGreater(n, 1)
+        with self.assertRaises(ValueError):
+            server.PiperEngine(self.MULTI, 1, speaker_id=n)
+        with self.assertRaises(ValueError):  # single-speaker model has only speaker 0
+            server.PiperEngine(server.MODEL_PATH, 1, speaker_id=1)
+
+    def test_real_model_speakers_differ(self):
+        import os
+        if not os.path.exists(self.MULTI):
+            self.skipTest("no multi-speaker model in image")
+        from piper import SynthesisConfig
+        eng = server.PiperEngine(self.MULTI, 1)
+        ids = eng.sentences("Guten Tag, wie kann ich helfen?")[0]
+        def run(sid):  # noise off => deterministic
+            cfg = SynthesisConfig(noise_scale=0.0, noise_w_scale=0.0, speaker_id=sid)
+            return eng.voice.phoneme_ids_to_audio(ids, cfg)
+        a, a2, b = run(0), run(0), run(9)
+        self.assertTrue(np.array_equal(a, a2))
+        self.assertFalse(len(a) == len(b) and np.allclose(a, b, atol=1e-3))
+
+
 if __name__ == "__main__":
     unittest.main()

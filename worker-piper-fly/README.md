@@ -84,6 +84,11 @@ path only; auth is the bearer token, never cookies. The gateway's `/tts/authoriz
 `owner.json` may be `{"key_ids": [<non-empty>]}` (as before) or `{"public": true}`: any authenticated client
 may then use `custom:<id>`. Admin PUT rejects anything else. Missing and forbidden voices give the same error.
 
+Optional `"speaker_id": <int>` in `owner.json` pins a speaker of a multi-speaker model (e.g. the MLS or VCTK
+voices), so one model file can back several distinct voices. It is passed as `SynthesisConfig(speaker_id=...)`.
+Omitted = unchanged behaviour. A non-integer, negative or out-of-range value (or non-zero on a single-speaker
+model) fails the voice with `voice misconfigured: ...` at first use.
+
 ## First-chunk split (`FIRST_CHUNK_SPLIT=1`, default OFF)
 
 Piper synthesizes a whole sentence before sending anything, so time-to-first-audio grows with the first
