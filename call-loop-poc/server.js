@@ -250,6 +250,29 @@ async function fetchMinimaxPcmOnce(text) {
 // 5-30s and an inbound one has the answer webhook, so kicking this off at
 // dial/answer time overlaps the cold start with time the caller is already
 // waiting anyway. Throttled so a burst of calls doesn't stack pings.
+// Kokoro (Modal GPU) is a single point of failure: if the workspace is
+// disabled or the gateway is down, calls fall back to ElevenLabs for a while
+// instead of going silent, and the owner gets one SMS per 6h.
+let kokoroDownUntil = 0;
+let lastKokoroAlertAt = 0;
+const kokoroDown = () => Date.now() < kokoroDownUntil;
+async function markKokoroDown(why) {
+  kokoroDownUntil = Date.now() + 60_000;
+  console.error(`[ALERT] kokoro TTS unavailable (${why}) — failing over to ElevenLabs for 60s`);
+  const to = process.env.ALERT_SMS_TO;
+  const from = process.env.ALERT_SMS_FROM;
+  if (!to || !from || Date.now() - lastKokoroAlertAt < 6 * 3600_000) return;
+  lastKokoroAlertAt = Date.now();
+  try {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ To: to, From: from, Body: `CallDesk alert: default voice (Kokoro/Modal) is failing (${why}). Calls are falling back to ElevenLabs. Check Modal billing.` }),
+    });
+    console.log(`[call-loop] kokoro alert SMS -> ${res.status}`);
+  } catch (err) { console.error('[call-loop] kokoro alert SMS failed', err.message); }
+}
 let lastGatewayWarmAt = 0;
 function warmTtsGateway(reason) {
   if (Date.now() - lastGatewayWarmAt < 60_000) return;
@@ -262,6 +285,8 @@ function warmTtsGateway(reason) {
   const finish = (why) => {
     clearTimeout(timer);
     console.log(`[call-loop] tts gateway warm (${reason}) ${why} after ${Date.now() - startedAt}ms`);
+    if (why === 'ready') kokoroDownUntil = 0;
+    else if (reason !== 'keepalive' || why.startsWith('failed')) markKokoroDown(`warm ${why}`);
     try { ws.close(); } catch { /* already closed */ }
   };
   const timer = setTimeout(() => finish('timed out'), 45_000);
@@ -4069,11 +4094,31 @@ class CallSession {
     ws.on('error', (err) => console.error('[call-loop] tts gateway error', err));
     ws.on('close', () => {
       console.log('[call-loop] tts gateway closed');
-      if (this.ttsWs === ws) this.ttsWs = null;
+      if (this.ttsWs === ws) {
+        this.ttsWs = null;
+        if (this._kokoroPending?.length) this._failoverKokoro('gateway closed mid-turn');
+      }
     });
     ws.on('message', (data, isBinary) => this._onTtsMessage(data, isBinary));
     this.ttsWs = ws;
     return ws;
+  }
+
+  _failoverKokoro(why) {
+    const pending = this._kokoroPending || [];
+    this._kokoroPending = [];
+    if (!ELEVENLABS_API_KEY) return;
+    markKokoroDown(why);
+    this.ttsBackend = 'elevenlabs';
+    this.cost.ttsBackend = 'elevenlabs';
+    try { this.ttsWs?.close(); } catch { /* already closed */ }
+    for (const it of pending) {
+      if (this.activeTurn !== it.turnId) {
+        if (this.turnState?.id === it.turnId) this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
+        continue;
+      }
+      this._speakElevenLabs(it.text, it.turnId, it.turnStartedAt);
+    }
   }
 
   _speak(text, turnId, turnStartedAt) {
@@ -4088,6 +4133,10 @@ class CallSession {
     // audio that was actually still in flight.
     if (this.turnState?.id === turnId) this.turnState.pendingTts++;
 
+    if (this.ttsBackend === 'kokoro' && kokoroDown() && ELEVENLABS_API_KEY) {
+      this.ttsBackend = 'elevenlabs';
+      this.cost.ttsBackend = 'elevenlabs';
+    }
     if (this.ttsBackend === 'elevenlabs') {
       this._speakElevenLabs(text, turnId, turnStartedAt);
       return;
@@ -4131,6 +4180,11 @@ class CallSession {
         this._speakCached(buf, turnId).catch((err) => console.error('[call-loop] warmup send failed', err));
       }, 1500);
     }
+    const pendingItem = { text, turnId, turnStartedAt };
+    (this._kokoroPending ||= []).push(pendingItem);
+    setTimeout(() => {
+      if (this._kokoroPending?.includes(pendingItem) && !this._ttsAudioSeen && this.activeTurn === turnId) this._failoverKokoro('no audio after 10s');
+    }, 10_000);
     const dispatch = () => {
       if (this.activeTurn !== turnId) {
         console.log(`[call-loop] turn ${turnId} dropped before dispatch — activeTurn is now ${this.activeTurn} (superseded while waiting for TTS socket)`);
@@ -4431,6 +4485,8 @@ class CallSession {
       console.log(`[call-loop] TTS TTFB: ${Date.now() - this._pendingTurnStart}ms (turn latency end-to-end)`);
       this._pendingTurnStart = null;
     }
+    if (msg.type === 'error' && this._kokoroPending?.length) { this._failoverKokoro(`gateway error: ${msg.message || ''}`); return; }
+    if ((msg.type === 'done' || msg.type === 'cancelled') && this._kokoroPending?.length) this._kokoroPending.shift();
     if (msg.type === 'done' || msg.type === 'cancelled' || msg.type === 'error') {
       if (this.turnState) {
         this.turnState.pendingTts = Math.max(0, this.turnState.pendingTts - 1);
