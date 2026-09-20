@@ -31,6 +31,9 @@ import hmac
 import json
 import os
 import re
+import shutil
+import tarfile
+import tempfile
 import threading
 import time
 import urllib.request
@@ -40,13 +43,15 @@ from fractions import Fraction
 
 import numpy as np
 import onnxruntime
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from piper import PiperVoice, SynthesisConfig
 from scipy.signal import resample_poly
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/models/full_ft.onnx")
 ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
 VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")  # customer voices: <id>/model.onnx(+.json)(+owner.json)
+VOICES_ADMIN_TOKEN = os.environ.get("VOICES_ADMIN_TOKEN")  # unset => admin endpoints disabled
+MAX_VOICE_BYTES = int(os.environ.get("MAX_VOICE_BYTES", str(200 * 1024 * 1024)))
 MAX_VOICES = int(os.environ.get("MAX_VOICES", "6"))  # loaded customer voices kept in memory (LRU)
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
 SESSION_SECRET = os.environ.get("SESSION_SECRET")
@@ -143,6 +148,89 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
             _voices.popitem(last=False)
         return eng
 _active = 0  # open, authenticated sockets (single event loop, so plain int is safe)
+
+
+# ---- voice admin (server-to-server: the voice pipeline pushes finished voices here) ----
+VOICE_FILES = {"model.onnx", "model.onnx.json", "owner.json"}
+
+
+def _admin(request: Request, vid: str = None):
+    tok = request.headers.get("authorization", "").removeprefix("Bearer ")
+    if not VOICES_ADMIN_TOKEN or not tok or not hmac.compare_digest(tok.encode(), VOICES_ADMIN_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if vid is not None and not VOICE_ID_RE.match(vid):
+        raise HTTPException(status_code=400, detail="bad voice id")
+
+
+def _evict(vid: str):
+    with _voices_lock:
+        _voices.pop(vid, None)  # in-flight sessions keep their own reference
+
+
+@app.put("/admin/voices/{vid}")
+async def admin_put_voice(vid: str, request: Request):
+    """Body: a tar (optionally gzipped) holding model.onnx, model.onnx.json, owner.json. Replaces
+    an existing voice atomically (extract to a temp dir, then rename over)."""
+    _admin(request, vid)
+    os.makedirs(VOICES_DIR, exist_ok=True)
+    tmp = tempfile.mkdtemp(dir=VOICES_DIR, prefix=".incoming-")
+    try:
+        tarpath, size = os.path.join(tmp, "in.tar"), 0
+        with open(tarpath, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_VOICE_BYTES:
+                    raise HTTPException(status_code=413, detail="voice archive too large")
+                f.write(chunk)
+        out = os.path.join(tmp, "voice"); os.makedirs(out)
+        try:
+            with tarfile.open(tarpath, "r:*") as tf:
+                names = set()
+                for m in tf.getmembers():
+                    base = os.path.basename(m.name)
+                    if base.startswith("._"):  # macOS AppleDouble metadata
+                        continue
+                    if not m.isfile() or base != m.name.lstrip("./") or base not in VOICE_FILES:
+                        raise HTTPException(status_code=400, detail=f"unexpected archive member {m.name!r}")
+                    with tf.extractfile(m) as src, open(os.path.join(out, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    names.add(base)
+        except tarfile.TarError:
+            raise HTTPException(status_code=400, detail="not a valid tar archive")
+        if not VOICE_FILES <= names:
+            raise HTTPException(status_code=400, detail=f"archive must contain {sorted(VOICE_FILES)}")
+        try:
+            owners = json.load(open(os.path.join(out, "owner.json"))).get("key_ids")
+            assert isinstance(owners, list) and owners
+        except Exception:
+            raise HTTPException(status_code=400, detail="owner.json needs a non-empty key_ids list")
+        dest = os.path.join(VOICES_DIR, vid)
+        old = dest + ".old"
+        shutil.rmtree(old, ignore_errors=True)
+        if os.path.isdir(dest):
+            os.rename(dest, old)
+        os.rename(out, dest)
+        shutil.rmtree(old, ignore_errors=True)
+        _evict(vid)
+        return {"voice": f"custom:{vid}", "bytes": size}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.delete("/admin/voices/{vid}")
+async def admin_delete_voice(vid: str, request: Request):
+    _admin(request, vid)
+    existed = os.path.isdir(os.path.join(VOICES_DIR, vid))
+    shutil.rmtree(os.path.join(VOICES_DIR, vid), ignore_errors=True)
+    _evict(vid)
+    return {"deleted": existed}
+
+
+@app.get("/admin/voices")
+async def admin_list_voices(request: Request):
+    _admin(request)
+    ids = sorted(d for d in (os.listdir(VOICES_DIR) if os.path.isdir(VOICES_DIR) else []) if VOICE_ID_RE.match(d))
+    return {"voices": ids, "loaded": list(_voices.keys())}
 
 
 def verify_session_token(token: str):
