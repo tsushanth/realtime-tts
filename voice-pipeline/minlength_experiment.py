@@ -9,9 +9,30 @@ Outputs (local, next to this file): minlength_listen_F.wav, minlength_listen_M.w
 Uses its own app name (voice-minlength); does not touch production apps.
 """
 import modal
-import train_job  # image (piper training stack, both bases, gates) + recipe constants
 
-app = modal.App("voice-minlength", image=train_job.image.add_local_python_source("train_job"))
+# Recipe constants are duplicated from train_job.py (kept in sync by test below) so the container does not
+# need to import train_job; only the local side imports it, for its image (piper stack + both bases).
+TEST_SENTENCES = [
+    "Thanks for calling, I can help you with that. Let me pull up your account details right now.",
+    "Your order should arrive within three to five business days, and I will send a confirmation email shortly.",
+    "I understand your frustration, let me see what I can do to make this right.",
+    "Is there anything else I can help you with today?",
+    "Your extension is six six three five.",
+]
+BASES = {"F": "/ckpt/lj_medium.ckpt", "M": "/ckpt/john_medium.ckpt"}
+
+
+def steps_for(minutes: float) -> int:
+    return int(min(6000, max(2000, 2000 + 80 * minutes)))  # same as train_job.steps_for
+
+
+if modal.is_local():
+    import train_job
+    assert train_job.TEST_SENTENCES == TEST_SENTENCES and train_job.BASES == BASES and train_job.steps_for(10) == steps_for(10)
+    _image = train_job.image
+else:
+    _image = None
+app = modal.App("voice-minlength", image=_image)
 URL = "https://www.openslr.org/resources/141/train_clean_100.tar.gz"
 MINUTES = [5, 10, 15, 25]
 
@@ -84,7 +105,7 @@ def run_speaker(gender: str, rank: int, spk_override: str = ""):
     spk = spk_override or sorted(dur, key=dur.get, reverse=True)[rank]
     clips = sorted(utts[spk])
     print(f"speaker {spk} ({gender}): {dur[spk]/60:.1f} min available", flush=True)
-    base_ckpt = train_job.BASES[gender]
+    base_ckpt = BASES[gender]
 
     import torch
     _o = torch.load
@@ -108,7 +129,7 @@ def run_speaker(gender: str, rank: int, spk_override: str = ""):
             rows.append((fn, open(txt).read().strip())); total += d
         with open(f"/tmp/{name}.csv", "w", newline="") as f:
             csv.writer(f, delimiter="|").writerows(rows)
-        steps = train_job.steps_for(total / 60)  # the production rule
+        steps = steps_for(total / 60)  # the production rule
         out = f"/tmp/run_{name}"
         print(f"=== {gender} {name}: {len(rows)} clips {total/60:.1f} min steps={steps}", flush=True)
         os.chdir("/opt/piper-src")
@@ -129,7 +150,7 @@ def run_speaker(gender: str, rank: int, spk_override: str = ""):
         shutil.copy(f"{out}/config.json", onnx + ".json")
         v = PiperVoice.load(onnx)
         results[minutes] = {"clips": len(rows), "actual_minutes": round(total / 60, 1), "steps": steps, "sentences": []}
-        for i, t in enumerate(train_job.TEST_SENTENCES):
+        for i, t in enumerate(TEST_SENTENCES):
             pcm = np.concatenate([c.audio_int16_array for c in v.synthesize(t)])
             p = f"/tmp/{name}_s{i}.wav"; sf.write(p, pcm, v.config.sample_rate, "PCM_16")
             results[minutes]["sentences"].append(proxies(p))
