@@ -1,0 +1,19 @@
+{
+  "status": "ready",
+  "voice_id": "test-male-2",
+  "speaker_name": "LibriTTS-R speaker 7505",
+  "base": "/ckpt/john_medium.ckpt",
+  "median_f0_hz": 153,
+  "base_gender": "M",
+  "clips": 169,
+  "minutes": 21.6,
+  "steps": 3726,
+  "skipped": {
+    "unreadable": 0,
+    "too_short_or_long": 39,
+    "clipped": 0,
+    "duplicate": 0,
+    "no_text": 0
+  },
+  "train_seconds": 2160
+}
