@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
+import { resolveLanguage, languageInstruction } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
@@ -182,9 +183,9 @@ const CALENDAR_LOOKUP_FILLER_PHRASE = process.env.CALENDAR_LOOKUP_FILLER_PHRASE 
 // (see CallSession._maybeSpeakBackchannel) rather than synthesizing live.
 const fillerCache = new Map();
 
-async function fetchElevenLabsPcmOnce(text) {
+async function fetchElevenLabsPcmOnce(text, voiceId = ELEVENLABS_VOICE_ID) {
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_24000`,
     {
       method: 'POST',
       headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
@@ -378,6 +379,20 @@ async function prewarmFillerCache() {
   await Promise.all(jobs);
   console.log(`[call-loop] filler cache warmed: ${fillerCache.size} clip(s)`);
 }
+// Lazily warms a non-English language's filler clips (once per language+voice per process; the
+// first call in a language may find them not ready yet, in which case fillers are simply skipped —
+// same behavior as any uncached backend).
+const langPrewarmed = new Set();
+function prewarmLangFillers(lang, voiceId) {
+  const k = `${lang.code}::${voiceId}`;
+  if (langPrewarmed.has(k) || !ELEVENLABS_API_KEY) return;
+  langPrewarmed.add(k);
+  for (const text of [...lang.say.backchannel, lang.say.calendar]) {
+    withRetry(() => fetchElevenLabsPcmOnce(text, voiceId))
+      .then((buf) => fillerCache.set(`elevenlabs::${voiceId}::${text}`, buf))
+      .catch((err) => console.warn(`[call-loop] lang filler prewarm (${lang.code}, "${text}") failed:`, err.message));
+  }
+}
 // Haiku over Sonnet for the voice path specifically — a phone reply doesn't
 // need Sonnet's depth of reasoning, and LLM TTFB was the single biggest
 // latency line item measured in real calls (1.3-1.8s), bigger than
@@ -496,6 +511,7 @@ const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
 const shopperSpeakFirst = new Set();
+const shopperLanguages = new Map(); // place-test-call {language}: language the shopper speaks (STT + voice + prompt)
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
 const SHOPPER_PERSONA_RULES =
@@ -604,8 +620,8 @@ async function sandboxSafeFetch(urlString, options) {
 // fragment so the rest of the number can join it before the agent replies.
 const PHONE_ASK_RE = /\b(phone|cell|mobile|callback)\b[^.?!]{0,40}\bnumber\b|\bnumber\b[^.?!]{0,40}\b(reach|call) you\b|\bbest number\b/i;
 const DIGIT_HOLD_MS = 3000;
-function shouldHoldForDigits(lastAssistantText, callerText) {
-  if (!lastAssistantText || !PHONE_ASK_RE.test(lastAssistantText)) return false;
+function shouldHoldForDigits(lastAssistantText, callerText, phoneAskRe = PHONE_ASK_RE) {
+  if (!lastAssistantText || !phoneAskRe.test(lastAssistantText)) return false;
   const stripped = callerText.replace(/[^0-9a-z]/gi, '');
   const digits = (callerText.match(/\d/g) || []).length;
   return digits >= 2 && stripped.length > 0 && digits / stripped.length >= 0.4 && digits < 7;
@@ -653,7 +669,23 @@ const DEEPGRAM_KEYWORDS = process.env.DEEPGRAM_KEYWORDS?.trim() || null;
 // accurate at the cost of latency. 'balanced' matches today's existing
 // default exactly, so a flow that never sets this sees zero behavior change.
 const TRANSCRIPTION_MODE_THRESHOLDS = { fast: '0.5', balanced: DEEPGRAM_EOT_THRESHOLD, accurate: '0.75' };
-function buildDeepgramUrl(isTwilio, eotThreshold) {
+// Non-English agents (see languages.js): Flux multilingual keeps the same v2 protocol and turn
+// events as the English model (language_hint biases it); Nova-3 (pl/id/ar) is the v1 protocol with
+// endpointing/UtteranceEnd instead of semantic end-of-turn, so the transcription-mode knob maps to
+// endpointing milliseconds there.
+const NOVA3_ENDPOINTING_MS = { '0.5': 300, [DEEPGRAM_EOT_THRESHOLD]: 500, '0.75': 800 };
+function buildDeepgramUrl(isTwilio, eotThreshold, lang = null) {
+  if (lang?.dg.kind === 'nova3') {
+    const enc = isTwilio ? 'encoding=mulaw&sample_rate=8000' : 'encoding=linear16&sample_rate=16000';
+    return `wss://api.deepgram.com/v1/listen?model=nova-3&language=${lang.dg.code}&${enc}&interim_results=true` +
+      `&endpointing=${NOVA3_ENDPOINTING_MS[eotThreshold] ?? 500}&utterance_end_ms=1000&vad_events=true&smart_format=true&numerals=true`;
+  }
+  if (lang?.dg.kind === 'flux') {
+    const p = `model=flux-general-multi&language_hint=${lang.dg.hint}&eot_threshold=${eotThreshold}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}&numerals=true`;
+    return isTwilio
+      ? `wss://api.deepgram.com/v2/listen?${p}&encoding=mulaw&sample_rate=8000`
+      : `wss://api.deepgram.com/v2/listen?${p}&encoding=linear16&sample_rate=16000`;
+  }
   const params =
     `model=flux-general-en&eot_threshold=${eotThreshold}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}` +
     `&numerals=true${DEEPGRAM_KEYWORDS ? `&keyterm=${encodeURIComponent(DEEPGRAM_KEYWORDS)}` : ''}`;
@@ -763,7 +795,7 @@ app.post('/twilio/voice', async (req, res) => {
       });
     }
   } else if (req.query.mode === 'shopper' && callSid) {
-    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), speakFirst: shopperSpeakFirst.has(callSid), createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), speakFirst: shopperSpeakFirst.has(callSid), language: shopperLanguages.get(callSid), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1000,7 +1032,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage } = req.body || {};
   const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
@@ -1097,6 +1129,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     }
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
+    if (shopper && typeof shopperLanguage === 'string') shopperLanguages.set(callBody.sid, shopperLanguage);
     if (shopper) {
       findTenantIdByNumber(toNumber)
         .then((tenantId) => {
@@ -1307,6 +1340,7 @@ twilioWss.on('connection', (twilioWs) => {
         type: 'context',
         systemPrompt: resolved.persona ? resolved.persona + (resolved.speakFirst ? SHOPPER_PERSONA_RULES.replace('Wait for the business to speak first and answer', 'You speak first when the call connects, then answer') : SHOPPER_PERSONA_RULES) : SHOPPER_SYSTEM_PROMPT,
         ttsBackend: 'elevenlabs',
+        ...(resolved.language ? { language: resolved.language } : {}),
       }), false);
       // A caller who opens the conversation (e.g. the person who answers an outbound call): nudge a first turn.
       if (resolved.speakFirst) {
@@ -1388,6 +1422,8 @@ class CallSession {
     // hardcoded assistant. Falls back to the module defaults untouched.
     this.systemPrompt = SYSTEM_PROMPT;
     this.voice = TTS_VOICE;
+    this.lang = null; // resolved language record for non-English agents (languages.js); null = English path
+    this.elevenVoiceId = ELEVENLABS_VOICE_ID;
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
     this.ttsModel = null; // per-call override via context `ttsModel` — see onClientMessage
@@ -1532,12 +1568,13 @@ class CallSession {
   _connectDeepgram(eotThreshold = DEEPGRAM_EOT_THRESHOLD) {
     if (!DEEPGRAM_API_KEY) return;
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
-    const url = buildDeepgramUrl(isTwilio, eotThreshold);
+    const url = buildDeepgramUrl(isTwilio, eotThreshold, this.lang);
+    const nova3 = this.lang?.dg.kind === 'nova3';
     this._deepgramEotThreshold = eotThreshold;
     const dg = new WebSocket(url, { headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` } });
     this.dgConnection = dg;
 
-    dg.on('open', () => console.log('[call-loop] deepgram (flux) connected'));
+    dg.on('open', () => console.log(`[call-loop] deepgram (${this.lang ? `${nova3 ? 'nova-3' : 'flux-multi'} ${this.lang.code}` : 'flux'}) connected`));
 
     dg.on('message', (data) => {
       let msg;
@@ -1546,6 +1583,7 @@ class CallSession {
       } catch {
         return;
       }
+      if (nova3) { this._onNova3Message(msg); return; }
       if (msg.type !== 'TurnInfo') return;
 
       if (msg.event === 'StartOfTurn') {
@@ -1591,6 +1629,49 @@ class CallSession {
 
     dg.on('error', (err) => console.error('[call-loop] deepgram error', err));
     dg.on('close', () => console.log('[call-loop] deepgram closed'));
+  }
+
+  // Switches this session to a non-English language: STT is reconnected by the caller; here we pick
+  // the TTS backend/voice (Kokoro can't speak these — see languages.js), localize the engine's own
+  // fixed phrases, and warm their audio clips. The tenant's explicit elevenlabs/cartesia choice is kept.
+  _applyLanguage(lang) {
+    this.lang = lang;
+    if (this.ttsBackend === 'kokoro' || this.ttsBackend === 'minimax') {
+      if (ELEVENLABS_API_KEY) {
+        this.ttsBackend = lang.tts.backend;
+        this.cost.ttsBackend = lang.tts.backend;
+      } else {
+        console.warn(`[call-loop] language ${lang.code} needs ElevenLabs but ELEVENLABS_API_KEY is unset — staying on ${this.ttsBackend} (English voice)`);
+      }
+    }
+    if (this.ttsBackend === 'elevenlabs') this.elevenVoiceId = lang.tts.elevenVoiceId;
+    this.backchannelWords = lang.say.backchannel;
+    prewarmLangFillers(lang, this.elevenVoiceId);
+  }
+
+  // Nova-3 (v1) events -> the same three internal signals the Flux handler produces: voice onset
+  // (pending barge-in), interim transcript (Update), and a finished turn (_scheduleUserTurn).
+  // A turn ends on Deepgram's speech_final (endpointing silence) or, as a backstop, UtteranceEnd.
+  _onNova3Message(msg) {
+    if (msg.type === 'SpeechStarted') { this._pendingBargeIn = true; return; }
+    if (msg.type === 'UtteranceEnd') { this._flushNova3Turn(); return; }
+    if (msg.type !== 'Results') return;
+    const text = msg.channel?.alternatives?.[0]?.transcript?.trim();
+    if (!text) { if (msg.speech_final) this._flushNova3Turn(); return; }
+    const soFar = [...(this._nova3Finals || []), text].join(' ');
+    this.send({ type: 'transcript', text: soFar, isFinal: !!msg.is_final });
+    if (this._pendingBargeIn && this._transcriptMeetsInterruptionThreshold(soFar)) {
+      this._pendingBargeIn = false;
+      this._bargeIn();
+    }
+    if (msg.is_final) (this._nova3Finals ||= []).push(text);
+    if (msg.speech_final) this._flushNova3Turn();
+  }
+
+  _flushNova3Turn() {
+    const text = (this._nova3Finals || []).join(' ').trim();
+    this._nova3Finals = [];
+    if (text) this._scheduleUserTurn(text);
   }
 
   onClientMessage(data, isBinary) {
@@ -1653,6 +1734,14 @@ class CallSession {
           this.cost.ttsBackend = msg.ttsBackend;
         }
       }
+      // Language without a flow (the mystery-shopper caller speaks one; flows carry it in globalSettings.language).
+      if (typeof msg.language === 'string' && !this.lang) {
+        const l = resolveLanguage(msg.language);
+        if (l) {
+          this._applyLanguage(l);
+          if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
+        }
+      }
       // Test-only knob (see /test-tts-override): which model/tier within
       // this.ttsBackend to use, validated per-backend so a typo can't reach
       // the provider's API as an arbitrary string. Unset = that backend's
@@ -1709,8 +1798,21 @@ class CallSession {
         if (maxSec > 0 && !this._maxDurationTimer) {
           this._maxDurationTimer = setTimeout(() => this._endCallGracefully(`maxCallDurationSec ${maxSec}s reached`), maxSec * 1000);
         }
+        // Per-agent language (globalSettings.language; English/unset skips all of this).
+        const lang = resolveLanguage(this.flow.globalSettings?.language);
+        if (lang && this.lang?.code === lang.code) {
+          // already applied via msg.language
+        } else if (lang && DEEPGRAM_API_KEY) {
+          this._applyLanguage(lang);
+          const th = TRANSCRIPTION_MODE_THRESHOLDS[this.flow.globalSettings?.transcriptionMode] || this._deepgramEotThreshold;
+          console.log(`[call-loop] language ${lang.code} — reconnecting Deepgram (${lang.dg.kind}), tts ${this.ttsBackend}`);
+          this.dgConnection?.close();
+          this._connectDeepgram(th);
+        } else if (lang) {
+          this._applyLanguage(lang);
+        }
         const requestedThreshold = TRANSCRIPTION_MODE_THRESHOLDS[this.flow.globalSettings?.transcriptionMode];
-        if (requestedThreshold && requestedThreshold !== this._deepgramEotThreshold) {
+        if (!lang && requestedThreshold && requestedThreshold !== this._deepgramEotThreshold) {
           console.log(`[call-loop] transcription mode "${this.flow.globalSettings.transcriptionMode}" requested — reconnecting Deepgram (eot_threshold ${this._deepgramEotThreshold} -> ${requestedThreshold})`);
           this.dgConnection?.close();
           this._connectDeepgram(requestedThreshold);
@@ -1796,7 +1898,7 @@ class CallSession {
     }
     if (this._pendingDigitText) { text = `${this._pendingDigitText} ${text}`; this._pendingDigitText = null; }
     const lastAssistant = [...this.history].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
-    if (shouldHoldForDigits(lastAssistant?.content, text)) {
+    if (shouldHoldForDigits(lastAssistant?.content, text, this.lang?.phoneAskRe)) {
       console.log(`[call-loop] holding partial phone number "${text}" for the rest of the digits`);
       this._pendingDigitText = text;
       this._pendingResponseTimer = setTimeout(() => {
@@ -1895,7 +1997,7 @@ class CallSession {
     // from ever arriving. This is checked before the turn is even
     // generated, so the shopper never has a chance to respond to what
     // might already be silence/noise on the line.
-    if (this.isShopper && this._shopperClosingCount >= 1 && CLOSING_SHAPED_RE.test(userText.trim())) {
+    if (this.isShopper && this._shopperClosingCount >= 1 && (this.lang?.closingRe || CLOSING_SHAPED_RE).test(userText.trim())) {
       console.log(`[call-loop] shopper: other party also closing-shaped (count=${this._shopperClosingCount}, matched text: "${userText.trim()}"), hanging up immediately`);
       this._closing = true;
       this.close();
@@ -2151,7 +2253,7 @@ class CallSession {
       return;
     }
 
-    const systemPrompt = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
+    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '');
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -2446,8 +2548,8 @@ class CallSession {
         if (!assistantText && (node?.type === 'goodbye' || node?.type === 'transfer' || node?.type === 'agent_transfer')) {
           console.warn(`[call-loop] node "${node.id}" (${node.type}) produced no speech — falling back to a generic line`);
           assistantText = node.type === 'goodbye'
-            ? 'Thank you so much for calling. Have a great day!'
-            : "I'm connecting you now — one moment please.";
+            ? (this.lang?.say.goodbye || 'Thank you so much for calling. Have a great day!')
+            : (this.lang?.say.transfer || "I'm connecting you now — one moment please.");
           this._speak(assistantText, turnId, turnStartedAt);
         } else if (!assistantText && !final.content.some((b) => b.type === 'tool_use')) {
           // Cycle 9 finding: a non-terminal node occasionally produced
@@ -2512,7 +2614,7 @@ class CallSession {
         // shopper itself has said something closing-shaped twice, hang up
         // proactively instead of waiting on the other side.
         if (this.isShopper && assistantText) {
-          const isClosing = CLOSING_SHAPED_RE.test(assistantText.trim());
+          const isClosing = (this.lang?.closingRe || CLOSING_SHAPED_RE).test(assistantText.trim());
           if (isClosing) {
             this._shopperClosingCount = (this._shopperClosingCount || 0) + 1;
             if (this._shopperClosingCount >= 2) {
@@ -2594,7 +2696,7 @@ class CallSession {
   // simply has no cached filler to play (see _maybeSpeakBackchannel).
   _fillerCacheKey(text) {
     const voice =
-      this.ttsBackend === 'elevenlabs' ? ELEVENLABS_VOICE_ID :
+      this.ttsBackend === 'elevenlabs' ? this.elevenVoiceId :
       this.ttsBackend === 'cartesia' ? CARTESIA_VOICE_ID :
       this.ttsBackend === 'minimax' ? MINIMAX_VOICE_ID :
       this.voice;
@@ -2676,7 +2778,7 @@ class CallSession {
     // the day after tomorrow" instead of "that's Thursday the 18th".
     // Anchoring today's date here fixes that for every node, not just
     // booking ones, since any step could reasonably need it.
-    const todayStr = new Date().toLocaleDateString('en-US', {
+    const todayStr = new Date().toLocaleDateString(this.lang?.code || 'en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       timeZone: gs.timezone || 'America/Los_Angeles', // no per-tenant timezone field exists yet; defaults to the server's own region
     });
@@ -3049,7 +3151,7 @@ class CallSession {
         console.log(`[call-loop] silent transition into "${next_node_id}" — running its opening turn`);
         this._runNodeTurn(next_node_id);
         // The caller would otherwise wait out a second model call in silence; a cached one-word acknowledgement covers it.
-        if (this.backchannelEnabled) this._maybeSpeakBackchannel(this.activeTurn, ['Got it.', 'Sure thing.']);
+        if (this.backchannelEnabled) this._maybeSpeakBackchannel(this.activeTurn, this.lang ? [this.lang.say.backchannel[1], this.lang.say.backchannel[3]] : ['Got it.', 'Sure thing.']);
       }
     }
   }
@@ -3767,7 +3869,7 @@ class CallSession {
     // clip (kokoro — see fillerCache's comment) rather than synthesizing
     // live, which would be just as slow as what it's meant to hide.
     const turnIdAtCall = this.activeTurn;
-    const fillerBuf = fillerCache.get(this._fillerCacheKey(CALENDAR_LOOKUP_FILLER_PHRASE));
+    const fillerBuf = fillerCache.get(this._fillerCacheKey(this.lang?.say.calendar || CALENDAR_LOOKUP_FILLER_PHRASE));
     if (fillerBuf) {
       this._speakCached(fillerBuf, turnIdAtCall).catch((err) => console.error('[call-loop] calendar filler send failed', err));
     }
@@ -3892,6 +3994,7 @@ class CallSession {
       ttsModel: this.ttsModel,
       llmModel: this.llmModel,
       voice: this.voice,
+      lang: this.lang,
       systemPrompt: this.systemPrompt,
       backchannelEnabled: this.backchannelEnabled,
       backchannelFrequency: this.backchannelFrequency,
@@ -3940,6 +4043,12 @@ class CallSession {
       _pendingPressDigitTarget: stashed.pendingPressDigitTarget ?? null,
       _paymentAwaitingResume: stashed.paymentAwaitingResume ?? false,
     });
+    if (stashed.lang) {
+      this._applyLanguage(stashed.lang);
+      this.backchannelWords = stashed.backchannelWords;
+      this.dgConnection?.close();
+      this._connectDeepgram(this._deepgramEotThreshold);
+    }
     console.log(`[call-loop] resumed session for ${callSid} at node "${this.currentNodeId}" (${this.history.length} history entries carried over)`);
     return true;
   }
@@ -4371,7 +4480,7 @@ class CallSession {
     const outputFormat = isTwilio ? 'ulaw_8000' : 'pcm_24000';
     this._speakHttpTts('elevenlabs', async (text, signal, turnId, onChunk) => {
       const res = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=${outputFormat}`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${this.elevenVoiceId}/stream?output_format=${outputFormat}`,
         {
           method: 'POST',
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
