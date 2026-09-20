@@ -97,6 +97,35 @@ def median_f0(clips_dir: str, files, max_files: int = 40) -> float:
     return float(np.median(f0s)) if f0s else 0.0
 
 
+def delivery_variation(clips_dir: str, files, max_files: int = 80) -> float:
+    """Std (semitones) of per-utterance mean pitch across the dataset. Speakers with a wide,
+    theatrical delivery trained shaky (speaker 6209: 2.88 vs 1.52 for a good one); see
+    calibrate_gates.py. Advisory only - based on one known-bad example."""
+    import numpy as np
+    import soundfile as sf
+    means = []
+    for fn in files[:max_files]:
+        x, sr = sf.read(f"{clips_dir}/{fn}")
+        n = int(0.04 * sr); t = []
+        lo, hi = int(sr / 400), int(sr / 60)
+        for st in range(0, len(x) - n, n // 2):
+            fr = x[st:st + n] - np.mean(x[st:st + n])
+            if np.sqrt(np.mean(fr ** 2)) < 0.02:
+                continue
+            ac = np.correlate(fr, fr, "full")[n - 1:]
+            k = lo + int(np.argmax(ac[lo:hi]))
+            if ac[k] / (ac[0] + 1e-9) > 0.5:
+                t.append(sr / k)
+        if len(t) > 3:
+            means.append(float(np.mean(t)))
+    if len(means) < 10:
+        return 0.0
+    return float(np.std(12 * np.log2(np.array(means) / np.median(means))))
+
+
+VARIATION_WARN = 2.5  # semitones
+
+
 def reject(voice_id: str, reason: str, **extra):
     import json, os
     os.makedirs(f"/models/{voice_id}", exist_ok=True)
@@ -178,8 +207,10 @@ def train_voice(voice_id: str):
     from piper import PiperVoice
 
     f0 = median_f0("/tmp/wavs", [fn for fn, _ in rows])
-    gender = "F" if f0 >= 165 else "M"
+    gender = "F" if f0 >= 160 else "M"  # corpus check (28 speakers): male 96-152 Hz, female 166-229 Hz
     base_ckpt = BASES[gender]
+    variation = delivery_variation("/tmp/wavs", [fn for fn, _ in rows])
+    warnings = ["varied_delivery: may sound unstable; preview carefully"] if variation >= VARIATION_WARN else []
     print(f"median F0 {f0:.0f} Hz -> base {gender} ({base_ckpt})", flush=True)
     out = f"/tmp/run"
     steps = steps_for(minutes)
@@ -214,7 +245,7 @@ def train_voice(voice_id: str):
         sf.write(f"{dest}/samples/sample_{i}.wav", pcm, voice.config.sample_rate, "PCM_16")
     manifest = {
         "status": "ready", "voice_id": voice_id, "speaker_name": consent["speaker_name"],
-        "base": base_ckpt, "median_f0_hz": round(f0), "base_gender": gender, "clips": len(rows),
+        "base": base_ckpt, "median_f0_hz": round(f0), "delivery_variation_semitones": round(variation, 2), "warnings": warnings, "base_gender": gender, "clips": len(rows),
         "minutes": round(minutes, 1), "steps": steps, "skipped": skipped,
         "train_seconds": round(time.time() - t0),
     }
