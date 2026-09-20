@@ -111,6 +111,13 @@ an unrelated third-party literacy nonprofit, confirmed by fetching it during thi
 billing/plan tiers, and Stripe integration. Those are separate, sizable pieces of work
 not started here.
 
+## SDKs
+
+Client libraries live in `sdk/`: Python (`pip install readaloud`, [sdk/python](sdk/python)) and
+JavaScript/TypeScript (`npm install readaloud`, [sdk/js](sdk/js)). They cover WebSocket and HTTP
+streaming, audio formats (`pcm_24000`, `pcm_8000`, `mulaw_8000`, `alaw_8000`) and `custom:<id>`
+voices. They take the API key, so run them server-side. Docs: https://readaloudai.org/developers
+
 ## Run the worker locally (direct WS, no RunPod)
 
 ```bash
