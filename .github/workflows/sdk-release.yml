@@ -1,0 +1,64 @@
+# Manual release of the SDKs. Owner setup required once: PyPI trusted publisher (workflow
+# sdk-release.yml, environment "pypi") and npm trusted publisher (workflow sdk-release.yml,
+# environment "npm"; needs npm >= 11.5.1) or an NPM_TOKEN secret. Default run is a dry run.
+name: SDK release
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which SDK to publish
+        type: choice
+        options: [python, js, both]
+        default: both
+      dry_run:
+        description: Build and check only, do not upload
+        type: boolean
+        default: true
+jobs:
+  python-build:
+    if: inputs.target != 'js'
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install build twine pytest pytest-asyncio
+      - run: python -m build
+        working-directory: sdk/python
+      - run: twine check dist/*
+        working-directory: sdk/python
+      - run: pip install dist/*.whl && cd /tmp && python -c "import readaloud; print(readaloud.__version__)"
+        working-directory: sdk/python
+      - uses: actions/upload-artifact@v4
+        with: { name: python-dist, path: sdk/python/dist/ }
+  python-publish:
+    needs: python-build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions: { id-token: write }   # PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: python-dist, path: dist/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+  js-publish:
+    if: inputs.target != 'python'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions: { contents: read, id-token: write }   # id-token: npm provenance / trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', registry-url: 'https://registry.npmjs.org' }
+      - run: npm test
+        working-directory: sdk/js
+      - run: npm pack --dry-run
+        working-directory: sdk/js
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --provenance --access public
+        working-directory: sdk/js
+        # Uses npm trusted publishing (OIDC) if configured; otherwise set an automation
+        # token as the NPM_TOKEN secret and uncomment:
+        # env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }

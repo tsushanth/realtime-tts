@@ -27,6 +27,8 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET;
 const MODAL_WORKER_URL = process.env.MODAL_READALOUD_WS_URL;
 // Optional CPU Piper engine (worker-piper-fly). Opt-in per request via {engine:"piper"}; unset => engine unavailable.
 const PIPER_WORKER_URL = process.env.PIPER_WORKER_URL;
+// Batch speech-to-text worker (worker-stt/, Modal app realtime-stt-worker). Unset => /stt/authorize returns 501.
+const STT_WORKER_URL = process.env.STT_WORKER_URL;
 const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
 // Separate from ADMIN_SECRET on purpose — this only lets the holder report
 // usage numbers for a key it already has the ID for, not manage keys at all.
@@ -174,6 +176,33 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Speech-to-text: same checks as /tts/authorize; the client then POSTs audio to `url` + "/v1/stt"
+  // with the token as a Bearer header. Usage is reported by the worker to /admin/usage/report.
+  if (url.pathname === "/stt/authorize" && req.method === "POST") {
+    if (!STT_WORKER_URL) {
+      res.writeHead(501, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "speech-to-text not available" }));
+      return;
+    }
+    let key;
+    try { ({ key } = JSON.parse((await readBody(req)) || "{}")); } catch { key = undefined; }
+    if (!keys.isValidKey(key)) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    if (!keys.checkAccess(key).allowed) {
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+      }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ token: keys.createSessionToken(keys.getIdForKey(key)), url: STT_WORKER_URL }));
+    return;
+  }
+
   // Called by worker-modal-readaloud/app.py after a synthesize call completes —
   // fire-and-forget from Modal's side, doesn't block the client's response.
   // This is the authoritative usage number (what Modal actually generated),
@@ -181,8 +210,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/admin/usage/report" && req.method === "POST") {
     if (!requireUsageReportSecret(req, res)) return;
     const body = await readBody(req);
-    const { id, chars, engine } = body ? JSON.parse(body) : {};
-    const ok = keys.recordUsageById(id, chars, engine);
+    const { id, chars, engine, audio_seconds } = body ? JSON.parse(body) : {};
+    const ok = keys.recordUsageById(id, chars, engine, audio_seconds);
     res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify({ recorded: ok }));
     return;

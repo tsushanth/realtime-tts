@@ -27,7 +27,7 @@ function fromStatus(status, message, retryAfter) {
   if (status === 401) return new AuthError(message, status);
   if (status === 402) return new QuotaError(message, status);
   if (status === 503) return new CapacityError(message, status, retryAfter);
-  if (status === 400 && /voice/i.test(message)) return new VoiceError(message, status);
+  if ((status === 400 || status === 404) && /voice/i.test(message)) return new VoiceError(message, status);
   return new ApiError(message, status);
 }
 
@@ -64,6 +64,10 @@ export class ReadAloud {
   async *stream(text, { voice = 'default', speed = 1.0, format = 'pcm_24000', signal } = {}) {
     signal?.throwIfAborted();
     const auth = await this.authorize(signal);
+    yield* this._wsStream(auth, text, { voice, speed, format, signal });
+  }
+
+  async *_wsStream(auth, text, { voice, speed, format, signal }) {
     signal?.throwIfAborted();
     const ws = new this._WS(`${auth.url}?token=${encodeURIComponent(auth.token)}`);
     ws.binaryType = 'arraybuffer';
@@ -102,10 +106,8 @@ export class ReadAloud {
     }
   }
 
-  /** Whole clip as one Uint8Array. Uses the HTTP endpoint when offered (Piper), else the WebSocket. */
-  async convert(text, { voice = 'default', speed = 1.0, format = 'pcm_24000', signal } = {}) {
-    const auth = await this.authorize(signal);
-    if (!auth.http_url) return concat(await collect(this.stream(text, { voice, speed, format, signal })));
+  async _httpResponse(auth, text, { voice, speed, format, signal }) {
+    if (!auth.http_url) throw new ApiError('HTTP streaming is not available for this engine; use stream()');
     const res = await this._fetch(auth.http_url, {
       method: 'POST', signal,
       headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
@@ -115,6 +117,35 @@ export class ReadAloud {
       const ra = Number(res.headers.get('retry-after'));
       throw fromStatus(res.status, await errText(res), Number.isFinite(ra) && ra > 0 ? ra : undefined);
     }
+    return res;
+  }
+
+  /**
+   * Stream audio bytes from the HTTP streaming endpoint (POST http_url, Bearer token, chunked
+   * response). Piper only; throws ApiError otherwise. Chunks are arbitrary byte slices, not
+   * sentence-aligned. `break` or abort cancels the request.
+   */
+  async *streamHttp(text, { voice = 'default', speed = 1.0, format = 'pcm_24000', signal } = {}) {
+    const res = await this._httpResponse(await this.authorize(signal), text, { voice, speed, format, signal });
+    if (!res.body) { yield new Uint8Array(await res.arrayBuffer()); return; }
+    const reader = res.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        if (value?.length) yield value;
+      }
+    } finally {
+      try { await reader.cancel(); } catch {}
+    }
+  }
+
+  /** Whole clip as one Uint8Array. Uses the HTTP endpoint when offered (Piper), else the WebSocket. */
+  async convert(text, { voice = 'default', speed = 1.0, format = 'pcm_24000', signal } = {}) {
+    const auth = await this.authorize(signal);
+    const o = { voice, speed, format, signal };
+    if (!auth.http_url) return concat(await collect(this._wsStream(auth, text, o)));
+    const res = await this._httpResponse(auth, text, o);
     return new Uint8Array(await res.arrayBuffer());
   }
 }

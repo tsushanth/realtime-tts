@@ -10,8 +10,8 @@
 //           so `kokoro` is null everywhere until that worker is extended.
 //   say   — the handful of fixed phrases the engine speaks itself (fillers, warmup, fallbacks).
 
-// ElevenLabs premade voice "Sarah" — works across languages with eleven_multilingual_v2.
-const EL_VOICE = 'EXAVITQu4vr4xnSDxMzb';
+// ElevenLabs premade voice "George" (the account default; legacy premades such as Sarah are NOT available on this ElevenLabs account) — works across languages with eleven_multilingual_v2.
+const EL_VOICE = 'JBFqnCBsd6RMkjVDRZzb';
 
 const LANGS = {
   es: {

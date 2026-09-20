@@ -104,3 +104,47 @@ test('pcmToWav header', () => {
   assert.equal(new DataView(w.buffer).getUint32(24, true), 24000);
   assert.equal(new DataView(w.buffer).getUint32(40, true), 20);
 });
+
+const httpFetch = (status = 200, parts = [[1, 2], [3, 4]], seen = []) => async (url, init) => {
+  seen.push([url, init]);
+  if (url.endsWith('/tts/authorize')) return json(200, { token: 't', url: 'wss://x', http_url: 'https://x/v1/tts/stream' });
+  if (status !== 200) return json(status, { error: 'nope' }, status === 503 ? { 'retry-after': '2' } : {});
+  return new Response(new ReadableStream({
+    start(c) { for (const p of parts) c.enqueue(new Uint8Array(p)); c.close(); },
+  }), { status });
+};
+
+test('streamHttp yields chunked bytes with bearer token, custom voice and format', async () => {
+  const seen = [];
+  const out = [];
+  for await (const c of mk(httpFetch(200, undefined, seen)).streamHttp('hi', { voice: 'custom:abc', format: 'alaw_8000', speed: 1.5 })) out.push(...c);
+  assert.deepEqual(out, [1, 2, 3, 4]);
+  assert.equal(seen[1][0], 'https://x/v1/tts/stream');
+  assert.equal(seen[1][1].headers.authorization, 'Bearer t');
+  assert.deepEqual(JSON.parse(seen[1][1].body), { text: 'hi', voice: 'custom:abc', speed: 1.5, format: 'alaw_8000' });
+});
+
+test('streamHttp: no http_url, 503 and 401 errors; early break ok', async () => {
+  await assert.rejects(async () => { for await (const _ of mk(okAuth()).streamHttp('x')); }, ApiError);
+  await assert.rejects(async () => { for await (const _ of mk(httpFetch(503)).streamHttp('x')); },
+    (e) => e instanceof CapacityError && e.retryAfter === 2);
+  await assert.rejects(async () => { for await (const _ of mk(httpFetch(401)).streamHttp('x')); }, AuthError);
+  for await (const _ of mk(httpFetch()).streamHttp('x')) break;
+});
+
+test('all audio formats and custom voice reach the websocket request', async () => {
+  for (const format of ['pcm_24000', 'pcm_8000', 'mulaw_8000', 'alaw_8000']) {
+    reset(['{"type":"done"}']);
+    await mk(okAuth()).convert('x', { format, voice: 'custom:q1' });
+    assert.equal(FakeWS.sent[0].format, format);
+    assert.equal(FakeWS.sent[0].voice, 'custom:q1');
+  }
+});
+
+test('http 404 unknown voice -> VoiceError', async () => {
+  await assert.rejects(async () => { for await (const _ of mk(httpFetch(404)).streamHttp('x', { voice: 'custom:z' })); },
+    (e) => e instanceof ApiError && !(e instanceof VoiceError));  // body "nope": not a voice error
+  const f = async (url) => url.endsWith('/tts/authorize')
+    ? json(200, { token: 't', url: 'wss://x', http_url: 'https://x/h' }) : json(404, { error: 'unknown voice' });
+  await assert.rejects(() => mk(f).convert('x', { voice: 'custom:z' }), VoiceError);
+});
