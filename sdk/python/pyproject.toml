@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "readaloud"
+version = "0.1.0"
+description = "Python client for the ReadAloud streaming text-to-speech API"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["websockets>=13", "requests>=2.28"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.setuptools.package-data]
+readaloud = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
