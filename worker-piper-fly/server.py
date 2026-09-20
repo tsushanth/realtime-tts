@@ -39,13 +39,15 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
-from fractions import Fraction
 
 import numpy as np
 import onnxruntime
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
 from piper import PiperVoice, SynthesisConfig
-from scipy.signal import resample_poly
+
+import audiofmt
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/models/full_ft.onnx")
 ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
@@ -59,6 +61,11 @@ USAGE_REPORT_URL = os.environ.get("USAGE_REPORT_URL", "https://api.readaloudai.o
 USAGE_REPORT_SECRET = os.environ.get("USAGE_REPORT_SECRET")
 MAX_CONNECTIONS = int(os.environ.get("MAX_CONNECTIONS", "4"))
 MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "5000"))
+# Time-to-first-audio: split ONLY the first sentence at a clause boundary (default off, see README).
+FIRST_CHUNK_SPLIT = os.environ.get("FIRST_CHUNK_SPLIT", "").lower() in ("1", "true", "yes", "on")
+SPLIT_MIN_WORDS = 8   # first sentence must have MORE than this many words to be split
+SPLIT_MIN_HALF = 3    # each half must keep at least this many words
+CLAUSE_PHONEMES = {",", ";", ":", "-", "\u2014", "\u2013"}
 if not (AUTH_TOKEN or SESSION_SECRET):
     raise SystemExit("Set AUTH_TOKEN and/or SESSION_SECRET - refusing to start an unauthenticated TTS server")
 OUT_SR = 24000
@@ -76,23 +83,52 @@ class PiperEngine:
         self.voice.session = onnxruntime.InferenceSession(
             model_path, sess_options=so, providers=["CPUExecutionProvider"]
         )
-        ratio = Fraction(OUT_SR, self.voice.config.sample_rate).limit_denominator(1000)
-        self.up, self.down = ratio.numerator, ratio.denominator
+        self.native_sr = self.voice.config.sample_rate
         self._phonemize_lock = threading.Lock()  # espeak-ng has global state
 
-    def sentences(self, text: str) -> list[list[int]]:
+    def sentences(self, text: str, split_first: bool = None) -> list[list[int]]:
+        """Phoneme-id chunks to synthesize in order. One per sentence; with split_first (default:
+        FIRST_CHUNK_SPLIT) the first sentence may be cut at a clause boundary into two chunks."""
+        if split_first is None:
+            split_first = FIRST_CHUNK_SPLIT
         with self._phonemize_lock:
-            return [self.voice.phonemes_to_ids(p) for p in self.voice.phonemize(text) if p]
+            sents = [p for p in self.voice.phonemize(text) if p]
+            if split_first and sents:
+                sents[0:1] = split_clause(sents[0])
+            return [self.voice.phonemes_to_ids(p) for p in sents]
 
-    def synth(self, phoneme_ids: list[int], speed: float = 1.0) -> tuple[bytes, float]:
+    def synth(self, phoneme_ids: list[int], speed: float = 1.0, fmt: str = audiofmt.DEFAULT_FORMAT) -> tuple[bytes, float, int]:
+        """Returns (encoded audio, duration in seconds, sample rate of the encoded audio)."""
         cfg = SynthesisConfig(length_scale=self.voice.config.length_scale / max(speed, 0.1))
         audio = self.voice.phoneme_ids_to_audio(phoneme_ids, cfg)
         peak = float(np.max(np.abs(audio)))
         audio = audio / peak if peak > 1e-8 else np.zeros_like(audio)  # piper's normalize_audio
-        if self.up != self.down:
-            audio = resample_poly(audio, self.up, self.down)
-        pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype(np.int16)
-        return pcm.tobytes(), len(pcm) / OUT_SR
+        data, sr = audiofmt.encode(audio, self.native_sr, fmt)
+        width = 2 if audiofmt.FORMATS[fmt][1] == "pcm" else 1  # bytes per sample
+        return data, len(data) / width / sr, sr
+
+
+def split_clause(phonemes: list[str]) -> list[list[str]]:
+    """Cut one sentence's phoneme list at its earliest clause boundary (, ; : dash) that leaves
+    >= SPLIT_MIN_HALF words on both sides; sentences of <= SPLIT_MIN_WORDS words, or with no such
+    boundary, are returned whole. The clause punctuation stays on the first half so espeak's
+    continuation intonation is kept."""
+    words = 1 + sum(1 for p in phonemes if p == " ")
+    if words <= SPLIT_MIN_WORDS:
+        return [phonemes]
+    seen = 1
+    for i, p in enumerate(phonemes):
+        if p == " ":
+            seen += 1
+        elif p in CLAUSE_PHONEMES:
+            first, rest = phonemes[: i + 1], phonemes[i + 1:]
+            while rest and rest[0] == " ":
+                rest = rest[1:]
+            w1 = len([w for w in "".join(first).split(" ") if w.strip(",;:-\u2014\u2013")])
+            w2 = len([w for w in "".join(rest).split(" ") if w.strip(",;:-\u2014\u2013")])
+            if w1 >= SPLIT_MIN_HALF and w2 >= SPLIT_MIN_HALF:
+                return [first, rest]
+    return [phonemes]
 
 
 engine = PiperEngine(MODEL_PATH, ORT_INTRA_THREADS)
@@ -116,7 +152,8 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
     `custom:<id>` loads <VOICES_DIR>/<id>/model.onnx on first use (blocking - call from the thread
     pool). A voice with owner.json {"key_ids": [...]} is only usable by those API keys; internal
     static-token clients (key_id None) may use any. Missing voice or wrong owner gives the same
-    error so voice ids can't be probed."""
+    error so voice ids can't be probed. owner.json {"public": true} makes the voice usable by any
+    authenticated client (house voices)."""
     if not isinstance(voice, str) or not voice.startswith("custom:"):
         return engine
     vid = voice[len("custom:"):]
@@ -128,13 +165,17 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
         raise VoiceError("unknown voice")
     if key_id is not None:
         try:
-            owners = json.load(open(os.path.join(d, "owner.json"))).get("key_ids")
+            meta = json.load(open(os.path.join(d, "owner.json")))
         except FileNotFoundError:
             raise VoiceError("unknown voice")  # customer voices must declare an owner
         except (ValueError, OSError):
             raise VoiceError("unknown voice")
-        if not owners or key_id not in owners:
+        if not isinstance(meta, dict):
             raise VoiceError("unknown voice")
+        if meta.get("public") is not True:  # {"public": true} = house voice, any authenticated client
+            owners = meta.get("key_ids")
+            if not isinstance(owners, list) or not owners or key_id not in owners:
+                raise VoiceError("unknown voice")
     with _voices_lock:
         eng = _voices.get(vid)
         if eng is not None:
@@ -200,10 +241,11 @@ async def admin_put_voice(vid: str, request: Request):
         if not VOICE_FILES <= names:
             raise HTTPException(status_code=400, detail=f"archive must contain {sorted(VOICE_FILES)}")
         try:
-            owners = json.load(open(os.path.join(out, "owner.json"))).get("key_ids")
-            assert isinstance(owners, list) and owners
+            meta = json.load(open(os.path.join(out, "owner.json")))
+            assert isinstance(meta, dict)
+            assert meta.get("public") is True or (isinstance(meta.get("key_ids"), list) and meta["key_ids"])
         except Exception:
-            raise HTTPException(status_code=400, detail="owner.json needs a non-empty key_ids list")
+            raise HTTPException(status_code=400, detail='owner.json must be {"key_ids": [non-empty list]} or {"public": true}')
         dest = os.path.join(VOICES_DIR, vid)
         old = dest + ".old"
         shutil.rmtree(old, ignore_errors=True)
@@ -332,7 +374,15 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
 
             cancel.clear()
             text = msg.get("text", "")
-            speed = float(msg.get("speed", 1.0))
+            try:
+                speed = float(msg.get("speed", 1.0))
+                fmt = audiofmt.parse_format(msg.get("format"))
+            except (ValueError, TypeError) as e:
+                await ws.send_json({"type": "error", "message": str(e) if "format" in str(e) else "invalid speed"})
+                continue
+            if not isinstance(text, str):
+                await ws.send_json({"type": "error", "message": "text must be a string"})
+                continue
             if len(text) > MAX_TEXT_CHARS:
                 await ws.send_json({"type": "error", "message": f"text too long (max {MAX_TEXT_CHARS} chars)"})
                 continue
@@ -349,11 +399,12 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
                         cancelled = True
                         break
                     t0 = time.perf_counter()
-                    pcm, audio_s = await loop.run_in_executor(pool, eng.synth, ids, speed)
+                    pcm, audio_s, sr = await loop.run_in_executor(pool, eng.synth, ids, speed, fmt)
                     await ws.send_json({
                         "type": "chunk_meta", "text": "",
                         "gen_ms": (time.perf_counter() - t0) * 1000,
                         "audio_s": audio_s, "providers": ["cpu-onnx"],
+                        "format": fmt, "sample_rate": sr,
                     })
                     await ws.send_bytes(pcm)
                 await ws.send_json({"type": "cancelled" if cancelled else "done"})
@@ -366,6 +417,103 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
     finally:
         reader_task.cancel()
         _active -= 1
+
+
+# ---- HTTP streaming: POST /v1/tts/stream ----
+# Body {text, voice?, speed?, format?}; auth = Authorization: Bearer <session token | AUTH_TOKEN>.
+# Response: chunked body of raw audio in the requested format, one sentence at a time as it is
+# synthesized. Content-Type: audio/pcm (pcm_*), audio/basic (mulaw_8000), audio/x-alaw-basic
+# (alaw_8000); X-Sample-Rate and X-Audio-Format describe the stream.
+CORS = {
+    "Access-Control-Allow-Origin": "*",  # bearer-token auth, no cookies, so * is safe here
+    "Access-Control-Expose-Headers": "X-Sample-Rate, X-Audio-Format, Retry-After",
+}
+
+
+def _http_err(status: int, message: str, **headers) -> JSONResponse:
+    return JSONResponse({"error": message}, status_code=status, headers={**CORS, **headers})
+
+
+@app.options("/v1/tts/stream")
+async def tts_stream_preflight():
+    return Response(status_code=204, headers={
+        **CORS,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Max-Age": "86400",
+    })
+
+
+@app.post("/v1/tts/stream")
+async def tts_stream(request: Request):
+    global _active
+    auth = request.headers.get("authorization", "")
+    presented = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+    key_id = verify_session_token(presented)
+    static_ok = bool(AUTH_TOKEN) and bool(presented) and hmac.compare_digest(presented.encode(), AUTH_TOKEN.encode())
+    if key_id is None and not static_ok:
+        return _http_err(401, "unauthorized", **{"WWW-Authenticate": "Bearer"})
+    if _active >= MAX_CONNECTIONS:
+        return _http_err(503, "at capacity, retry shortly", **{"Retry-After": "1"})
+    _active += 1  # from here on, every exit path must release
+    released = False
+
+    def release():
+        nonlocal released
+        global _active
+        if not released:
+            released = True
+            _active -= 1
+
+    try:
+        try:
+            body = await request.json()
+            assert isinstance(body, dict)
+        except Exception:
+            release()
+            return _http_err(400, "body must be a JSON object")
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            release()
+            return _http_err(400, "text must be a non-empty string")
+        if len(text) > MAX_TEXT_CHARS:
+            release()
+            return _http_err(413, f"text too long (max {MAX_TEXT_CHARS} chars)")
+        try:
+            speed = float(body.get("speed", 1.0))
+            fmt = audiofmt.parse_format(body.get("format"))
+        except (ValueError, TypeError) as e:
+            release()
+            return _http_err(400, str(e) if "format" in str(e) else "invalid speed")
+        loop = asyncio.get_running_loop()
+        try:
+            eng = await loop.run_in_executor(pool, get_engine, body.get("voice", "default"), key_id)
+        except VoiceError as e:
+            release()
+            return _http_err(404, str(e))
+        chunks = await loop.run_in_executor(pool, eng.sentences, text)
+    except BaseException:
+        release()
+        raise
+
+    sr = audiofmt.FORMATS[fmt][0]
+
+    async def gen():
+        try:
+            for ids in chunks:
+                if await request.is_disconnected():
+                    return  # client went away: stop, don't bill
+                data, _, _ = await loop.run_in_executor(pool, eng.synth, ids, speed, fmt)
+                yield data
+            if key_id and not await request.is_disconnected():  # bill only fully delivered requests
+                pool.submit(report_usage, key_id, len(text))
+        finally:
+            release()
+
+    return StreamingResponse(
+        gen(), media_type=audiofmt.FORMATS[fmt][2], background=BackgroundTask(release),
+        headers={**CORS, "X-Sample-Rate": str(sr), "X-Audio-Format": fmt, "Cache-Control": "no-store"},
+    )
 
 
 if __name__ == "__main__":
