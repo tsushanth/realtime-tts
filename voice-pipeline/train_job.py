@@ -49,9 +49,12 @@ image = (
         "wget -q -O /ckpt/john_medium.ckpt https://huggingface.co/datasets/rhasspy/piper-checkpoints/resolve/main/en/en_US/john/medium/john-2599.ckpt"
     )
     .pip_install("scipy", "soundfile")
+    .add_local_python_source("gates")
 )
 
-app = modal.App("voice-train", image=image)
+import os as _os
+APP_SUFFIX = _os.environ.get("VOICE_APP_SUFFIX", "")  # e.g. "-studio-test" to deploy a throwaway copy beside production
+app = modal.App("voice-train" + APP_SUFFIX, image=image)
 datasets = modal.Volume.from_name("voice-datasets", create_if_missing=True)
 models = modal.Volume.from_name("voice-models", create_if_missing=True)
 
@@ -126,12 +129,14 @@ def delivery_variation(clips_dir: str, files, max_files: int = 80) -> float:
 VARIATION_WARN = 2.5  # semitones
 
 
-def reject(voice_id: str, reason: str, **extra):
+def reject(voice_id: str, reason: str, code: str = "rejected", **extra):
+    """error.json: {status, code, reason (plain language, shown to the customer), ...details}."""
     import json, os
     os.makedirs(f"/models/{voice_id}", exist_ok=True)
-    json.dump({"status": "rejected", "reason": reason, **extra}, open(f"/models/{voice_id}/error.json", "w"))
+    doc = {"status": "rejected", "code": code, "reason": reason, **extra}
+    json.dump(doc, open(f"/models/{voice_id}/error.json", "w"))
     models.commit()
-    return {"status": "rejected", "reason": reason, **extra}
+    return doc
 
 
 @app.function(gpu="T4", timeout=4 * 3600, volumes={"/datasets": datasets, "/models": models})
@@ -147,13 +152,15 @@ def train_voice(voice_id: str):
     try:
         consent = json.load(open(f"{d}/consent.json"))
     except Exception:
-        return reject(voice_id, "missing consent.json")
+        return reject(voice_id, "No consent record was found for this voice, so training was not started.", "missing_consent")
     if consent.get("consent") is not True or not consent.get("speaker_name"):
-        return reject(voice_id, "consent.json must have consent=true and a speaker_name")
+        return reject(voice_id, "The consent record is incomplete (consent and the speaker's name are required), so training was not started.", "missing_consent")
 
     rows, total, seen = [], 0.0, set()
     os.makedirs("/tmp/wavs", exist_ok=True)
-    skipped = {"unreadable": 0, "too_short_or_long": 0, "clipped": 0, "duplicate": 0, "no_text": 0}
+    skipped = {"unreadable": 0, "too_short_or_long": 0, "clipped": 0, "duplicate": 0, "no_text": 0, "transcript_length_mismatch": 0}
+    import gates
+    snrs, bands, clip_f0s, cps_values = [], [], [], []
     for i, line in enumerate(csv.reader(open(f"{d}/metadata.csv"), delimiter="|")):
         if len(line) < 2 or not line[1].strip():
             skipped["no_text"] += 1
@@ -175,6 +182,15 @@ def train_voice(voice_id: str):
         if np.mean(np.abs(audio) > 0.99) > 0.005:  # >0.5% of samples at full scale
             skipped["clipped"] += 1
             continue
+        cps = gates.chars_per_second(text, dur)
+        bad_cps = not gates.THRESHOLDS["cps_lo"] <= cps <= gates.THRESHOLDS["cps_hi"]
+        cps_values.append(cps)
+        if bad_cps:
+            skipped["transcript_length_mismatch"] += 1
+            continue
+        if len(rows) % 3 == 0 and len(snrs) < 150:  # gate measurements on a spread of clips, original sample rate
+            snrs.append(gates.snr_estimate_db(audio, sr)); bands.append(gates.band_ratio_db(audio, sr))
+            clip_f0s.append(gates.clip_f0_median(audio, sr))
         g = gcd(22050, sr)
         audio = resample_poly(audio, 22050 // g, sr // g) if sr != 22050 else audio
         peak = np.max(np.abs(audio)) or 1.0
@@ -186,8 +202,14 @@ def train_voice(voice_id: str):
         total += dur
     minutes = total / 60
     print(f"{len(rows)} usable clips, {minutes:.1f} min, skipped={skipped}", flush=True)
+    gate_reject, gate_warnings = gates.evaluate(snrs, bands, clip_f0s, cps_values)
+    quality = {"snr_db": round(float(np.median([v for v in snrs if v is not None])), 1) if any(v is not None for v in snrs) else None,
+               "band_ratio_db": round(float(np.median(bands)), 1) if bands else None,
+               "speaker_split": [round(v, 2) for v in gates.two_cluster_split(clip_f0s)]}
+    if gate_reject:
+        return reject(voice_id, gate_reject["message"], gate_reject["code"], skipped=skipped, quality=quality)
     if minutes < MIN_MINUTES:
-        return reject(voice_id, f"only {minutes:.1f} min of usable audio, need at least {MIN_MINUTES:.0f}", skipped=skipped)
+        return reject(voice_id, f"We could use only {minutes:.1f} minutes of audio from your upload, and at least {MIN_MINUTES:.0f} minutes are needed. Add more recordings (each clip 1-15 seconds with an exact transcript).", "too_little_audio", skipped=skipped, minutes=round(minutes, 1))
     if minutes > MAX_MINUTES:  # keep cost bounded; longest-first would bias, so take in file order
         cut, acc = 0, 0.0
         for j, (fn, _) in enumerate(rows):
@@ -210,7 +232,9 @@ def train_voice(voice_id: str):
     gender = "F" if f0 >= 160 else "M"  # corpus check (28 speakers): male 96-152 Hz, female 166-229 Hz
     base_ckpt = BASES[gender]
     variation = delivery_variation("/tmp/wavs", [fn for fn, _ in rows])
-    warnings = ["varied_delivery: may sound unstable; preview carefully"] if variation >= VARIATION_WARN else []
+    warnings = list(gate_warnings)
+    if variation >= VARIATION_WARN:
+        warnings.append({"code": "varied_delivery", "message": "The speaker's pitch and delivery vary a lot from clip to clip (a theatrical style). The voice may sound shaky or unstable: listen to the samples carefully, or re-record in a calm, steady, neutral tone."})
     print(f"median F0 {f0:.0f} Hz -> base {gender} ({base_ckpt})", flush=True)
     out = f"/tmp/run"
     steps = steps_for(minutes)
@@ -231,7 +255,7 @@ def train_voice(voice_id: str):
         print(f"piper.train exit {e.code}", flush=True)
     ckpts = sorted(glob.glob(f"{out}/lightning_logs/version_*/checkpoints/last.ckpt"), key=os.path.getmtime)
     if not ckpts:
-        return reject(voice_id, "training produced no checkpoint")
+        return reject(voice_id, "Training did not finish. Nothing was charged to you; please try again or contact support.", "training_failed")
 
     dest = f"/models/{voice_id}"
     os.makedirs(f"{dest}/samples", exist_ok=True)
@@ -245,7 +269,7 @@ def train_voice(voice_id: str):
         sf.write(f"{dest}/samples/sample_{i}.wav", pcm, voice.config.sample_rate, "PCM_16")
     manifest = {
         "status": "ready", "voice_id": voice_id, "speaker_name": consent["speaker_name"],
-        "base": base_ckpt, "median_f0_hz": round(f0), "delivery_variation_semitones": round(variation, 2), "warnings": warnings, "base_gender": gender, "clips": len(rows),
+        "base": base_ckpt, "median_f0_hz": round(f0), "delivery_variation_semitones": round(variation, 2), "warnings": warnings, "quality": quality, "base_gender": gender, "clips": len(rows),
         "minutes": round(minutes, 1), "steps": steps, "skipped": skipped,
         "train_seconds": round(time.time() - t0),
     }

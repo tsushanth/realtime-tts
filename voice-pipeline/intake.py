@@ -8,6 +8,9 @@ behalf of a signed-in user and is responsible for deciding WHICH user may touch 
                                         owner_user_id (the product user, e.g. a Supabase uuid) is what the Piper
                                         registry uses (owner.json user_ids) so access follows the user across keys.
   GET    /voices?owner_user_id=        list that user's voices [{voice_id, speaker_name, status, created_at, ...}]
+  PUT    /voices/{id}/dataset/parts/{n} raw bytes of part n (<=16 MB) of the zip;  GET .../dataset/parts lists
+         POST   /voices/{id}/dataset/commit    {parts:N,bytes?} joins parts 0..N-1 and starts training. Use this
+                                        for anything large: a single request over ~150 s gets a 303 on Modal.
   PUT    /voices/{id}/dataset          body = zip (audio .wav/.flac + transcripts: a metadata.csv of
                                         `file|text`, or a <name>.txt next to each audio file). Starts training.
   GET    /voices/{id}                  status: created | training | ready | rejected | deployed (+ manifest/error)
@@ -34,6 +37,8 @@ secret = modal.Secret.from_name("voice-intake")
 
 MAX_ZIP_BYTES = 500 * 1024 * 1024
 MAX_FILES = 5000
+MAX_PART_BYTES = 16 * 1024 * 1024
+MAX_PARTS = 64
 AUDIO_EXT = (".wav", ".flac", ".ogg", ".opus", ".mp3")  # compressed audio keeps browser uploads small; libsndfile decodes them
 
 
@@ -144,19 +149,8 @@ def api():
                         "warnings": m.get("warnings", []), "error": st.get("error"), **({"voice": st["voice"]} if "voice" in st else {})})
         return {"voices": out}
 
-    @web.put("/voices/{vid}/dataset")
-    async def upload(vid: str, request: Request):
-        auth(request); vid_ok(vid)
-        if not os.path.exists(f"/datasets/{vid}/consent.json"):
-            raise HTTPException(404, "unknown voice")
-        if os.path.exists(f"/datasets/{vid}/metadata.csv"):
-            raise HTTPException(409, "dataset already uploaded")
-        raw, size = io.BytesIO(), 0
-        async for chunk in request.stream():
-            size += len(chunk)
-            if size > MAX_ZIP_BYTES:
-                raise HTTPException(413, "zip too large")
-            raw.write(chunk)
+    def ingest_zip(vid: str, raw) -> dict:
+        """Unpacks a customer zip (file-like) into the dataset volume and starts training."""
         try:
             z = zipfile.ZipFile(raw)
         except zipfile.BadZipFile:
@@ -191,6 +185,95 @@ def api():
         models.commit()
         modal.Function.from_name("voice-train" + APP_SUFFIX, "train_voice").spawn(vid)
         return {"voice_id": vid, "status": "training", "clips": len(rows)}
+
+    def upload_guard(vid: str):
+        if not os.path.exists(f"/datasets/{vid}/consent.json"):
+            raise HTTPException(404, "unknown voice")
+        if os.path.exists(f"/datasets/{vid}/metadata.csv"):
+            raise HTTPException(409, "dataset already uploaded")
+
+    @web.put("/voices/{vid}/dataset")
+    async def upload(vid: str, request: Request):
+        """Single-shot upload (small zips). Large zips over a slow uplink can outlast Modal's 150 s web
+        request limit (a 303 the client must follow) - use the chunked parts API below for those."""
+        auth(request); vid_ok(vid); upload_guard(vid)
+        raw, size = io.BytesIO(), 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_ZIP_BYTES:
+                raise HTTPException(413, "zip too large")
+            raw.write(chunk)
+        return ingest_zip(vid, raw)
+
+    # ---- chunked / resumable upload: each part is one small request (<=16 MB, seconds long), so no
+    # request ever nears the 150 s limit no matter how slow the customer's uplink is, and a dropped
+    # connection loses one part. Parts may be re-sent (idempotent) and sent in any order.
+    def parts_dir(vid: str) -> str:
+        return f"/datasets/{vid}/.upload"
+
+    def list_parts(vid: str) -> dict:
+        d = parts_dir(vid)
+        return {int(f[5:10]): os.path.getsize(f"{d}/{f}") for f in os.listdir(d) if re.fullmatch(r"part_\d{5}", f)} if os.path.isdir(d) else {}
+
+    @web.put("/voices/{vid}/dataset/parts/{n}")
+    async def put_part(vid: str, n: int, request: Request):
+        auth(request); vid_ok(vid); upload_guard(vid)
+        if not 0 <= n < MAX_PARTS:
+            raise HTTPException(400, "bad part number")
+        data, size = io.BytesIO(), 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_PART_BYTES:
+                raise HTTPException(413, "part too large")
+            data.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "empty part")
+        datasets.reload()
+        have = list_parts(vid)
+        if sum(v for k, v in have.items() if k != n) + size > MAX_ZIP_BYTES:
+            raise HTTPException(413, "zip too large")
+        os.makedirs(parts_dir(vid), exist_ok=True)
+        with open(f"{parts_dir(vid)}/part_{n:05d}", "wb") as f:
+            f.write(data.getvalue())
+        datasets.commit()
+        return {"part": n, "bytes": size}
+
+    @web.get("/voices/{vid}/dataset/parts")
+    async def get_parts(vid: str, request: Request):
+        auth(request); vid_ok(vid)
+        if not os.path.exists(f"/datasets/{vid}/consent.json"):
+            raise HTTPException(404, "unknown voice")
+        datasets.reload()
+        return {"parts": [{"part": k, "bytes": v} for k, v in sorted(list_parts(vid).items())]}
+
+    @web.post("/voices/{vid}/dataset/commit")
+    async def commit_parts(vid: str, request: Request):
+        """{parts: N, bytes?: total} - parts 0..N-1 are joined in order and processed like a single-shot zip."""
+        auth(request); vid_ok(vid); upload_guard(vid)
+        body = await request.json()
+        n = body.get("parts")
+        if not (isinstance(n, int) and 1 <= n <= MAX_PARTS):
+            raise HTTPException(400, "parts must be an integer count")
+        datasets.reload()
+        have = list_parts(vid)
+        missing = [i for i in range(n) if i not in have]
+        if missing:
+            raise HTTPException(409, f"missing parts: {missing[:20]}")
+        if isinstance(body.get("bytes"), int) and body["bytes"] != sum(have[i] for i in range(n)):
+            raise HTTPException(409, "total size does not match the uploaded parts; re-send the parts")
+        tmp = f"/tmp/{vid}.zip"
+        with open(tmp, "wb") as out:
+            for i in range(n):
+                with open(f"{parts_dir(vid)}/part_{i:05d}", "rb") as f:
+                    shutil.copyfileobj(f, out)
+        try:
+            with open(tmp, "rb") as f:
+                res = ingest_zip(vid, f)
+        finally:
+            os.remove(tmp)
+            shutil.rmtree(parts_dir(vid), ignore_errors=True)
+            datasets.commit()
+        return res
 
     @web.get("/voices/{vid}")
     async def get(vid: str, request: Request):
