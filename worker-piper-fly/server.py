@@ -30,10 +30,12 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
 from fractions import Fraction
 
 import numpy as np
@@ -44,6 +46,8 @@ from scipy.signal import resample_poly
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/models/full_ft.onnx")
 ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
+VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")  # customer voices: <id>/model.onnx(+.json)(+owner.json)
+MAX_VOICES = int(os.environ.get("MAX_VOICES", "6"))  # loaded customer voices kept in memory (LRU)
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
 SESSION_SECRET = os.environ.get("SESSION_SECRET")
 USAGE_REPORT_URL = os.environ.get("USAGE_REPORT_URL", "https://api.readaloudai.org/admin/usage/report")
@@ -91,6 +95,53 @@ for _ids in engine.sentences(WARMUP_TEXT):  # pay first-inference costs at start
     engine.synth(_ids)
 pool = ThreadPoolExecutor(max_workers=os.cpu_count() or 2)
 app = FastAPI()
+
+VOICE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_voices: "OrderedDict[str, PiperEngine]" = OrderedDict()  # LRU of loaded customer voices
+_voices_lock = threading.Lock()
+
+
+class VoiceError(Exception):
+    pass
+
+
+def get_engine(voice: str, key_id) -> "PiperEngine":
+    """Resolves the request's `voice` to an engine. Anything not prefixed `custom:` (existing
+    clients send arbitrary names such as a Kokoro voice) gets the default voice, unchanged.
+    `custom:<id>` loads <VOICES_DIR>/<id>/model.onnx on first use (blocking - call from the thread
+    pool). A voice with owner.json {"key_ids": [...]} is only usable by those API keys; internal
+    static-token clients (key_id None) may use any. Missing voice or wrong owner gives the same
+    error so voice ids can't be probed."""
+    if not isinstance(voice, str) or not voice.startswith("custom:"):
+        return engine
+    vid = voice[len("custom:"):]
+    if not VOICE_ID_RE.match(vid):
+        raise VoiceError("unknown voice")
+    d = os.path.join(VOICES_DIR, vid)
+    model = os.path.join(d, "model.onnx")
+    if not os.path.isfile(model):
+        raise VoiceError("unknown voice")
+    if key_id is not None:
+        try:
+            owners = json.load(open(os.path.join(d, "owner.json"))).get("key_ids")
+        except FileNotFoundError:
+            raise VoiceError("unknown voice")  # customer voices must declare an owner
+        except (ValueError, OSError):
+            raise VoiceError("unknown voice")
+        if not owners or key_id not in owners:
+            raise VoiceError("unknown voice")
+    with _voices_lock:
+        eng = _voices.get(vid)
+        if eng is not None:
+            _voices.move_to_end(vid)
+            return eng
+        eng = PiperEngine(model, ORT_INTRA_THREADS)
+        for _ids in eng.sentences(WARMUP_TEXT):
+            eng.synth(_ids)
+        _voices[vid] = eng
+        while len(_voices) > MAX_VOICES:
+            _voices.popitem(last=False)
+        return eng
 _active = 0  # open, authenticated sockets (single event loop, so plain int is safe)
 
 
@@ -198,14 +249,19 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
                 await ws.send_json({"type": "error", "message": f"text too long (max {MAX_TEXT_CHARS} chars)"})
                 continue
             try:
-                sentences = await loop.run_in_executor(pool, engine.sentences, text)
+                try:
+                    eng = await loop.run_in_executor(pool, get_engine, msg.get("voice"), key_id)
+                except VoiceError as e:
+                    await ws.send_json({"type": "error", "message": str(e)})
+                    continue
+                sentences = await loop.run_in_executor(pool, eng.sentences, text)
                 cancelled = False
                 for ids in sentences:
                     if cancel.is_set():
                         cancelled = True
                         break
                     t0 = time.perf_counter()
-                    pcm, audio_s = await loop.run_in_executor(pool, engine.synth, ids, speed)
+                    pcm, audio_s = await loop.run_in_executor(pool, eng.synth, ids, speed)
                     await ws.send_json({
                         "type": "chunk_meta", "text": "",
                         "gen_ms": (time.perf_counter() - t0) * 1000,

@@ -23,3 +23,15 @@ HOST ("::" for Fly's IPv6 private network; 0.0.0.0 for IPv4-only).
 Wrong token rejected; every chunk_meta followed by one correctly sized binary frame;
 `stop` cancelled an 8-sentence text after 2 chunks; bad JSON recovered. Not yet deployed
 anywhere; no Fly app exists.
+
+## Custom (customer) voices
+
+Send `"voice": "custom:<id>"` in the synthesize message. Any other `voice` value (e.g. a Kokoro
+name from an existing client) uses the default voice, unchanged. Voices live in `VOICES_DIR`
+(default `/voices`) as `<id>/model.onnx`, `model.onnx.json` and `owner.json` (`{"key_ids": [...]}`,
+the gateway API-key ids allowed to use it; required for session-token clients, ignored for the
+internal static token). `voice-pipeline/train_job.py` produces the model files. Loaded lazily with
+an LRU of `MAX_VOICES` (default 6). Local test: cold first request ~1.9 s, warm ~116 ms; wrong
+owner, missing voice and path traversal all return the same "unknown voice" error. Not yet
+deployed: needs a Fly volume (or baked image) holding the voices and a sync from the Modal
+`voice-models` volume.
