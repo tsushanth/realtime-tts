@@ -1,0 +1,4461 @@
+{
+ "summary": {
+  "engine": "moonshine-tiny_streaming",
+  "set": "tel",
+  "label": "modalcpu4",
+  "n": 100,
+  "threads": 1,
+  "wer": 0.10829493087557604,
+  "cpu_per_audio_s": 3.0602597666000455,
+  "rss_loaded_mb": 283.03515625,
+  "rss_peak_mb": 574.3515625,
+  "first_partial_med_s": 0.7701519899999312,
+  "close_cost_med_s": 0.012123695000070711,
+  "strat": {
+   "commit": {
+    "lat_med": 0.04076986700009888,
+    "lat_p90": 0.19515299200013114,
+    "fired_frac": 1.0,
+    "cut_utts": 0,
+    "cuts_total": 0
+   },
+   "vad300": {
+    "lat_med": 0.3884950754999772,
+    "lat_p90": 0.5623548947999344,
+    "fired_frac": 1.0,
+    "cut_utts": 52,
+    "cuts_total": 97
+   },
+   "vad500": {
+    "lat_med": 0.6210621179999767,
+    "lat_p90": 0.7595543091000235,
+    "fired_frac": 1.0,
+    "cut_utts": 20,
+    "cuts_total": 30
+   },
+   "vad700": {
+    "lat_med": 0.7874143930000059,
+    "lat_p90": 0.957031211200114,
+    "fired_frac": 1.0,
+    "cut_utts": 10,
+    "cuts_total": 11
+   },
+   "vad500+hint": {
+    "lat_med": 0.6212021335000188,
+    "lat_p90": 0.7966361722001641,
+    "fired_frac": 1.0,
+    "cut_utts": 18,
+    "cuts_total": 24
+   },
+   "native": {
+    "lat_med": 0.6796042714999277,
+    "lat_p90": 0.9503258912000371,
+    "fired_frac": 1.0,
+    "cut_utts": 50,
+    "cuts_total": 72
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "2035_147960_000007_000001",
+   "dur": 2.54,
+   "words": 9,
+   "wer_err": 2,
+   "hyp": "i suppose i loved this sick as i felt",
+   "ref": "i suppose i looked as sick as i felt",
+   "first_partial_s": 0.7481454689999509,
+   "cpu_s": 10.059999999999999,
+   "audio_s": 4.14,
+   "close_cost_s": 0.008270270999901186,
+   "strat": {
+    "commit": {
+     "lat": 0.14755690299985869,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.345232412999926,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7399493049999455,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7454910649999738,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7399520649999749,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7399536139999645,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6241_61946_000010_000000",
+   "dur": 3.22,
+   "words": 13,
+   "wer_err": 5,
+   "hyp": "it was just the four way left wrecky evict that i came to this decision",
+   "ref": "it was just before we left reykjavik that i came to this decision",
+   "first_partial_s": 1.3631823910000094,
+   "cpu_s": 12.06,
+   "audio_s": 4.82,
+   "close_cost_s": 0.009537270000009812,
+   "strat": {
+    "commit": {
+     "lat": 0.11392690100004055,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3413423590000364,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6037866590000065,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7415859090000638,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6037899790000254,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6034874390000184,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1462_170142_000040_000004",
+   "dur": 6.94,
+   "words": 27,
+   "wer_err": 0,
+   "hyp": "what i mean is that i want you to promise never to see me again no matter how often i come no matter how hard i beg",
+   "ref": "what i mean is that i want you to promise never to see me again no matter how often i come no matter how hard i beg",
+   "first_partial_s": 0.7111801799999284,
+   "cpu_s": 23.779999999999998,
+   "audio_s": 8.54,
+   "close_cost_s": 0.016388849999998456,
+   "strat": {
+    "commit": {
+     "lat": 0.03738357299999695,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4975724179999448,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6204801270000049,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8212555859999471,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6204839669999815,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.497119446999986,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5694_64029_000024_000002",
+   "dur": 6.54,
+   "words": 19,
+   "wer_err": 2,
+   "hyp": "the ground was literally covered with blue coats dead and if i remember correctly there were eight zero dead horses",
+   "ref": "the ground was literally covered with blue coats dead and if i remember correctly there were eighty dead horses",
+   "first_partial_s": 1.3638016190000144,
+   "cpu_s": 21.259999999999998,
+   "audio_s": 8.14,
+   "close_cost_s": 0.013449180000066008,
+   "strat": {
+    "commit": {
+     "lat": 0.03473313300010883,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3051977959999794,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.39228079599998633,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.5914530519999834,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.39228474600005026,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.30520357600001713,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_66129_000044_000000",
+   "dur": 3.66,
+   "words": 13,
+   "wer_err": 0,
+   "hyp": "what i want to know is when do we go hunting asked ned",
+   "ref": "what i want to know is when do we go hunting asked ned",
+   "first_partial_s": 1.391702462000012,
+   "cpu_s": 11.280000000000001,
+   "audio_s": 5.26,
+   "close_cost_s": 0.008791739999992387,
+   "strat": {
+    "commit": {
+     "lat": 0.159322736999993,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.18165048700003794,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.3808770950000415,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.5809642740000207,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.38088216499997074,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7474287329999605,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275156_000013_000000",
+   "dur": 2.7,
+   "words": 6,
+   "wer_err": 0,
+   "hyp": "herbert became more unreasonable than ever",
+   "ref": "herbert became more unreasonable than ever",
+   "first_partial_s": 1.3400228799999923,
+   "cpu_s": 7.189999999999998,
+   "audio_s": 4.3,
+   "close_cost_s": 0.005405460000019957,
+   "strat": {
+    "commit": {
+     "lat": 0.02725700200010106,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5115488960000674,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5850110070000936,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7862160870000023,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.585014887000102,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5115551059999914,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_76958_000060_000001",
+   "dur": 4.42,
+   "words": 18,
+   "wer_err": 3,
+   "hyp": "now if we'll sleep themselves out of sight before you get there if you don't get a move on",
+   "ref": "the cows'll sleep themselves out of sight before you get there if you don't get a move on",
+   "first_partial_s": 0.70340649700006,
+   "cpu_s": 23.64999999999999,
+   "audio_s": 6.02,
+   "close_cost_s": 0.011456979999934447,
+   "strat": {
+    "commit": {
+     "lat": 0.04394515099996177,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.341424211000076,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.8830499390000615,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8845886790000623,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9415606179999987,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8819241590000093,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1988_147956_000003_000005",
+   "dur": 9.86,
+   "words": 26,
+   "wer_err": 2,
+   "hyp": "one son fuck fed was well grown and strong enough to work the land but the father was old and frail and knew nothing about farming",
+   "ref": "one son fuchs said was well grown and strong enough to work the land but the father was old and frail and knew nothing about farming",
+   "first_partial_s": 0.7460312450000401,
+   "cpu_s": 31.529999999999987,
+   "audio_s": 11.46,
+   "close_cost_s": 0.017384450000008655,
+   "strat": {
+    "commit": {
+     "lat": 0.038954178000054185,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5419041030001068,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7409894500000433,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9802410860001061,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.740993240000094,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9798960760000597,
+     "cuts": 4,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_105575_000004_000005",
+   "dur": 4.9,
+   "words": 17,
+   "wer_err": 0,
+   "hyp": "they had time for reflection as they marched and they knew now they were going to battle",
+   "ref": "they had time for reflection as they marched and they knew now they were going to battle",
+   "first_partial_s": 0.7472662890000947,
+   "cpu_s": 16.22,
+   "audio_s": 6.5,
+   "close_cost_s": 0.01192954999999074,
+   "strat": {
+    "commit": {
+     "lat": 0.15388422100008903,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38986783300001626,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.650057494000043,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7904961210000234,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6500611639999985,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6500627540000092,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2277_149874_000006_000001",
+   "dur": 8.38,
+   "words": 28,
+   "wer_err": 0,
+   "hyp": "it was on the third floor the front windows looking down into the street where at night the lights of grocery stores were shining and children were playing",
+   "ref": "it was on the third floor the front windows looking down into the street where at night the lights of grocery stores were shining and children were playing",
+   "first_partial_s": 1.3940958040000169,
+   "cpu_s": 27.139999999999986,
+   "audio_s": 9.98,
+   "close_cost_s": 0.01729480999995303,
+   "strat": {
+    "commit": {
+     "lat": 0.05068733999996233,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.43809606900003395,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6209803279999679,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8217171470000668,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6209843990000028,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.4367414289999889,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1919_142785_000135_000001",
+   "dur": 4.82,
+   "words": 14,
+   "wer_err": 3,
+   "hyp": "the seed is above by frying some slices of bread cut in any fanciful shape",
+   "ref": "proceed as above by frying some slices of bread cut in any fanciful shape",
+   "first_partial_s": 0.7141586550000056,
+   "cpu_s": 19.060000000000002,
+   "audio_s": 6.42,
+   "close_cost_s": 0.011945819999937157,
+   "strat": {
+    "commit": {
+     "lat": 0.15994667599994017,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38858292599996247,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7467548459999804,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7898554550000014,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7467577259999914,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7467589150000364,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6241_61946_000035_000002",
+   "dur": 4.3,
+   "words": 17,
+   "wer_err": 0,
+   "hyp": "his horse went to the very edge of the water sniffed at the approaching wave and retreated",
+   "ref": "his horse went to the very edge of the water sniffed at the approaching wave and retreated",
+   "first_partial_s": 0.7124773670000195,
+   "cpu_s": 15.509999999999991,
+   "audio_s": 5.9,
+   "close_cost_s": 0.010581819999970321,
+   "strat": {
+    "commit": {
+     "lat": 0.1238620379999249,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3884072249999919,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7499811099999762,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7886126990000095,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7499838790000242,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7499850789999529,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275156_000026_000000",
+   "dur": 5.98,
+   "words": 16,
+   "wer_err": 1,
+   "hyp": "the first which he happened to take up was addressed to him in mrs presby's handwriting",
+   "ref": "the first which he happened to take up was addressed to him in mrs presty's handwriting",
+   "first_partial_s": 1.3457648859999836,
+   "cpu_s": 19.310000000000002,
+   "audio_s": 7.58,
+   "close_cost_s": 0.012301220000040303,
+   "strat": {
+    "commit": {
+     "lat": 0.033161004000039185,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3115108619999951,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5104513909999646,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.778790859999976,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5104556609999413,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.778792849999963,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2035_147961_000034_000000",
+   "dur": 9.46,
+   "words": 32,
+   "wer_err": 1,
+   "hyp": "the loss of his two friends had a depressing effect upon old mr shamerta when he was out hunting he used to go into the empty log house and sit there brooding",
+   "ref": "the loss of his two friends had a depressing effect upon old mr shimerda when he was out hunting he used to go into the empty log house and sit there brooding",
+   "first_partial_s": 0.7138791239999591,
+   "cpu_s": 33.72,
+   "audio_s": 11.06,
+   "close_cost_s": 0.01735247999999956,
+   "strat": {
+    "commit": {
+     "lat": 0.12047796699997804,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.46115575100001394,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.8163799890000192,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8613719289999509,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8163826189999455,
+     "cuts": 2,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8163837190000223,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1988_24833_000040_000000",
+   "dur": 8.14,
+   "words": 26,
+   "wer_err": 7,
+   "hyp": "yeah it's about over by now i'm phil thor and the sides popped still standing in my doors if i figure there's a hitch in this somewhere",
+   "ref": "yeah it's about over by now i'm still sore and besides pop's still standing in my door so i figure there's a hitch in this somewhere",
+   "first_partial_s": 1.3625040190000846,
+   "cpu_s": 27.899999999999977,
+   "audio_s": 9.74,
+   "close_cost_s": 0.014981420000026446,
+   "strat": {
+    "commit": {
+     "lat": 0.34486464600011857,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5408340560000937,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.740948775000092,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9414086139999966,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7409534150000212,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.708521115000039,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_110523_000031_000000",
+   "dur": 5.54,
+   "words": 20,
+   "wer_err": 3,
+   "hyp": "now she ran to hansel and opening the door called out hansel we are sage the old witch's dead",
+   "ref": "now she ran to hansel and opening the door called out hansel we are saved the old witch is dead",
+   "first_partial_s": 0.7454450459999862,
+   "cpu_s": 24.100000000000023,
+   "audio_s": 7.14,
+   "close_cost_s": 0.012491700000055062,
+   "strat": {
+    "commit": {
+     "lat": 0.21988372100005105,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.381353339999996,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5808023279999679,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8962992239999812,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5808068879999473,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8948439550000193,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5895_34629_000022_000001",
+   "dur": 3.54,
+   "words": 12,
+   "wer_err": 0,
+   "hyp": "it was not great enough yet to re echo throughout the city",
+   "ref": "it was not great enough yet to re echo throughout the city",
+   "first_partial_s": 0.7146150060000309,
+   "cpu_s": 13.920000000000016,
+   "audio_s": 5.14,
+   "close_cost_s": 0.007537200000001576,
+   "strat": {
+    "commit": {
+     "lat": 0.03306240200000499,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.42748268900000763,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6276621889999978,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8925725500000317,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.627666459999964,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8925743499999816,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6295_64301_000009_000003",
+   "dur": 3.82,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "he stepped across the floor still stately and free",
+   "ref": "he stepped across the floor still stately and free",
+   "first_partial_s": 0.7182148169999891,
+   "cpu_s": 14.560000000000002,
+   "audio_s": 5.42,
+   "close_cost_s": 0.010803929999951833,
+   "strat": {
+    "commit": {
+     "lat": 0.07766939999992717,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30864235600000045,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5871762700000365,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7102730280000107,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5871800599999735,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.587181729999934,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5338_284437_000050_000000",
+   "dur": 5.06,
+   "words": 16,
+   "wer_err": 3,
+   "hyp": "i know answered tormelie but i hope that your responsibility will not fall upon my shoulders",
+   "ref": "i know answered tourmaline but i hope such a responsibility will not fall upon my shoulders",
+   "first_partial_s": 1.3794676820000404,
+   "cpu_s": 17.649999999999977,
+   "audio_s": 6.66,
+   "close_cost_s": 0.01206693999995423,
+   "strat": {
+    "commit": {
+     "lat": 0.08278735699997508,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30892516700004347,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6332845239999783,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.710615733,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.633287483999939,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6332888239999788,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1919_142785_000135_000002",
+   "dur": 8.34,
+   "words": 30,
+   "wer_err": 1,
+   "hyp": "when quite crisp dip one side of the pivot into the beaten white of an egg mixed with a little flour and place it on the edge of the dish",
+   "ref": "when quite crisp dip one side of the sippet into the beaten white of an egg mixed with a little flour and place it on the edge of the dish",
+   "first_partial_s": 1.3431710400000156,
+   "cpu_s": 31.439999999999998,
+   "audio_s": 9.94,
+   "close_cost_s": 0.01782305999995515,
+   "strat": {
+    "commit": {
+     "lat": 0.05142479899987862,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.43385755699992856,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6214022459999207,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8210082039999271,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.621406335999982,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 1.0529327829999922,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3000_15664_000018_000001",
+   "dur": 3.94,
+   "words": 10,
+   "wer_err": 0,
+   "hyp": "their long massive ears give them a very striking appearance",
+   "ref": "their long massive ears give them a very striking appearance",
+   "first_partial_s": 0.7439106460000176,
+   "cpu_s": 13.839999999999975,
+   "audio_s": 5.54,
+   "close_cost_s": 0.008222779999982777,
+   "strat": {
+    "commit": {
+     "lat": 0.029095925999909067,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.2215923229999226,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.46001001999996793,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6210468269999274,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.46001310999991807,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.45927809999994684,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1462_170138_000008_000003",
+   "dur": 8.38,
+   "words": 28,
+   "wer_err": 4,
+   "hyp": "when she began to dance that way of showing the gossians what she had seen in the fairy ring that night the house broke into a prolonged uproar",
+   "ref": "when she began to dance by way of showing the gossoons what she had seen in the fairy rings at night the house broke into a prolonged uproar",
+   "first_partial_s": 0.741116777000002,
+   "cpu_s": 32.5,
+   "audio_s": 9.98,
+   "close_cost_s": 0.01756892000003063,
+   "strat": {
+    "commit": {
+     "lat": 0.03906981500005635,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.43889378700009196,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5560552570000201,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7413485470000243,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5560591970000761,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.4385732270000009,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1272_141231_000024_000002",
+   "dur": 5.34,
+   "words": 14,
+   "wer_err": 11,
+   "hyp": "i read here at mountain of the man i'm going to apparently uninvolvable storage energy",
+   "ref": "a red haired mountain of a man with an apparently inexhaustible store of energy",
+   "first_partial_s": 1.3894885290000047,
+   "cpu_s": 19.139999999999986,
+   "audio_s": 6.94,
+   "close_cost_s": 0.010843140000019957,
+   "strat": {
+    "commit": {
+     "lat": 0.039907582999976654,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5815433709999844,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.781072629999958,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 1.002599969999924,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7810766799999875,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 1.001150770000013,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6241_61946_000007_000001",
+   "dur": 6.66,
+   "words": 25,
+   "wer_err": 0,
+   "hyp": "the truth is that my spirits rose so rapidly that i began to be indifferent to what had once appeared to be a terrible journey",
+   "ref": "the truth is that my spirits rose so rapidly that i began to be indifferent to what had once appeared to be a terrible journey",
+   "first_partial_s": 0.7106211950000443,
+   "cpu_s": 29.569999999999993,
+   "audio_s": 8.26,
+   "close_cost_s": 0.015561860000048,
+   "strat": {
+    "commit": {
+     "lat": 0.5336367380000091,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5211712080000233,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6832524090000014,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.78143710000003,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6832554390000176,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6829243289999702,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000042_000001",
+   "dur": 8.46,
+   "words": 18,
+   "wer_err": 3,
+   "hyp": "the reverend mr north in this cool atmosphere seem to recover himself a conversation progressed with some sprightlings",
+   "ref": "the reverend mr north in this cool atmosphere seemed to recover himself and conversation progressed with some sprightliness",
+   "first_partial_s": 1.3978098410000257,
+   "cpu_s": 25.32000000000005,
+   "audio_s": 10.06,
+   "close_cost_s": 0.014530339999964781,
+   "strat": {
+    "commit": {
+     "lat": 0.035687151999958644,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30399547799996895,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.39474040700000756,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.5812496459999821,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.394763966999939,
+     "cuts": 2,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.3034431879999957,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4943_000061_000000",
+   "dur": 8.78,
+   "words": 31,
+   "wer_err": 5,
+   "hyp": "kirkland was putting to a separate cell that night and troke by way of assuring him a good night's rest told them that he was to have five zero in the morning",
+   "ref": "kirkland was put into a separate cell that night and troke by way of assuring him a good night's rest told him that he was to have fifty in the morning",
+   "first_partial_s": 0.7449946420000515,
+   "cpu_s": 32.52999999999997,
+   "audio_s": 10.38,
+   "close_cost_s": 0.019400620000055824,
+   "strat": {
+    "commit": {
+     "lat": 0.17888245600008368,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5796003740000248,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7013012130000522,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9158803349999705,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7013055130000527,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.578743694000055,
+     "cuts": 3,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_76958_000082_000004",
+   "dur": 3.82,
+   "words": 10,
+   "wer_err": 4,
+   "hyp": "he's a troubled cure not a troubled maker except for himself",
+   "ref": "he's a trouble curer not a troublemaker except for himself",
+   "first_partial_s": 1.393449245999932,
+   "cpu_s": 11.990000000000009,
+   "audio_s": 5.42,
+   "close_cost_s": 0.009971670000027189,
+   "strat": {
+    "commit": {
+     "lat": 0.031401063000025875,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.2675011340000357,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5873431030000167,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6662442630000034,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5873459630000117,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5873471629999405,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000039_000001",
+   "dur": 10.22,
+   "words": 24,
+   "wer_err": 7,
+   "hyp": "the reverend meekin was not accustomed to purging war black neckties smoke play pipes cheed tobacco and drank neat brandy out of cumbrous",
+   "ref": "the reverend meekin was not accustomed to clergymen who wore black neckties smoked clay pipes chewed tobacco and drank neat brandy out of tumblers",
+   "first_partial_s": 0.7129470229999697,
+   "cpu_s": 36.26999999999998,
+   "audio_s": 11.82,
+   "close_cost_s": 0.02003071000001455,
+   "strat": {
+    "commit": {
+     "lat": 0.24097138300001397,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.26111294299997034,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.63036461300001,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6618821229999678,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6303676230000104,
+     "cuts": 2,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6303688929999947,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1919_142785_000065_000000",
+   "dur": 2.58,
+   "words": 6,
+   "wer_err": 3,
+   "hyp": "espenol or brown spanish sauce",
+   "ref": "espagnole o r brown spanish sauce",
+   "first_partial_s": 1.3630984100000205,
+   "cpu_s": 9.329999999999927,
+   "audio_s": 4.18,
+   "close_cost_s": 0.007682419999923695,
+   "strat": {
+    "commit": {
+     "lat": 0.09882190099987831,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.261283020999981,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.46137700899991607,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7144632960000035,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.461382078999959,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7130907159999378,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5338_284437_000032_000004",
+   "dur": 9.86,
+   "words": 33,
+   "wer_err": 1,
+   "hyp": "if i lived as luxuriously as my people do and had servants and costly gown the good pinkies would say that their queen had more than they themselves and it would be true",
+   "ref": "if i lived as luxuriously as my people do and had servants and costly gowns the good pinkies would say that their queen had more than they themselves and it would be true",
+   "first_partial_s": 0.7450475169999891,
+   "cpu_s": 34.6400000000001,
+   "audio_s": 11.46,
+   "close_cost_s": 0.01725346000000627,
+   "strat": {
+    "commit": {
+     "lat": 0.03887542300005009,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5014309399999917,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7019583390000577,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.981829621999978,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7019627490000317,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9818315920000629,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2803_154328_000040_000000",
+   "dur": 3.02,
+   "words": 6,
+   "wer_err": 0,
+   "hyp": "watch the savages outside said robert",
+   "ref": "watch the savages outside said robert",
+   "first_partial_s": 1.3328966279999577,
+   "cpu_s": 8.509999999999991,
+   "audio_s": 4.62,
+   "close_cost_s": 0.007888130000083038,
+   "strat": {
+    "commit": {
+     "lat": 0.029514521000105542,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3817933540000058,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5807864860000609,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7822167080000599,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.58079112599999,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7811779680000472,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5536_43359_000011_000001",
+   "dur": 7.42,
+   "words": 25,
+   "wer_err": 3,
+   "hyp": "if a girl she is from this time much under the guardianship of a grandmother we've considered the most dignified protector for the maiden",
+   "ref": "if a girl she is from this time much under the guardianship of her grandmother who is considered the most dignified protector for the maiden",
+   "first_partial_s": 1.3462576199999603,
+   "cpu_s": 28.17999999999995,
+   "audio_s": 9.02,
+   "close_cost_s": 0.014172740000049089,
+   "strat": {
+    "commit": {
+     "lat": 0.03555831199999382,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3815055360000361,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5819347390000349,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8446826120000015,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5819394989999456,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8438223019999942,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2428_83699_000039_000004",
+   "dur": 5.34,
+   "words": 20,
+   "wer_err": 1,
+   "hyp": "after a few seconds interval the pit pat of what was obviously one pair of feet came towards the door",
+   "ref": "after a few seconds' interval the pit pat of what was obviously one pair of feet came towards the door",
+   "first_partial_s": 1.3701466109999956,
+   "cpu_s": 22.079999999999927,
+   "audio_s": 6.94,
+   "close_cost_s": 0.011861599999974715,
+   "strat": {
+    "commit": {
+     "lat": 0.03349841699995082,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4547991179999009,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6212978079999267,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9701400189999596,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6213016679999193,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9687089299999663,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6319_275224_000023_000007",
+   "dur": 7.86,
+   "words": 17,
+   "wer_err": 3,
+   "hyp": "weeds meanwhile frying up and a dreary confusion reigned in the one fortily and brilliant little garden",
+   "ref": "weeds meanwhile sprang up and a dreary confusion reigned in the once orderly and brilliant little garden",
+   "first_partial_s": 0.7106809190000831,
+   "cpu_s": 26.170000000000073,
+   "audio_s": 9.46,
+   "close_cost_s": 0.01477773999999954,
+   "strat": {
+    "commit": {
+     "lat": 0.18323204500008128,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3016510850000165,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5134090650000322,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7010857530000427,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5134128350000671,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8193421120000854,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2803_154328_000013_000002",
+   "dur": 3.98,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "i am not an advocate of irremediable measures",
+   "ref": "i am not an advocate of irremediable measures",
+   "first_partial_s": 1.3670900560000518,
+   "cpu_s": 12.029999999999973,
+   "audio_s": 5.58,
+   "close_cost_s": 0.007922340000050099,
+   "strat": {
+    "commit": {
+     "lat": 0.02949195100008639,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.22183650100000252,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4626328310000827,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6207116709999991,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.462635700999972,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.46203553099998773,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5694_64029_000011_000003",
+   "dur": 2.34,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "you go your way and leave me here",
+   "ref": "you go your way and leave me here",
+   "first_partial_s": 0.7163100970000187,
+   "cpu_s": 9.050000000000068,
+   "audio_s": 3.94,
+   "close_cost_s": 0.006866489999993064,
+   "strat": {
+    "commit": {
+     "lat": 0.027799937000086317,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3816863040000591,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.581497182000053,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8126505500000896,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5815029220000589,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8122101010000371,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_76958_000013_000000",
+   "dur": 2.86,
+   "words": 7,
+   "wer_err": 1,
+   "hyp": "a loud laugh followed at chumki's expense",
+   "ref": "a loud laugh followed at chunky's expense",
+   "first_partial_s": 0.7133453149999696,
+   "cpu_s": 9.759999999999991,
+   "audio_s": 4.46,
+   "close_cost_s": 0.006975310000029822,
+   "strat": {
+    "commit": {
+     "lat": 0.03225378200001172,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.34195511199995066,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4618303119999747,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6610427099999607,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.46183465199989326,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.3415789719999931,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2277_149897_000044_000002",
+   "dur": 2.3,
+   "words": 10,
+   "wer_err": 0,
+   "hyp": "he did not go within a block of the house",
+   "ref": "he did not go within a block of the house",
+   "first_partial_s": 1.3622342849999995,
+   "cpu_s": 6.279999999999973,
+   "audio_s": 3.9,
+   "close_cost_s": 0.006372450000071694,
+   "strat": {
+    "commit": {
+     "lat": 0.027705733000130017,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3488324800000102,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5010730890000561,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7010985610000491,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5010773590000328,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.3477802000000567,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "84_121550_000207_000000",
+   "dur": 8.54,
+   "words": 25,
+   "wer_err": 8,
+   "hyp": "and grace to us the grace that thou unveiled thy face to him that he made a fern the second beauty which thou doth conceal",
+   "ref": "in grace do us the grace that thou unveil thy face to him so that he may discern the second beauty which thou dost conceal",
+   "first_partial_s": 1.3457425199999307,
+   "cpu_s": 43.41000000000008,
+   "audio_s": 10.14,
+   "close_cost_s": 0.01558733999991091,
+   "strat": {
+    "commit": {
+     "lat": 0.17599147199981502,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.43539041200002515,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6214152899999235,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8218366870000509,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6214195299998764,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9871776550000604,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_110523_000011_000000",
+   "dur": 11.02,
+   "words": 36,
+   "wer_err": 2,
+   "hyp": "be quiet gretel said he do not cry i will help you and as soon as their parents had gone to sleep he got up put on your coat and unbarring the back door went out",
+   "ref": "be quiet grethel said he do not cry i will help you and as soon as their parents had gone to sleep he got up put on his coat and unbarring the back door went out",
+   "first_partial_s": 1.3494897929999752,
+   "cpu_s": 34.67999999999995,
+   "audio_s": 12.62,
+   "close_cost_s": 0.02272037000011551,
+   "strat": {
+    "commit": {
+     "lat": 0.06377531600012887,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.340733442999845,
+     "cuts": 6,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6463387599999173,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7612849499998724,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6463419599999547,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6460180699998368,
+     "cuts": 4,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7850_73752_000003_000002",
+   "dur": 3.42,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "ferdinand felt his freedom as well as his happiness",
+   "ref": "ferdinand felt his freedom as well as his happiness",
+   "first_partial_s": 0.7340840280000975,
+   "cpu_s": 12.379999999999995,
+   "audio_s": 5.02,
+   "close_cost_s": 0.006986489999917467,
+   "strat": {
+    "commit": {
+     "lat": 0.028270344999855368,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.22112960800002845,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4216395799999919,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6212574310000765,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.4216444599999978,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.37124735999994307,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275156_000003_000003",
+   "dur": 5.38,
+   "words": 20,
+   "wer_err": 0,
+   "hyp": "we have both seen the same newspaper of course and you have been the first to clear the thing up",
+   "ref": "we have both seen the same newspaper of course and you have been the first to clear the thing up",
+   "first_partial_s": 1.363028020999991,
+   "cpu_s": 17.67999999999995,
+   "audio_s": 6.98,
+   "close_cost_s": 0.011656180000045424,
+   "strat": {
+    "commit": {
+     "lat": 0.03312706200005788,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30106260099989424,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5011242100000528,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7016151920000722,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.501128649999937,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8145968939999149,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1919_142785_000123_000008",
+   "dur": 10.06,
+   "words": 25,
+   "wer_err": 3,
+   "hyp": "for brown or white red goo they should be firm and when the canals are used very small extreme delicacy will be necessary in their preparation",
+   "ref": "for brown or white ragouts they should be firm and when the quenelles are used very small extreme delicacy will be necessary in their preparation",
+   "first_partial_s": 0.7431523390000621,
+   "cpu_s": 43.42000000000007,
+   "audio_s": 11.66,
+   "close_cost_s": 0.0188577300000361,
+   "strat": {
+    "commit": {
+     "lat": 0.04062931500010514,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.6209808350001271,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.8220303249999592,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 1.0208510819999805,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8220355249999916,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7809522449999253,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_76958_000006_000000",
+   "dur": 3.38,
+   "words": 8,
+   "wer_err": 5,
+   "hyp": "it's the cowboys women's left bob sullings",
+   "ref": "it's the 'cowboy's lament ' laughed bob stallings",
+   "first_partial_s": 1.3327767979999408,
+   "cpu_s": 13.379999999999995,
+   "audio_s": 4.98,
+   "close_cost_s": 0.007728709999810235,
+   "strat": {
+    "commit": {
+     "lat": 0.03480908399967131,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5618622139999117,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5633575939999629,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7412868939999226,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5633605539998099,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5607640439999342,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7850_286674_000001_000003",
+   "dur": 11.02,
+   "words": 33,
+   "wer_err": 5,
+   "hyp": "the dragon's wife may be very good people and even the snapping turtles that is that they are still they are so peculiar that many of their neighbors do not like them at all",
+   "ref": "the dragon flies may be very good people and even the snapping turtle says that they are still they are so peculiar that many of their neighbors do not like them at all",
+   "first_partial_s": 0.7408393979999346,
+   "cpu_s": 32.0,
+   "audio_s": 12.62,
+   "close_cost_s": 0.022091149000061705,
+   "strat": {
+    "commit": {
+     "lat": 0.04402401300010794,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.6094046830000757,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.661939782999962,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8610137329999183,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.661944163000026,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6094115830000923,
+     "cuts": 3,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2428_83699_000007_000002",
+   "dur": 4.54,
+   "words": 16,
+   "wer_err": 0,
+   "hyp": "i was not sure what in this case an old fashioned christmas might happen to mean",
+   "ref": "i was not sure what in this case an old fashioned christmas might happen to mean",
+   "first_partial_s": 0.7136898940000265,
+   "cpu_s": 15.759999999999991,
+   "audio_s": 6.14,
+   "close_cost_s": 0.00838146000000961,
+   "strat": {
+    "commit": {
+     "lat": 0.02984803800014557,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4960990780000065,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6211439079999854,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8210522579999724,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6211480379999648,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.4953642479999507,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2803_154328_000008_000001",
+   "dur": 6.22,
+   "words": 16,
+   "wer_err": 3,
+   "hyp": "he was silent a moment in having overcome his emotion he said addressing the uncaptain",
+   "ref": "he was silent a moment and having overcome his emotion he said addressing the young captain",
+   "first_partial_s": 1.3682487560001846,
+   "cpu_s": 23.789999999999964,
+   "audio_s": 7.82,
+   "close_cost_s": 0.012862479999967036,
+   "strat": {
+    "commit": {
+     "lat": 0.03382313900013312,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5014123900000689,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.8079548820001312,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9012182430001578,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8079579220000417,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8076257720001925,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1272_135031_000026_000002",
+   "dur": 7.46,
+   "words": 20,
+   "wer_err": 2,
+   "hyp": "fox did not have much to say until the conversation was ended but then he turned to calico and asked",
+   "ref": "quox did not have much to say until the conversation was ended but then he turned to kaliko and asked",
+   "first_partial_s": 1.3904875270000048,
+   "cpu_s": 24.719999999999914,
+   "audio_s": 9.06,
+   "close_cost_s": 0.015938599999799408,
+   "strat": {
+    "commit": {
+     "lat": 0.07479632899984612,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38100790299999066,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5897655060000853,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.781434437999942,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5897683349999534,
+     "cuts": 3,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5887162750000607,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000073_000000",
+   "dur": 4.46,
+   "words": 11,
+   "wer_err": 2,
+   "hyp": "captain burgess was shutting his brand a window when north hurried up",
+   "ref": "captain burgess was shutting his verandah window when north hurried up",
+   "first_partial_s": 0.7142210749998412,
+   "cpu_s": 15.349999999999909,
+   "audio_s": 6.06,
+   "close_cost_s": 0.011983370000052673,
+   "strat": {
+    "commit": {
+     "lat": 0.0421419370000331,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5363520159999462,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.661586915999842,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8614954359998501,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6615914459999113,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5360201960000177,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1462_170145_000028_000001",
+   "dur": 4.42,
+   "words": 18,
+   "wer_err": 0,
+   "hyp": "i don't know what i ought to say but i don't believe you'd be happy truly i don't",
+   "ref": "i don't know what i ought to say but i don't believe you'd be happy truly i don't",
+   "first_partial_s": 1.402963957999873,
+   "cpu_s": 14.079999999999927,
+   "audio_s": 6.02,
+   "close_cost_s": 0.012180450000187193,
+   "strat": {
+    "commit": {
+     "lat": 0.033871595000237065,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3417809849998594,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.641989494000045,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7409434939998665,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6419930640000349,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6412246240000332,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8842_302201_000014_000003",
+   "dur": 3.58,
+   "words": 12,
+   "wer_err": 3,
+   "hyp": "the third is as it were a handmaid's for preceding words",
+   "ref": "the third is as it were a handmaid to the preceding words",
+   "first_partial_s": 0.7069593309997799,
+   "cpu_s": 14.63000000000011,
+   "audio_s": 5.18,
+   "close_cost_s": 0.008735410000099364,
+   "strat": {
+    "commit": {
+     "lat": 0.03062055499996852,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3254247359999862,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.3815188159998524,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.5808760369999799,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.3815231759999005,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8756596029999582,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "251_136532_000023_000001",
+   "dur": 4.46,
+   "words": 13,
+   "wer_err": 1,
+   "hyp": "i'd hope it would be you your voice would carry the most weight",
+   "ref": "i'd hoped it would be you your voice would carry the most weight",
+   "first_partial_s": 1.3910784299998795,
+   "cpu_s": 14.759999999999991,
+   "audio_s": 6.06,
+   "close_cost_s": 0.012626829000055295,
+   "strat": {
+    "commit": {
+     "lat": 0.040910419000092624,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3413414160000139,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.544332593000072,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7416875740000615,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5443356439998661,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5433289840000635,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "251_118436_000030_000001",
+   "dur": 12.22025,
+   "words": 35,
+   "wer_err": 2,
+   "hyp": "all the noble born fighting men of ayodhya were gathered in the great palace or about it and at each broad arched gate and door five zero archers stood on guard with bows in their hands",
+   "ref": "all the noble born fighting men of ayodhya were gathered in the great palace or about it and at each broad arched gate and door fifty archers stood on guard with bows in their hands",
+   "first_partial_s": 0.7373463409999204,
+   "cpu_s": 48.26999999999998,
+   "audio_s": 13.82025,
+   "close_cost_s": 0.023149809999949866,
+   "strat": {
+    "commit": {
+     "lat": 0.044296408999876746,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3413795489999174,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6818105880000402,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7405431569998981,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6818135980000406,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6810132879998818,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275156_000019_000007",
+   "dur": 8.06,
+   "words": 20,
+   "wer_err": 2,
+   "hyp": "he decided on hastening sydney's introduction to betty deck and on writing at once to prepare the captain for that event",
+   "ref": "he decided on hastening sydney's introduction to bennydeck and on writing at once to prepare the captain for that event",
+   "first_partial_s": 0.7051010889999816,
+   "cpu_s": 51.340000000000146,
+   "audio_s": 9.66,
+   "close_cost_s": 0.016005949999907898,
+   "strat": {
+    "commit": {
+     "lat": 0.0380407679999184,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5667890220001386,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.702003470000081,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.955574677000131,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7020129900001297,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9533377070001183,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3536_23268_000047_000001",
+   "dur": 8.26,
+   "words": 23,
+   "wer_err": 0,
+   "hyp": "she was going to reply but found she could not without accompanying her words with tears therefore after the first attempt she desisted",
+   "ref": "she was going to reply but found she could not without accompanying her words with tears therefore after the first attempt she desisted",
+   "first_partial_s": 1.4999059090000628,
+   "cpu_s": 56.319999999999936,
+   "audio_s": 9.86,
+   "close_cost_s": 0.027650669999957245,
+   "strat": {
+    "commit": {
+     "lat": 0.29991573100004665,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30355093100000907,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7953750200001561,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7979246800000421,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7953782000001777,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7953803600000722,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2412_153954_000002_000004",
+   "dur": 10.42,
+   "words": 39,
+   "wer_err": 2,
+   "hyp": "however i showed no sign of wonder or disapproval for i remembered that to be all things to all men was one of the injunctions of the gentile apostle which for the present i should do well to heed the heed",
+   "ref": "however i showed no sign of wonder or disapproval for i remembered that to be all things to all men was one of the injunctions of the gentile apostle which for the present i should do well to heed",
+   "first_partial_s": 0.8019615110001723,
+   "cpu_s": 102.53999999999996,
+   "audio_s": 12.02,
+   "close_cost_s": 0.023136640000075204,
+   "strat": {
+    "commit": {
+     "lat": 0.7905400730001748,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.7711615030001031,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7729215330001171,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 1.0360162820000642,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7729248330000065,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.767420973000144,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_66129_000069_000000",
+   "dur": 5.14,
+   "words": 19,
+   "wer_err": 4,
+   "hyp": "gallup and neb became the boy fetched his sombrero which he carried well out into the field and tossed away",
+   "ref": "galloping into camp the boy fetched his sombrero which he carried well out into the field and tossed away",
+   "first_partial_s": 0.7943731420000404,
+   "cpu_s": 45.899999999999864,
+   "audio_s": 6.74,
+   "close_cost_s": 0.012758540000049834,
+   "strat": {
+    "commit": {
+     "lat": 0.4239399560002406,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4134265769999823,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6200407580000595,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.702013289000079,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6200439180000652,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.618769358000109,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "174_84280_000005_000002",
+   "dur": 6.78,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "we range wider last longer and escape more and more from intensity towards understanding",
+   "ref": "we range wider last longer and escape more and more from intensity towards understanding",
+   "first_partial_s": 1.421204939000063,
+   "cpu_s": 26.269999999999982,
+   "audio_s": 8.38,
+   "close_cost_s": 0.01705221099996379,
+   "strat": {
+    "commit": {
+     "lat": 0.19873864600001045,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4328616249999593,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7177420729999264,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8377840230000126,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7177462330000433,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7177476040000963,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6345_93302_000049_000003",
+   "dur": 4.46,
+   "words": 14,
+   "wer_err": 1,
+   "hyp": "can't bear to see you looking so miserable and there was another silence",
+   "ref": "i can't bear to see you looking so miserable and there was another silence",
+   "first_partial_s": 1.441275633000032,
+   "cpu_s": 15.580000000000155,
+   "audio_s": 6.06,
+   "close_cost_s": 0.01224858000000495,
+   "strat": {
+    "commit": {
+     "lat": 0.041351718000023574,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.18152206700009632,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.3817792259999715,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.5807761650001249,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.38178386600001435,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5664250750001338,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2428_83705_000033_000002",
+   "dur": 8.82,
+   "words": 25,
+   "wer_err": 3,
+   "hyp": "the fact of having given marianne a wedding present seems to fill them with a feeling of rancorous acidity which to me it's inexplicable",
+   "ref": "the fact of having given mary ann a wedding present seems to fill them with a feeling of rancorous acidity which to me is inexplicable",
+   "first_partial_s": 0.719067460000133,
+   "cpu_s": 34.86999999999989,
+   "audio_s": 10.42,
+   "close_cost_s": 0.022540720000051806,
+   "strat": {
+    "commit": {
+     "lat": 0.16416767900016538,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4362977709999356,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6216198819999406,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9515520740000554,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6216245120000892,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9499912450000281,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000063_000002",
+   "dur": 3.14,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "besides he's not the sort of creature to complain",
+   "ref": "besides he's not the sort of creature to complain",
+   "first_partial_s": 0.7418441309998798,
+   "cpu_s": 13.420000000000073,
+   "audio_s": 4.74,
+   "close_cost_s": 0.00979804000007789,
+   "strat": {
+    "commit": {
+     "lat": 0.1947545860001445,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.34190077699996424,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5427004760000362,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7417349030000513,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5427060860000528,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6931223630000294,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_110124_000017_000000",
+   "dur": 2.74,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the second daughter peeped out of the window at the beggar",
+   "ref": "the second daughter peeped out of the window at the beggar",
+   "first_partial_s": 1.3815610419999302,
+   "cpu_s": 13.860000000000127,
+   "audio_s": 4.34,
+   "close_cost_s": 0.005345329999954629,
+   "strat": {
+    "commit": {
+     "lat": 0.1232964879998324,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.7562928519998966,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.758069062000013,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8219840029999066,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7580721619999711,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.755528341999943,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2277_149897_000045_000003",
+   "dur": 3.62,
+   "words": 13,
+   "wer_err": 0,
+   "hyp": "his absence did not seem to be noticed by either of his children",
+   "ref": "his absence did not seem to be noticed by either of his children",
+   "first_partial_s": 0.7264698220001264,
+   "cpu_s": 14.720000000000027,
+   "audio_s": 5.22,
+   "close_cost_s": 0.009287029999995866,
+   "strat": {
+    "commit": {
+     "lat": 0.031229241999999324,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38145148500018866,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5811456669999915,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7946009370001592,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5811502570001084,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7937215170001126,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000097_000003",
+   "dur": 5.06,
+   "words": 16,
+   "wer_err": 0,
+   "hyp": "he got up at length went into the kitchen and found a packet of red pepper",
+   "ref": "he got up at length went into the kitchen and found a packet of red pepper",
+   "first_partial_s": 1.4169460909999998,
+   "cpu_s": 18.919999999999845,
+   "audio_s": 6.66,
+   "close_cost_s": 0.013663260000157607,
+   "strat": {
+    "commit": {
+     "lat": 0.08075902300010096,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4213388219999983,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6409525419998685,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8210600109998181,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6409557519998001,
+     "cuts": 2,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6387794019999005,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275154_000022_000014",
+   "dur": 4.14,
+   "words": 10,
+   "wer_err": 2,
+   "hyp": "i was so happy randall with catherine and luke kitty",
+   "ref": "i was so happy randal with catherine and little kitty",
+   "first_partial_s": 1.4018633140001384,
+   "cpu_s": 16.019999999999982,
+   "audio_s": 5.74,
+   "close_cost_s": 0.013533789999883084,
+   "strat": {
+    "commit": {
+     "lat": 0.03562705199998195,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.39436460900002235,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5430094199999624,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7409112610001651,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5430138000000264,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9551544030001518,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2412_153954_000008_000009",
+   "dur": 4.7,
+   "words": 18,
+   "wer_err": 1,
+   "hyp": "as soon as it was ended they proceeded to overhaul my swag and the contents of my pocket",
+   "ref": "as soon as it was ended they proceeded to overhaul my swag and the contents of my pockets",
+   "first_partial_s": 0.7710839349999787,
+   "cpu_s": 20.039999999999964,
+   "audio_s": 6.3,
+   "close_cost_s": 0.010100389999934123,
+   "strat": {
+    "commit": {
+     "lat": 0.031397448000052286,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5148061180000694,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5166160179999677,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7012715779999779,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5166188880000844,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5144029680000584,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6345_64257_000007_000000",
+   "dur": 5.1,
+   "words": 18,
+   "wer_err": 0,
+   "hyp": "she found herself at length in an avenue of dark trees the end of which was far off",
+   "ref": "she found herself at length in an avenue of dark trees the end of which was far off",
+   "first_partial_s": 0.7312004030000026,
+   "cpu_s": 20.75999999999999,
+   "audio_s": 6.7,
+   "close_cost_s": 0.015089068999941446,
+   "strat": {
+    "commit": {
+     "lat": 0.0460293469999673,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.261423637999906,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5938294080000563,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6618189380000334,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5938331280000515,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5933930380000678,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_66129_000064_000000",
+   "dur": 2.98,
+   "words": 10,
+   "wer_err": 2,
+   "hyp": "be third heat with merely a repetition of the second",
+   "ref": "the third heat was merely a repetition of the second",
+   "first_partial_s": 0.7692200449998836,
+   "cpu_s": 14.339999999999918,
+   "audio_s": 4.58,
+   "close_cost_s": 0.008405729000060091,
+   "strat": {
+    "commit": {
+     "lat": 0.030203015999877625,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.30715120599986223,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5069793450000089,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 1.0165706519999458,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5069832049998877,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 1.0165737519999039,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_76958_000063_000000",
+   "dur": 9.02,
+   "words": 31,
+   "wer_err": 7,
+   "hyp": "the few moments they too had turned their ponies to drift and it thrown themselves down beside their companion pulling their blankets well about them for the knight had grown chill",
+   "ref": "in a few moments they too had turned their ponies adrift and had thrown themselves down beside their companions pulling their blankets well about them for the night had grown chill",
+   "first_partial_s": 0.7328138029999991,
+   "cpu_s": 46.48000000000002,
+   "audio_s": 10.62,
+   "close_cost_s": 0.022115750000011758,
+   "strat": {
+    "commit": {
+     "lat": 0.044075782000145836,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.9391665370001014,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.9407760870001134,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9818874670001883,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9407791870000715,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9367490770000408,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000080_000000",
+   "dur": 5.02,
+   "words": 13,
+   "wer_err": 0,
+   "hyp": "captain burgess protested north i assure you that he does not deserve punishment",
+   "ref": "captain burgess protested north i assure you that he does not deserve punishment",
+   "first_partial_s": 0.7670192979999229,
+   "cpu_s": 21.179999999999836,
+   "audio_s": 6.62,
+   "close_cost_s": 0.013009600000032151,
+   "strat": {
+    "commit": {
+     "lat": 0.16586076400015415,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.422140332999998,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6786011450001119,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8220849860001458,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.678604195000144,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6781952549999737,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2902_9008_000061_000000",
+   "dur": 4.18,
+   "words": 11,
+   "wer_err": 2,
+   "hyp": "recollect that you are a christian answered hypatia half smiling",
+   "ref": "'recollect that you are a christian ' answered hypatia half smiling",
+   "first_partial_s": 0.7805615120000766,
+   "cpu_s": 19.0300000000002,
+   "audio_s": 5.78,
+   "close_cost_s": 0.010587709999981598,
+   "strat": {
+    "commit": {
+     "lat": 0.032026594999997826,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.46192608400003365,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6614597149999284,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9706473169999938,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6614642150000876,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9694879169999879,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1988_24833_000066_000002",
+   "dur": 3.74,
+   "words": 13,
+   "wer_err": 3,
+   "hyp": "pot brings out the champagne and the cork blows into the ceiling",
+   "ref": "pop brings out the champagne and the cork blows and hits the ceiling",
+   "first_partial_s": 1.3327224450001722,
+   "cpu_s": 15.5,
+   "audio_s": 5.34,
+   "close_cost_s": 0.00982253999995919,
+   "strat": {
+    "commit": {
+     "lat": 0.07628160400009598,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4216351510001548,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7216331480001461,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8216514470000309,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7216359280000777,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7202370879999851,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3000_15664_000024_000002",
+   "dur": 9.34,
+   "words": 26,
+   "wer_err": 4,
+   "hyp": "they were familiar with buywaves both over and underground and could at any time think suddenly out of sight like squirrels among the loose boulders",
+   "ref": "they were familiar with byways both over and under ground and could at any time sink suddenly out of sight like squirrels among the loose boulders",
+   "first_partial_s": 0.7188390909998361,
+   "cpu_s": 34.59999999999991,
+   "audio_s": 10.94,
+   "close_cost_s": 0.017049559999804842,
+   "strat": {
+    "commit": {
+     "lat": 0.2332473009998104,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.46163278999998525,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6610260389999532,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9062337679999111,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6610298390000118,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.9052225179999915,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6345_93302_000037_000002",
+   "dur": 10.1,
+   "words": 26,
+   "wer_err": 1,
+   "hyp": "she only wished for may and the orchard instead of january and the dingy dusty waiting room the plain faced preoccupied travelers the dim desolate weather",
+   "ref": "she only wished for may and the orchard instead of january and the dingy dusty waiting room the plain faced preoccupied travellers the dim desolate weather",
+   "first_partial_s": 0.7162780520000069,
+   "cpu_s": 37.50999999999999,
+   "audio_s": 11.7,
+   "close_cost_s": 0.01858754999989287,
+   "strat": {
+    "commit": {
+     "lat": 0.17328906299999325,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.42082927199990117,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6207795809999883,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8359393400000048,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.620783571000084,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8347745400000353,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1993_147149_000012_000001",
+   "dur": 7.26,
+   "words": 21,
+   "wer_err": 1,
+   "hyp": "over the child which yet breathed the father bent watching anxiously for some ground of hope were hope there was none",
+   "ref": "over the child which yet breathed the father bent watching anxiously for some ground of hope where hope there was none",
+   "first_partial_s": 0.7076196849998269,
+   "cpu_s": 25.180000000000064,
+   "audio_s": 8.86,
+   "close_cost_s": 0.014133099999980914,
+   "strat": {
+    "commit": {
+     "lat": 0.03540921299985733,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5812794439998381,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.861759882999868,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.9815183020000315,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8617628429999424,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.860997722999846,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "251_137823_000038_000001",
+   "dur": 2.42,
+   "words": 7,
+   "wer_err": 1,
+   "hyp": "right where we landed our warly duck",
+   "ref": "right where we landed our whirling duck",
+   "first_partial_s": 1.402167223999868,
+   "cpu_s": 8.569999999999936,
+   "audio_s": 4.02,
+   "close_cost_s": 0.007229110000025685,
+   "strat": {
+    "commit": {
+     "lat": 0.02848998399993441,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.466065859999917,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.8151530309999817,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8651368709998497,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8151559109999926,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8151573109999664,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_105575_000015_000006",
+   "dur": 2.74,
+   "words": 7,
+   "wer_err": 0,
+   "hyp": "another had taken his fine gold watch",
+   "ref": "another had taken his fine gold watch",
+   "first_partial_s": 1.3825852229999782,
+   "cpu_s": 7.309999999999945,
+   "audio_s": 4.34,
+   "close_cost_s": 0.005801770000061879,
+   "strat": {
+    "commit": {
+     "lat": 0.026757607000044814,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.22111520599993106,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4426839249999919,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6211098940000372,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.4426868349999129,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.4419851650000144,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "251_137823_000060_000000",
+   "dur": 5.02,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "mark faber is not expected to live the elder inventor reported",
+   "ref": "mark faber is not expected to live the elder inventor reported",
+   "first_partial_s": 1.3351116169999386,
+   "cpu_s": 14.440000000000055,
+   "audio_s": 6.62,
+   "close_cost_s": 0.01283258999978898,
+   "strat": {
+    "commit": {
+     "lat": 0.05628990099988229,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3808134279999926,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5877293949999789,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7818296529999138,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5877324650000268,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5864976049999591,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1462_170142_000004_000000",
+   "dur": 2.66,
+   "words": 10,
+   "wer_err": 0,
+   "hyp": "when did you come bartley and how did it happen",
+   "ref": "when did you come bartley and how did it happen",
+   "first_partial_s": 0.7154951380000512,
+   "cpu_s": 9.75,
+   "audio_s": 4.26,
+   "close_cost_s": 0.008868339999935415,
+   "strat": {
+    "commit": {
+     "lat": 0.03454841599986125,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38142067699990534,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.615791429000037,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.781747560000067,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6157946689998788,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6143233090000102,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6241_61946_000011_000001",
+   "dur": 5.22,
+   "words": 16,
+   "wer_err": 2,
+   "hyp": "our two horses with luggage fallen of their own accord without requiring whip or spur",
+   "ref": "our two horses with the luggage followed of their own accord without requiring whip or spur",
+   "first_partial_s": 0.7454834669999855,
+   "cpu_s": 20.019999999999982,
+   "audio_s": 6.82,
+   "close_cost_s": 0.0098563199999262,
+   "strat": {
+    "commit": {
+     "lat": 0.03092156400000956,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5071056810000121,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6212140610000736,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.821460050000069,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6212177210000212,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5063442710000166,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2035_147960_000018_000001",
+   "dur": 3.18,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "it was just luck you had a tool he said cautiously",
+   "ref": "it was just luck you had a tool he said cautiously",
+   "first_partial_s": 0.7432438819998879,
+   "cpu_s": 12.889999999999873,
+   "audio_s": 4.78,
+   "close_cost_s": 0.00997732999985601,
+   "strat": {
+    "commit": {
+     "lat": 0.1151620699998328,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3413655499999275,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7045079509999321,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7411072410000723,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7045111109999378,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7041711210000083,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "5694_64038_000011_000008",
+   "dur": 7.9,
+   "words": 26,
+   "wer_err": 2,
+   "hyp": "reader you should have seen how that old railroad did flop over and how the darkies did sweat and how the perfume did fully atmosphere",
+   "ref": "reader you should have seen how that old railroad did flop over and how the darkies did sweat and how the perfume did fill the atmosphere",
+   "first_partial_s": 0.7471514310000202,
+   "cpu_s": 33.86999999999989,
+   "audio_s": 9.5,
+   "close_cost_s": 0.016212920000043596,
+   "strat": {
+    "commit": {
+     "lat": 0.3946678870000593,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38015782700003875,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4219422770000616,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7643622550000142,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.42194676700009914,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7643649850000198,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2803_154320_000008_000001",
+   "dur": 5.94,
+   "words": 16,
+   "wer_err": 1,
+   "hyp": "he still love and for a moment his glass was pointed toward the horizon to windward",
+   "ref": "he still looked and for a moment his glass was pointed toward the horizon to windward",
+   "first_partial_s": 1.3954043329999877,
+   "cpu_s": 21.220000000000027,
+   "audio_s": 7.54,
+   "close_cost_s": 0.011918259999902148,
+   "strat": {
+    "commit": {
+     "lat": 0.03298993300000763,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.35297268799996306,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5516687869999801,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8896385359999472,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5516728870000494,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.8896416260000111,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1988_148538_000008_000000",
+   "dur": 11.22,
+   "words": 29,
+   "wer_err": 3,
+   "hyp": "in democracies men are never stationary a thousand chances wash them to and fro and their life is always the sport of unforeseen or so to speak exemplary news circumstances",
+   "ref": "in democracies men are never stationary a thousand chances waft them to and fro and their life is always the sport of unforeseen or so to speak extemporaneous circumstances",
+   "first_partial_s": 0.7159619440001279,
+   "cpu_s": 38.02999999999997,
+   "audio_s": 12.82,
+   "close_cost_s": 0.02438402000007045,
+   "strat": {
+    "commit": {
+     "lat": 0.04540376299999416,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4450832370000892,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6211821160000266,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8217475750000443,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6211865460000165,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.44414609699995644,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6313_66129_000080_000001",
+   "dur": 3.3,
+   "words": 12,
+   "wer_err": 1,
+   "hyp": "writing bravely out into the field he tossed it to the ground",
+   "ref": "riding bravely out into the field he tossed it to the ground",
+   "first_partial_s": 0.7135758229999283,
+   "cpu_s": 11.230000000000018,
+   "audio_s": 4.9,
+   "close_cost_s": 0.01066215000014381,
+   "strat": {
+    "commit": {
+     "lat": 0.03568168300007546,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3813318419999634,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5810790600000475,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7816331060000268,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5810841800000164,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5452454599998875,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7850_281318_000016_000000",
+   "dur": 8.26,
+   "words": 25,
+   "wer_err": 2,
+   "hyp": "mother magpie snapped her eyes at him and went on next you must lay a feather on a bit of mauve to start the wall",
+   "ref": "mother magpie snapped her eyes at him and went on next you must lay a feather on a bit of moss to start the walls",
+   "first_partial_s": 1.3518593029998556,
+   "cpu_s": 26.180000000000064,
+   "audio_s": 9.86,
+   "close_cost_s": 0.019128249999994296,
+   "strat": {
+    "commit": {
+     "lat": 0.04056140699980482,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.22128793899991273,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.4543725009998436,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6213029209998151,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.45437562099981754,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.4536266909999451,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6345_93302_000060_000000",
+   "dur": 3.98,
+   "words": 16,
+   "wer_err": 0,
+   "hyp": "you know i do he said it was hateful of me but i couldn't help it",
+   "ref": "you know i do he said it was hateful of me but i couldn't help it",
+   "first_partial_s": 0.7135332569998809,
+   "cpu_s": 15.63000000000011,
+   "audio_s": 5.58,
+   "close_cost_s": 0.009263200000077632,
+   "strat": {
+    "commit": {
+     "lat": 0.06636601199990766,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3996627759998046,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.46754753500001245,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6689639229998829,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.8727326599999015,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.39966886699996396,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "3752_4944_000077_000000",
+   "dur": 2.66,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "well that's just what i'm flogging him for",
+   "ref": "well that's just what i'm flogging him for",
+   "first_partial_s": 1.3966612480001004,
+   "cpu_s": 8.049999999999955,
+   "audio_s": 4.26,
+   "close_cost_s": 0.009397338999860949,
+   "strat": {
+    "commit": {
+     "lat": 0.03457014899990085,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3815405989999725,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5814231780001045,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7809851000000343,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9815382210000188,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5546967280000352,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6319_64726_000011_000002",
+   "dur": 10.22,
+   "words": 30,
+   "wer_err": 1,
+   "hyp": "the good fairy was very wise and saw that the princess when she woke would find herself all alone in that great castle and everything about it would be strange",
+   "ref": "the good fairy was very wise and saw that the princess when she woke would find herself all alone in that great castle and everything about her would be strange",
+   "first_partial_s": 1.3792682669998158,
+   "cpu_s": 37.950000000000045,
+   "audio_s": 11.82,
+   "close_cost_s": 0.021365650000007008,
+   "strat": {
+    "commit": {
+     "lat": 0.0610798319999315,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3811567369998823,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6429876329998745,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7812418209998935,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6429908529999278,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6423585329999053,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1993_147966_000005_000001",
+   "dur": 2.86,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "if i got all things like you i make much better",
+   "ref": "if i got all things like you i make much better",
+   "first_partial_s": 0.7130107479999879,
+   "cpu_s": 11.480000000000018,
+   "audio_s": 4.46,
+   "close_cost_s": 0.0062176399999316345,
+   "strat": {
+    "commit": {
+     "lat": 0.027887097999964805,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5470672479999759,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5811699780000619,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7816206769999918,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5811751080001524,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5462782080000035,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "8297_275155_000040_000000",
+   "dur": 3.22,
+   "words": 10,
+   "wer_err": 1,
+   "hyp": "randall asked if his friend was then at the hotel",
+   "ref": "randal asked if his friend was then at the hotel",
+   "first_partial_s": 1.3987761559999399,
+   "cpu_s": 9.320000000000164,
+   "audio_s": 4.82,
+   "close_cost_s": 0.010941369999954986,
+   "strat": {
+    "commit": {
+     "lat": 0.031437061999922467,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.42121341299983195,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6214303009999456,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8213257379998411,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.621434571000036,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5305493019998537,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1272_141231_000032_000001",
+   "dur": 6.82,
+   "words": 18,
+   "wer_err": 4,
+   "hyp": "he didn't do them to attack just let the young wear himself out against the firm shield of his defense",
+   "ref": "he didn't attempt to attack just let brion wear himself out against the firm shield of his defense",
+   "first_partial_s": 0.7342427640001006,
+   "cpu_s": 25.109999999999673,
+   "audio_s": 8.42,
+   "close_cost_s": 0.014396469999837791,
+   "strat": {
+    "commit": {
+     "lat": 0.15469744899990445,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.39367716999998237,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6585616120000211,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7923113230000851,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6585654120000797,
+     "cuts": 1,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6585667619999,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2428_83699_000027_000003",
+   "dur": 4.26,
+   "words": 10,
+   "wer_err": 0,
+   "hyp": "the whereabouts of this however the driver presently made clear",
+   "ref": "the whereabouts of this however the driver presently made clear",
+   "first_partial_s": 0.7128092719999586,
+   "cpu_s": 14.320000000000164,
+   "audio_s": 5.86,
+   "close_cost_s": 0.01073949999999968,
+   "strat": {
+    "commit": {
+     "lat": 0.18588476500007367,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4281284629998847,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7393773510000212,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8292770299999486,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7393801410000744,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7393815010000164,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2277_149897_000039_000000",
+   "dur": 2.82,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "then he folded it up and put it in his pocket",
+   "ref": "then he folded it up and put it in his pocket",
+   "first_partial_s": 1.3931241000000227,
+   "cpu_s": 7.9099999999998545,
+   "audio_s": 4.42,
+   "close_cost_s": 0.006782380000004196,
+   "strat": {
+    "commit": {
+     "lat": 0.028594818000037936,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.38193367699994285,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5811661459999233,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7810448869999438,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5811706359999609,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.37556979699996207,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "2035_152373_000007_000003",
+   "dur": 8.82,
+   "words": 27,
+   "wer_err": 0,
+   "hyp": "to heighten the awful sense of inevitable doom an eclipse of the sun occurred concurrently with the appearance of the pestilence on the first sunday in may",
+   "ref": "to heighten the awful sense of inevitable doom an eclipse of the sun occurred concurrently with the appearance of the pestilence on the first sunday in may",
+   "first_partial_s": 1.367182506999825,
+   "cpu_s": 27.159999999999854,
+   "audio_s": 10.42,
+   "close_cost_s": 0.019388540000136345,
+   "strat": {
+    "commit": {
+     "lat": 0.05406629900010529,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4616752329999869,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6609077299998987,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.861599096999889,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6609121299999785,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.6556643599998822,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "1272_141231_000021_000001",
+   "dur": 3.58,
+   "words": 8,
+   "wer_err": 3,
+   "hyp": "this unhappily conscious of this total exhaustion",
+   "ref": "he was unhappily conscious of his total exhaustion",
+   "first_partial_s": 1.3650509720000628,
+   "cpu_s": 11.230000000000018,
+   "audio_s": 5.18,
+   "close_cost_s": 0.008923108999852047,
+   "strat": {
+    "commit": {
+     "lat": 0.029919151999974858,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.2610498910000114,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.46105367900001504,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6609966870000061,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.46105836899998387,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7782167859999571,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "251_118436_000036_000000",
+   "dur": 4.22,
+   "words": 9,
+   "wer_err": 3,
+   "hyp": "i cannot she wailed smiting her naked breast",
+   "ref": "'i cannot ' she wailed smiting her naked breasts",
+   "first_partial_s": 1.3479853159999493,
+   "cpu_s": 12.650000000000091,
+   "audio_s": 5.82,
+   "close_cost_s": 0.010782429000073535,
+   "strat": {
+    "commit": {
+     "lat": 0.031788519999991216,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.2300113569999942,
+     "cuts": 1,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.42116289200001145,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6208923479998978,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.421167382000049,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.7303727950000214,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "84_121550_000214_000000",
+   "dur": 7.66,
+   "words": 22,
+   "wer_err": 10,
+   "hyp": "when forcibly my sight would turn away toward my last hand by the goddess's feet because i heard from them a two intempt me",
+   "ref": "when forcibly my sight was turned away towards my left hand by those goddesses because i heard from them a too intently",
+   "first_partial_s": 0.7340416150000237,
+   "cpu_s": 38.7199999999998,
+   "audio_s": 9.26,
+   "close_cost_s": 0.01810332899981404,
+   "strat": {
+    "commit": {
+     "lat": 0.03999744499978064,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5855987450000519,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.7014015430000562,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.901617599000101,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.7014059230001202,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5842996849999871,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "6295_64301_000012_000002",
+   "dur": 5.38,
+   "words": 12,
+   "wer_err": 1,
+   "hyp": "letty two was overcome more than ever she had been by music",
+   "ref": "letty too was overcome more than ever she had been by music",
+   "first_partial_s": 1.3840445129999353,
+   "cpu_s": 14.789999999999964,
+   "audio_s": 6.98,
+   "close_cost_s": 0.012881809999953475,
+   "strat": {
+    "commit": {
+     "lat": 0.033942045999874715,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.31078908200003763,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5103021589999299,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7150698659999035,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5103060389998246,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.206441573000002,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "7976_110124_000049_000001",
+   "dur": 2.7,
+   "words": 9,
+   "wer_err": 3,
+   "hyp": "then you can pull my charm out and save the",
+   "ref": "then you can pull my charm out in safety",
+   "first_partial_s": 0.7019468969999707,
+   "cpu_s": 9.140000000000327,
+   "audio_s": 4.3,
+   "close_cost_s": 0.005200889999969149,
+   "strat": {
+    "commit": {
+     "lat": 0.02717303399986104,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5301751640000019,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6213521619998117,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8220619789999999,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 1.0214102549999096,
+     "cuts": 0,
+     "fired": true
+    },
+    "native": {
+     "lat": 0.5298137139998742,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  }
+ ]
+}

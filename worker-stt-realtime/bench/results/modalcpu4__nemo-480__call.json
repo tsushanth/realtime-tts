@@ -1,0 +1,1926 @@
+{
+ "summary": {
+  "engine": "nemo-480",
+  "set": "call",
+  "label": "modalcpu4",
+  "n": 48,
+  "threads": 1,
+  "wer": 0.05938242280285035,
+  "cpu_per_audio_s": 0.09186557643987658,
+  "rss_loaded_mb": 310.1015625,
+  "rss_peak_mb": 341.93359375,
+  "first_partial_med_s": 1.2961340680000148,
+  "close_cost_med_s": 0.0009517960000948733,
+  "strat": {
+   "commit": {
+    "lat_med": 0.06129711850017161,
+    "lat_p90": 0.08717088169983436,
+    "fired_frac": 0.8333333333333334,
+    "cut_utts": 0,
+    "cuts_total": 0
+   },
+   "vad300": {
+    "lat_med": 0.39737175899996036,
+    "lat_p90": 0.5156301773000086,
+    "fired_frac": 1.0,
+    "cut_utts": 16,
+    "cuts_total": 46
+   },
+   "vad500": {
+    "lat_med": 0.5894861019998916,
+    "lat_p90": 0.6617926136998922,
+    "fired_frac": 1.0,
+    "cut_utts": 16,
+    "cuts_total": 34
+   },
+   "vad700": {
+    "lat_med": 0.78956151950005,
+    "lat_p90": 0.8278886984000902,
+    "fired_frac": 1.0,
+    "cut_utts": 16,
+    "cuts_total": 33
+   },
+   "vad500+hint": {
+    "lat_med": 0.6021630229999411,
+    "lat_p90": 0.7649847592000647,
+    "fired_frac": 1.0,
+    "cut_utts": 16,
+    "cuts_total": 27
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "call00",
+   "dur": 3.578125,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "my order number is nine one four one",
+   "ref": "my order number is nine one four one",
+   "first_partial_s": 1.2966306079999868,
+   "cpu_s": 0.46999999999999975,
+   "audio_s": 5.178125,
+   "close_cost_s": 0.0007967920000737649,
+   "strat": {
+    "commit": {
+     "lat": 0.023511192000114534,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3430292410000675,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5431630140001289,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7435660630001166,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5431670220000342,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call01",
+   "dur": 3.206625,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "yes this is sarah o'connor calling about my account",
+   "ref": "yes this is sarah o'connor calling about my account",
+   "first_partial_s": 1.2950097469999946,
+   "cpu_s": 0.44999999999999973,
+   "audio_s": 4.806625,
+   "close_cost_s": 0.0009723100001792773,
+   "strat": {
+    "commit": {
+     "lat": 0.03541240400025725,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.39439116300016774,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5944311840001175,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7949896390000815,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5944353420000281,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call02",
+   "dur": 5.803625,
+   "words": 11,
+   "wer_err": 1,
+   "hyp": "the confirmation code is five zero zero eight thank you",
+   "ref": "the confirmation code is five zero zero zero eight thank you",
+   "first_partial_s": 1.296215157000006,
+   "cpu_s": 0.71,
+   "audio_s": 7.403625,
+   "close_cost_s": 0.0009312820000104693,
+   "strat": {
+    "commit": {
+     "lat": 0.03853086699997377,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.5305975999999752,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5571378760000805,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7577211249999998,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9571724529998953,
+     "cuts": 3,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call03",
+   "dur": 4.1158125,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to four five eight oak street",
+   "ref": "i would like to change my delivery address to four five eight oak street",
+   "first_partial_s": 1.2960531999999603,
+   "cpu_s": 0.5800000000000001,
+   "audio_s": 5.7158125,
+   "close_cost_s": 0.0008394339999995282,
+   "strat": {
+    "commit": {
+     "lat": 0.006382554000031071,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3253996650000248,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5486914959998943,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7249256219999483,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5486949529999423,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call04",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.2958751399999073,
+   "cpu_s": 0.2400000000000002,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0007556919999842648,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5155910390000008,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5808161880000716,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7806397850000485,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5808214079998925,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call05",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2964289240001108,
+   "cpu_s": 0.33999999999999986,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.056911111000090386,
+   "strat": {
+    "commit": {
+     "lat": 0.06288729299999618,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4058587109999299,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6625457710000338,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8055374809999667,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6625494379999073,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call06",
+   "dur": 3.5316875,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "my order number is five eight six eight",
+   "ref": "my order number is five eight six eight",
+   "first_partial_s": 1.29520332900006,
+   "cpu_s": 0.4299999999999997,
+   "audio_s": 5.1316875,
+   "close_cost_s": 0.05513083800019558,
+   "strat": {
+    "commit": {
+     "lat": 0.0844888780000912,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.389937938000092,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5896250479998781,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7896250530000981,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5896298969999845,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call07",
+   "dur": 3.0789375,
+   "words": 9,
+   "wer_err": 1,
+   "hyp": "yes this is pria raman calling about my account",
+   "ref": "yes this is priya raman calling about my account",
+   "first_partial_s": 1.294524433999868,
+   "cpu_s": 0.4299999999999997,
+   "audio_s": 4.6789375,
+   "close_cost_s": 0.0007735369999863906,
+   "strat": {
+    "commit": {
+     "lat": 0.0026195869999647847,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.45737491199991576,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6020355529998889,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8022666189999037,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6020399819998894,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call08",
+   "dur": 5.4669375,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is one seven eight one two thank you",
+   "ref": "the confirmation code is one seven eight one two thank you",
+   "first_partial_s": 1.2948843500000748,
+   "cpu_s": 0.6600000000000001,
+   "audio_s": 7.0669375,
+   "close_cost_s": 0.056350188000124035,
+   "strat": {
+    "commit": {
+     "lat": 0.07086655200018299,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.37457800100000327,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.574423524000025,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.774421636000028,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9740514220000875,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call09",
+   "dur": 4.0461875,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to one eight four oak street",
+   "ref": "i would like to change my delivery address to one eight four oak street",
+   "first_partial_s": 1.2946205640000699,
+   "cpu_s": 0.5,
+   "audio_s": 5.6461875,
+   "close_cost_s": 0.05522374700012733,
+   "strat": {
+    "commit": {
+     "lat": 0.10526818900015833,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3149878089999181,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5153322059998988,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7148798469998798,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5153374360000686,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call10",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.2936674489999405,
+   "cpu_s": 0.20999999999999996,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0008811140000943851,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5132681749999938,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6205446810000558,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8203476129998398,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.620549200000014,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call11",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2965940749998026,
+   "cpu_s": 0.33000000000000007,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.05576180999992175,
+   "strat": {
+    "commit": {
+     "lat": 0.06214542799975975,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4459117989998522,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6649341419998582,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8464809889997942,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6649383599998164,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call12",
+   "dur": 3.891625,
+   "words": 10,
+   "wer_err": 3,
+   "hyp": "my order number is eight to a day three six",
+   "ref": "my order number is eight two eight eight three six",
+   "first_partial_s": 1.3022019579998414,
+   "cpu_s": 0.5199999999999996,
+   "audio_s": 5.491625,
+   "close_cost_s": 0.057504031999997096,
+   "strat": {
+    "commit": {
+     "lat": 0.0868447969998889,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3898012509998572,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5895071109998518,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7891495879998494,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5895118399998629,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call13",
+   "dur": 3.311125,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "yes this is michael johnson calling about my account",
+   "ref": "yes this is michael johnson calling about my account",
+   "first_partial_s": 1.2969696140000906,
+   "cpu_s": 0.45000000000000107,
+   "audio_s": 4.911125,
+   "close_cost_s": 0.054727217999925415,
+   "strat": {
+    "commit": {
+     "lat": 0.06444486699996732,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.33041232399995524,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5300604040000434,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7845695590000941,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5300643919999328,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call14",
+   "dur": 5.6526875,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is seven nine zero three two thank you",
+   "ref": "the confirmation code is seven nine zero three two thank you",
+   "first_partial_s": 1.2969079960000727,
+   "cpu_s": 0.6500000000000004,
+   "audio_s": 7.2526875,
+   "close_cost_s": 0.05567884700008108,
+   "strat": {
+    "commit": {
+     "lat": 0.08447955700007892,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.34880501599987124,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5483040710000315,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7485736129999188,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5483084699998946,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call15",
+   "dur": 3.9416875,
+   "words": 13,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to two seven oak street",
+   "ref": "i would like to change my delivery address to two seven oak street",
+   "first_partial_s": 1.2966256029999386,
+   "cpu_s": 0.4800000000000004,
+   "audio_s": 5.5416875,
+   "close_cost_s": 0.053622269000015876,
+   "strat": {
+    "commit": {
+     "lat": 0.07267475399993417,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3790960729999715,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.579603071999998,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7795053889998944,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5796084719999617,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call16",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.296019908000062,
+   "cpu_s": 0.23000000000000043,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0006873810000342928,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5157215000000269,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5803613990000122,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7809943380001277,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5803654970001025,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call17",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2966516629999205,
+   "cpu_s": 0.3200000000000003,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.055291524000040226,
+   "strat": {
+    "commit": {
+     "lat": 0.061071607999885646,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4064228809998913,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6608372719998461,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8055844550000093,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.660840397999984,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call18",
+   "dur": 4.7043125,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "my order number is four four seven five seven seven one",
+   "ref": "my order number is four four seven five seven seven one",
+   "first_partial_s": 1.2965082589998929,
+   "cpu_s": 0.6099999999999994,
+   "audio_s": 6.3043125,
+   "close_cost_s": 0.000873639000019466,
+   "strat": {
+    "commit": {
+     "lat": 0.01757854899985034,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.37724360699986903,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5766407409999061,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.776797497999965,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5766445179999806,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call19",
+   "dur": 3.1718125,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "yes this is olivia brown calling about my account",
+   "ref": "yes this is olivia brown calling about my account",
+   "first_partial_s": 1.2949211789998571,
+   "cpu_s": 0.4400000000000013,
+   "audio_s": 4.7718125,
+   "close_cost_s": 0.000753697999925862,
+   "strat": {
+    "commit": {
+     "lat": 0.030508326999766577,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3890654699998648,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5894650929999314,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.789497986000002,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5894700520000113,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call20",
+   "dur": 5.571375,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is two zero two seven eight thank you",
+   "ref": "the confirmation code is two zero two seven eight thank you",
+   "first_partial_s": 1.2962649339999643,
+   "cpu_s": 0.6699999999999999,
+   "audio_s": 7.171375,
+   "close_cost_s": 0.05823319200021615,
+   "strat": {
+    "commit": {
+     "lat": 0.0881843060001195,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.349732601999893,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5501935610000039,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7689792880000716,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5501981199999939,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call21",
+   "dur": 4.3131875,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to seven zero one oak street",
+   "ref": "i would like to change my delivery address to seven zero one oak street",
+   "first_partial_s": 1.2970234299998538,
+   "cpu_s": 0.5599999999999987,
+   "audio_s": 5.9131875,
+   "close_cost_s": 0.0008675490000769059,
+   "strat": {
+    "commit": {
+     "lat": 0.009123807000063877,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3434398619998813,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5278843309999086,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7278911279999232,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5278880489999249,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call22",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.2943581449999328,
+   "cpu_s": 0.22000000000000064,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0006942729999082076,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5139928570000484,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6204074900000341,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8203924989999086,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6204117179998866,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call23",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2963013909998153,
+   "cpu_s": 0.33000000000000007,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.05569650800021009,
+   "strat": {
+    "commit": {
+     "lat": 0.06126325400018873,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.44617459399987824,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6626829959999232,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8460923619999012,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.662686221999913,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call24",
+   "dur": 4.5301875,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "my order number is four two zero eight zero nine three",
+   "ref": "my order number is four two zero eight zero nine three",
+   "first_partial_s": 1.2945240199999262,
+   "cpu_s": 0.5399999999999991,
+   "audio_s": 6.1301875,
+   "close_cost_s": 0.05568383299987545,
+   "strat": {
+    "commit": {
+     "lat": 0.08607770799995862,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4311630090001124,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6846198430000747,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8309313869999748,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6846228490001174,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call25",
+   "dur": 2.8815625,
+   "words": 9,
+   "wer_err": 1,
+   "hyp": "yes this is way chen calling about my account",
+   "ref": "yes this is wei chen calling about my account",
+   "first_partial_s": 1.295757518000073,
+   "cpu_s": 0.40000000000000036,
+   "audio_s": 4.4815625,
+   "close_cost_s": 0.054444515000113824,
+   "strat": {
+    "commit": {
+     "lat": 0.14863875900002332,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3598417939999492,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5594777900000465,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7590973070000202,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6551317670000301,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call26",
+   "dur": 5.4785,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is one six four eight seven thank you",
+   "ref": "the confirmation code is one six four eight seven thank you",
+   "first_partial_s": 1.2958822529999452,
+   "cpu_s": 0.6899999999999995,
+   "audio_s": 7.0785,
+   "close_cost_s": 0.05708694800000558,
+   "strat": {
+    "commit": {
+     "lat": 0.059219404999961256,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3626075279998382,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5625457509999556,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7627505139998298,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9627995169998336,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call27",
+   "dur": 4.1623125,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to two one five oak street",
+   "ref": "i would like to change my delivery address to two one five oak street",
+   "first_partial_s": 1.2977427349999289,
+   "cpu_s": 0.5499999999999989,
+   "audio_s": 5.7623125,
+   "close_cost_s": 0.0008375899999464309,
+   "strat": {
+    "commit": {
+     "lat": 0.03966413199996932,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3593166859999277,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5590686219999119,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7587239079999639,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5590755259998863,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call28",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.295985643999984,
+   "cpu_s": 0.21999999999999886,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0008177419999810809,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5155856190000213,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6205116629999884,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8207920600001307,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6205164320000313,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call29",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2973077689998718,
+   "cpu_s": 0.31999999999999673,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.05585523300010209,
+   "strat": {
+    "commit": {
+     "lat": 0.06137194700009063,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4064669959999283,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6614698319998316,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.805572788999918,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.661473228999832,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call30",
+   "dur": 4.286375,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "my order number is zero one two two two eight three",
+   "ref": "my order number is zero one two two two eight three",
+   "first_partial_s": 1.2972745289998784,
+   "cpu_s": 0.5700000000000003,
+   "audio_s": 5.886375,
+   "close_cost_s": 0.0007263049999437499,
+   "strat": {
+    "commit": {
+     "lat": 0.035087200000042174,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.37087751200001406,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5549642479999406,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7546157389998811,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5549681559999939,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call31",
+   "dur": 3.044125,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "yes this is john smith calling about my account",
+   "ref": "yes this is john smith calling about my account",
+   "first_partial_s": 1.2956526450000183,
+   "cpu_s": 0.4400000000000013,
+   "audio_s": 4.644125,
+   "close_cost_s": 0.0007701399999859859,
+   "strat": {
+    "commit": {
+     "lat": 0.0376123330000917,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3976570619999018,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5976796220001086,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7978366979999771,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.597684311000088,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call32",
+   "dur": 5.76875,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is five zero six one six thank you",
+   "ref": "the confirmation code is five zero six one six thank you",
+   "first_partial_s": 1.2948812469999211,
+   "cpu_s": 0.6499999999999986,
+   "audio_s": 7.36875,
+   "close_cost_s": 0.05512361499995677,
+   "strat": {
+    "commit": {
+     "lat": 0.08705827899980267,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.568019400999856,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5683579159999228,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7527985399999126,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9524958829999379,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call33",
+   "dur": 4.2319375,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to five nine four oak street",
+   "ref": "i would like to change my delivery address to five nine four oak street",
+   "first_partial_s": 1.2962608640000326,
+   "cpu_s": 0.5400000000000027,
+   "audio_s": 5.8319375,
+   "close_cost_s": 0.0007101539999894158,
+   "strat": {
+    "commit": {
+     "lat": 0.009857236999963881,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.42395248799989904,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6095069509999158,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.80906080999985,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.609511168999874,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call34",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.295840859000009,
+   "cpu_s": 0.21000000000000085,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0008045059998949,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5155293359999723,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6204709919999095,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8202573600000141,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6204759419998572,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call35",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2941169870000522,
+   "cpu_s": 0.31999999999999673,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.055231571000149415,
+   "strat": {
+    "commit": {
+     "lat": 0.06133098300015449,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.40619305599998556,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6611185029999906,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8059944170000581,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6611217400000915,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call36",
+   "dur": 3.69425,
+   "words": 8,
+   "wer_err": 0,
+   "hyp": "my order number is six one zero three",
+   "ref": "my order number is six one zero three",
+   "first_partial_s": 1.2962149360000694,
+   "cpu_s": 0.4800000000000004,
+   "audio_s": 5.29425,
+   "close_cost_s": 0.0007678849999592785,
+   "strat": {
+    "commit": {
+     "lat": 0.027989365999939952,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4274414500000714,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6273077620001115,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8265846890001396,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6273115490000802,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call37",
+   "dur": 3.044125,
+   "words": 9,
+   "wer_err": 0,
+   "hyp": "yes this is john smith calling about my account",
+   "ref": "yes this is john smith calling about my account",
+   "first_partial_s": 1.295547772000191,
+   "cpu_s": 0.4399999999999977,
+   "audio_s": 4.644125,
+   "close_cost_s": 0.0007436789999246685,
+   "strat": {
+    "commit": {
+     "lat": 0.037518500999916604,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3970864560000189,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5967501980000032,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7973492690001729,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5967543960001729,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call38",
+   "dur": 5.675875,
+   "words": 11,
+   "wer_err": 0,
+   "hyp": "the confirmation code is one three five zero zero thank you",
+   "ref": "the confirmation code is one three five zero zero thank you",
+   "first_partial_s": 1.2947030749999158,
+   "cpu_s": 0.6500000000000021,
+   "audio_s": 7.275875,
+   "close_cost_s": 0.05773515100008808,
+   "strat": {
+    "commit": {
+     "lat": 0.06295884500004512,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.36518313199998964,
+     "cuts": 3,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5649848009999427,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7652078400000359,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5649889589998534,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call39",
+   "dur": 4.0229375,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to four one eight oak street",
+   "ref": "i would like to change my delivery address to four one eight oak street",
+   "first_partial_s": 1.2957462130000295,
+   "cpu_s": 0.4800000000000004,
+   "audio_s": 5.6229375,
+   "close_cost_s": 0.05359216500005459,
+   "strat": {
+    "commit": {
+     "lat": 0.12617336600000062,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.29806957399990797,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.49775392899995285,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.6986206759999165,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.4977581069998793,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call40",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.3020451840000078,
+   "cpu_s": 0.21999999999999886,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0007693690001815412,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5217495519999465,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6201631130000896,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8208170379999592,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6201673310000478,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call41",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.2945036890000665,
+   "cpu_s": 0.33000000000000185,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.05571288999999524,
+   "strat": {
+    "commit": {
+     "lat": 0.06193809400006289,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.44600532900003786,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6603208259999538,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8457309789999745,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6603244730000388,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call42",
+   "dur": 4.298,
+   "words": 11,
+   "wer_err": 1,
+   "hyp": "my order number is three four three five one four",
+   "ref": "my order number is three four three three five one four",
+   "first_partial_s": 1.2981669390001116,
+   "cpu_s": 0.5500000000000007,
+   "audio_s": 5.898,
+   "close_cost_s": 0.000742385999956241,
+   "strat": {
+    "commit": {
+     "lat": 0.024460976000002077,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.3584131390000511,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5427226890001311,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.7432069159999646,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.5427268170001316,
+     "cuts": 2,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call43",
+   "dur": 3.0789375,
+   "words": 9,
+   "wer_err": 1,
+   "hyp": "yes this is pria raman calling about my account",
+   "ref": "yes this is priya raman calling about my account",
+   "first_partial_s": 1.299372127999959,
+   "cpu_s": 0.4400000000000013,
+   "audio_s": 4.6789375,
+   "close_cost_s": 0.000844033000021227,
+   "strat": {
+    "commit": {
+     "lat": 0.0026541000001381043,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.4566438799999397,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6022815450000345,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8023970450000726,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6022860639999927,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call44",
+   "dur": 5.50175,
+   "words": 11,
+   "wer_err": 1,
+   "hyp": "the confirmation code is eight nine nine one thank you",
+   "ref": "the confirmation code is eight nine nine nine one thank you",
+   "first_partial_s": 1.295791288999908,
+   "cpu_s": 0.6700000000000017,
+   "audio_s": 7.10175,
+   "close_cost_s": 0.060240866999947684,
+   "strat": {
+    "commit": {
+     "lat": 0.07970091599999396,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.37935267000001804,
+     "cuts": 4,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5795007169998749,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8393079159999539,
+     "cuts": 2,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.9793632419999918,
+     "cuts": 1,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call45",
+   "dur": 4.3248125,
+   "words": 14,
+   "wer_err": 0,
+   "hyp": "i would like to change my delivery address to five seven four oak street",
+   "ref": "i would like to change my delivery address to five seven four oak street",
+   "first_partial_s": 1.3026840489999358,
+   "cpu_s": 0.620000000000001,
+   "audio_s": 5.9248125,
+   "close_cost_s": 0.000832199999877048,
+   "strat": {
+    "commit": {
+     "lat": 0.03691779599990497,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.356174388999996,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.5563121650000156,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.756582750000014,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.556317204999921,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call46",
+   "dur": 0.780625,
+   "words": 1,
+   "wer_err": 0,
+   "hyp": "yes",
+   "ref": "yes",
+   "first_partial_s": 1.2974017420001474,
+   "cpu_s": 0.240000000000002,
+   "audio_s": 2.380625,
+   "close_cost_s": 0.0008375009999781469,
+   "strat": {
+    "commit": {
+     "lat": null,
+     "cuts": 0,
+     "fired": false
+    },
+    "vad300": {
+     "lat": 0.5170341000001463,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6208648479999829,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.820639780000065,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6208704189999571,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  },
+  {
+   "id": "call47",
+   "dur": 2.3151875,
+   "words": 8,
+   "wer_err": 2,
+   "hyp": "no thanks that is all i needed to day",
+   "ref": "no thanks that is all i needed today",
+   "first_partial_s": 1.3041094220000105,
+   "cpu_s": 0.370000000000001,
+   "audio_s": 3.9151875,
+   "close_cost_s": 0.05823442999985673,
+   "strat": {
+    "commit": {
+     "lat": 0.06390297199991624,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad300": {
+     "lat": 0.405882313999975,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500": {
+     "lat": 0.6647330479998819,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad700": {
+     "lat": 0.8059869849999832,
+     "cuts": 0,
+     "fired": true
+    },
+    "vad500+hint": {
+     "lat": 0.6647365039999404,
+     "cuts": 0,
+     "fired": true
+    }
+   }
+  }
+ ]
+}
