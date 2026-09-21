@@ -1,0 +1,3 @@
+    0.0s  tier A  de-de-mls-f  (de_DE, Germany, F, spk 36)
+    9.0s  tier A  de-de-mls-m  (de_DE, Germany, M, spk 44)
+   16.7s  tier B  de-de-thorsten  (de_DE, Germany, M)

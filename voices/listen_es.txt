@@ -1,0 +1,7 @@
+    0.0s  tier A  es-es-carlfm-xlow  (es_ES, Spain, M)
+    6.5s  tier A  es-pilot-f  (es_ES, Spanish (accent unlabelled; CML-TTS reader 10246, LibriVox), F, spk 0)
+   14.2s  tier A  es-pilot-m  (es_ES, Spanish (accent unlabelled; CML-TTS reader 3946, LibriVox), M, spk 1)
+   21.1s  tier B  es-es-davefx  (es_ES, Spain, M)
+   27.6s  tier B  es-es-sharvard-f  (es_ES, Spain, F, spk 1)
+   34.3s  tier B  es-es-sharvard-m  (es_ES, Spain, M, spk 0)
+   41.3s  tier B  es-mx-ald  (es_MX, Mexico, F)
