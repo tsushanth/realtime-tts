@@ -183,7 +183,15 @@ def api():
         os.makedirs(f"/models/{vid}", exist_ok=True)
         json.dump({"started_at": int(time.time())}, open(f"/models/{vid}/training.json", "w"))
         models.commit()
-        modal.Function.from_name("voice-train" + APP_SUFFIX, "train_voice").spawn(vid)
+        try:
+            modal.Function.from_name("voice-train" + APP_SUFFIX, "train_voice").spawn(vid)
+        except Exception as e:
+            # Roll back so the voice is not stuck in "training" forever (seen when the train app was missing):
+            # remove the dataset marker + training.json so the customer can simply upload again.
+            os.remove(f"/models/{vid}/training.json"); models.commit()
+            shutil.rmtree(f"/datasets/{vid}/wavs", ignore_errors=True); os.remove(f"/datasets/{vid}/metadata.csv"); datasets.commit()
+            print("spawn failed:", repr(e), flush=True)
+            raise HTTPException(503, "training service unavailable, please retry")
         return {"voice_id": vid, "status": "training", "clips": len(rows)}
 
     def upload_guard(vid: str):
