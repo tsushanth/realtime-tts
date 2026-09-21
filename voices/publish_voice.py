@@ -60,7 +60,6 @@ def select(argv):
 
 
 def publish(vid, url, token, dry):
-    import requests  # noqa: F401 (only needed when not dry)
     with tempfile.TemporaryDirectory() as d:
         for f in FILES:
             subprocess.run(["modal", "volume", "get", "house-voices", f"{vid}/{f}", os.path.join(d, f)],
@@ -80,10 +79,6 @@ def publish(vid, url, token, dry):
                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/gzip"})
     print(r.status_code, r.text[:300])
     return r.ok
-
-
-if __name__ == "__main__":
-    main()
 
 
 def main():
