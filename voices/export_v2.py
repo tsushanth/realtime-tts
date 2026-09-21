@@ -209,9 +209,23 @@ def _export_group(src, entries):
         d = f"/vol/{e['id']}"
         os.makedirs(d, exist_ok=True)
         shutil.copy(f"{work}/model.onnx", f"{d}/model.onnx")
-        shutil.copy(f"{work}/model.onnx.json", f"{d}/model.onnx.json")
+        # Known upstream bug in rhasspy/piper-checkpoints: some shipped config.json files have the wrong
+        # espeak.voice/language (e.g. de/de_DE/mls/medium says "nl"/Dutch despite being German MLS data
+        # and a correctly-trained model) - found via this repo's eval framework (garbled output, high WER
+        # on de-de-mls-f/m) and confirmed empirically: overriding espeak.voice to match the voice's own
+        # intended locale gives correct output, so only the shipped metadata was wrong. Apply the same
+        # per-voice override here (mirrors export_voices.py's _export_one fix) since this script copies
+        # model.onnx.json independently rather than reading the already-fixed base from the volume.
+        voice_espeak = espeak
+        if espeak != lang:
+            print(f"WARNING: {e['id']}: source config espeak.voice={espeak!r} != expected {lang!r} - "
+                  f"overriding to {lang!r}. Re-verify by ear/WER before trusting this for a NEW voice.")
+            voice_espeak = lang
+        cfg_out = json.load(open(f"{work}/model.onnx.json"))
+        cfg_out["espeak"]["voice"] = voice_espeak
+        json.dump(cfg_out, open(f"{d}/model.onnx.json", "w"))
         owner = {"public": True, "license": e["license"], "attribution": e["attribution"], "language": e["locale"],
-                 "espeak_voice": espeak, "tier": e["tier"]}
+                 "espeak_voice": voice_espeak, "tier": e["tier"]}
         if spk is not None:
             owner["speaker_id"] = int(spk)
         json.dump(owner, open(f"{d}/owner.json", "w"), indent=2, ensure_ascii=False)

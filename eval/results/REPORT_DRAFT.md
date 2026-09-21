@@ -56,14 +56,26 @@ specific, scoped investigation**: check the German MLS export pipeline (espeak `
 mapping, phoneme-to-id table, the training run's actual language tag) before assuming a full
 retrain is needed - the bug may be cheap to find and fix once isolated.
 
-**Action already taken while writing this report**: both `de-de-mls-f` and `de-de-mls-m` were
-pulled from the live Piper registry (they were serving real traffic in this broken state).
-`de-de-thorsten` (tier B, Lessac-lineage - see `voices/LICENSES.md` for the licensing caveat that
-comes with that) was spot-checked on the same failing sentence as a sanity check and transcribed
-correctly ("Vielen Dank für Ihren Anruf, wie kann ich Ihnen helfen.", exact match) - so German
-customers still have one working voice, it is just not the tier-A one. `voices/catalog.json`
-still lists the two pulled voices as tier A; update it once the MLS export bug is found and fixed
-(or remove the entries if they're abandoned).
+**Root cause found and FIXED, both voices are back in production.** The `de/de_DE/mls/medium`
+checkpoint's own shipped `config.json` on `rhasspy/piper-checkpoints` (the upstream HF repo) has
+`espeak.voice: "nl"` (Dutch) and `language: nl_NL` baked in, despite being correctly-trained German
+MLS data - an upstream labeling bug, not anything in this repo's training/export. Empirical proof:
+re-exporting the same checkpoint with `espeak.voice` overridden to `"de"` (everything else
+identical) turned the exact same test sentence from nonsense into an exact transcript match. Fixed
+in `voices/export_voices.py` and `voices/export_v2.py` (both now detect a shipped-config/expected
+-language mismatch, override it, and print a warning so a genuinely different future case gets
+noticed rather than silently mis-applied). Both voices re-exported, republished, and re-verified
+live through the real `api.readaloudai.org` -> Piper path with a fresh WER check:
+
+- `de-de-mls-f`: "Vielen Dank für Ihren Anruf. Die kann ich Ihnen helfen." (was: "Wellen dann,
+  dass ihre Männer tütter und da ist ihnen helfen.")
+- `de-de-mls-m`: "Vielen Dank für Ihren Anruf, die kann ich Ihnen helfen." (was: "weil wir den
+  Dank für einen anderen Teil kann in den Helfen.")
+
+("Die kann" vs "wie kann" is a `faster-whisper base` transcription quirk on a homophone-ish pair,
+not a synthesis defect - a stronger Whisper model would likely resolve it. Full WER/MOS re-run
+across the whole German test set is a good next step to confirm the fix quantitatively, not just
+by spot-check.) `voices/catalog.json` updated to reflect the fix and the root cause.
 
 **Naturalness: Piper and Kokoro are in a reasonable band, not a clear loss.** Both land around
 4.3-4.4 on the (relative, per-language-referenced) MOS proxy, close to ElevenLabs Multilingual's
@@ -73,10 +85,13 @@ voices tested.
 
 ## Where to invest next (grounded in the numbers above, in order)
 
-1. **Investigate the German MLS export/base pipeline** (both `de-de-mls-f` and `de-de-mls-m` fail
-   the same way - confirmed, not just theorized) and consider pulling both from the public voice
-   list until fixed, since they currently serve real customer traffic in a broken state. This is
-   the single clearest, most scoped, highest-priority finding in this report.
+1. ~~Investigate the German MLS export/base pipeline~~ **DONE during this report**: root cause was
+   an upstream config-metadata bug (wrong espeak/language tag shipped with an otherwise-correctly-
+   trained checkpoint), not a training or export problem on our side. Fixed, re-verified live,
+   catalog updated. Worth checking whether any OTHER voice sourced from `rhasspy/piper-checkpoints`
+   has the same kind of shipped-config mismatch (the new warning in `export_voices.py`/
+   `export_v2.py` will catch it on the next re-export of any voice, but existing already-published
+   voices were not all re-checked this pass).
 2. **Add a digit-normalizing pass to any future WER measurement** before trusting an English
    Piper-vs-ElevenLabs intelligibility number — the current gap is partly inflated by a
    transcription-formatting artifact, not real.

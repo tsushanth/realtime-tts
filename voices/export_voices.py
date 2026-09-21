@@ -123,6 +123,21 @@ def _export_one(voice_id: str):
     shutil.copy(f"{work}/config.json", onnx + ".json")
     cfg = json.load(open(onnx + ".json"))
     espeak = cfg.get("espeak", {}).get("voice", "")
+    # Known upstream bug in rhasspy/piper-checkpoints: de/de_DE/mls/medium's shipped config.json has
+    # espeak.voice="nl" and language=nl_NL (Dutch), despite the directory being German MLS data and the
+    # model itself being trained correctly - found by this repo's eval framework (garbled German output,
+    # 0.69 mean WER) and confirmed empirically: re-exporting with espeak forced to "de" gives an exact
+    # transcript match on the same sentence that was previously nonsense, so only the shipped metadata
+    # was wrong, not the trained phoneme mapping. Same fix applies to any future voice from that HF repo
+    # if it turns out to have the same upstream mislabeling - check espeak/language against the intended
+    # `lang` this voice was configured for.
+    if espeak != lang:
+        print(f"WARNING: {voice_id}: shipped config espeak.voice={espeak!r} != expected {lang!r} - overriding "
+              f"to {lang!r} (see rhasspy/piper-checkpoints known-issue note above). Re-verify by ear/WER "
+              f"before trusting this override for a NEW voice id, since it assumes the same failure mode.")
+        cfg["espeak"]["voice"] = lang
+        json.dump(cfg, open(onnx + ".json", "w"), indent=2)
+        espeak = lang
     owner = {"public": True, "license": licence, "attribution": attribution,
              "language": d.split("/")[1], "espeak_voice": espeak}
     json.dump(owner, open(f"{work}/owner.json", "w"), indent=2)
