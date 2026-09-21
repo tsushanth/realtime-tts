@@ -30,7 +30,7 @@ Send `"voice": "custom:<id>"` in the synthesize message. Any other `voice` value
 name from an existing client) uses the default voice, unchanged. Voices live in `VOICES_DIR`
 (default `/voices`) as `<id>/model.onnx`, `model.onnx.json` and `owner.json` (`{"key_ids": [...]}`,
 the gateway API-key ids allowed to use it; required for session-token clients, ignored for the
-internal static token). `voice-pipeline/train_job.py` produces the model files. Loaded lazily with
+internal static token). owner.json may also hold `"user_ids": [...]`: the gateway embeds the key's owning user (`uid`, set when the key is issued with an `owner`, or backfilled through `POST /admin/keys/owner`) in session tokens, and a token whose uid is listed may use the voice, so access follows the user across new keys; a token without uid never matches user_ids (key_ids still work for such keys). Either rule suffices. `voice-pipeline/train_job.py` produces the model files. Loaded lazily with
 an LRU of `MAX_VOICES` (default 6). Local test: cold first request ~1.9 s, warm ~116 ms; wrong
 owner, missing voice and path traversal all return the same "unknown voice" error. Not yet
 deployed: needs a Fly volume (or baked image) holding the voices and a sync from the Modal

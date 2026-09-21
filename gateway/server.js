@@ -82,8 +82,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/admin/keys" && req.method === "POST") {
     if (!requireAdmin(req, res)) return;
     const body = await readBody(req);
-    const { label } = body ? JSON.parse(body) : {};
-    const { id, key } = keys.issueKey(label);
+    const { label, owner } = body ? JSON.parse(body) : {};
+    const { id, key } = keys.issueKey(label, typeof owner === "string" ? owner : undefined);
     res.writeHead(200, { "content-type": "application/json" });
     // `key` is the raw secret, returned ONLY here — callers must persist it
     // themselves (or discard it and let the end user see it once); `id` is safe
@@ -106,6 +106,16 @@ const server = http.createServer(async (req, res) => {
     const ok = keys.revokeKeyById(id);
     res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify({ revoked: ok }));
+    return;
+  }
+
+  if (url.pathname === "/admin/keys/owner" && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    const { id, owner } = body ? JSON.parse(body) : {};
+    const r = typeof owner === "string" ? keys.setOwnerById(id, owner) : null;
+    res.writeHead(r === null ? 404 : r === "conflict" ? 409 : 200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ owner: r === "set" || r === "unchanged" ? owner : undefined, result: r }));
     return;
   }
 
@@ -153,7 +163,7 @@ const server = http.createServer(async (req, res) => {
     }
     const id = keys.getIdForKey(key);
     res.writeHead(200, { "content-type": "application/json" });
-    const out = { token: keys.createSessionToken(id), url: engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL };
+    const out = { token: keys.createSessionToken(id, keys.getOwnerForKey(key)), url: engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL };
     if (engine === "piper") {
       // wss://host/tts -> https://host/v1/tts/stream (HTTP streaming endpoint on the same worker)
       try {

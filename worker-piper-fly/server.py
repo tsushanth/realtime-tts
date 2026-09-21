@@ -146,13 +146,16 @@ class VoiceError(Exception):
     pass
 
 
-def get_engine(voice: str, key_id) -> "PiperEngine":
+def get_engine(voice: str, key_id, uid=None) -> "PiperEngine":
     """Resolves the request's `voice` to an engine. Anything not prefixed `custom:` (existing
     clients send arbitrary names such as a Kokoro voice) gets the default voice, unchanged.
     `custom:<id>` loads <VOICES_DIR>/<id>/model.onnx on first use (blocking - call from the thread
     pool). A voice with owner.json {"key_ids": [...]} is only usable by those API keys; internal
     static-token clients (key_id None) may use any. Missing voice or wrong owner gives the same
-    error so voice ids can't be probed. owner.json {"public": true} makes the voice usable by any
+    error so voice ids can't be probed. owner.json may also list "user_ids": a session token whose `uid`
+    (the key's owning user, embedded by the gateway) is in that list may use the voice, so access follows
+    the user across newly created keys; a token without uid (key issued without an owner) never matches.
+    Either rule (key_ids or user_ids) suffices. owner.json {"public": true} makes the voice usable by any
     authenticated client (house voices)."""
     if not isinstance(voice, str) or not voice.startswith("custom:"):
         return engine
@@ -173,8 +176,10 @@ def get_engine(voice: str, key_id) -> "PiperEngine":
         if not isinstance(meta, dict):
             raise VoiceError("unknown voice")
         if meta.get("public") is not True:  # {"public": true} = house voice, any authenticated client
-            owners = meta.get("key_ids")
-            if not isinstance(owners, list) or not owners or key_id not in owners:
+            owners, users = meta.get("key_ids"), meta.get("user_ids")
+            by_key = isinstance(owners, list) and key_id in owners
+            by_user = uid is not None and isinstance(users, list) and uid in users
+            if not (by_key or by_user):
                 raise VoiceError("unknown voice")
     with _voices_lock:
         eng = _voices.get(vid)
@@ -243,9 +248,10 @@ async def admin_put_voice(vid: str, request: Request):
         try:
             meta = json.load(open(os.path.join(out, "owner.json")))
             assert isinstance(meta, dict)
-            assert meta.get("public") is True or (isinstance(meta.get("key_ids"), list) and meta["key_ids"])
+            def _ne(k): return isinstance(meta.get(k), list) and len(meta[k]) > 0 and all(isinstance(x, str) and x for x in meta[k])
+            assert meta.get("public") is True or _ne("key_ids") or _ne("user_ids")
         except Exception:
-            raise HTTPException(status_code=400, detail='owner.json must be {"key_ids": [non-empty list]} or {"public": true}')
+            raise HTTPException(status_code=400, detail='owner.json must be {"key_ids": [...]} and/or {"user_ids": [...]} (non-empty), or {"public": true}')
         dest = os.path.join(VOICES_DIR, vid)
         old = dest + ".old"
         shutil.rmtree(old, ignore_errors=True)
@@ -276,26 +282,31 @@ async def admin_list_voices(request: Request):
 
 
 def verify_session_token(token: str):
-    """Mirrors gateway/keys.js verifySessionToken exactly (HMAC-SHA256 over the base64url
+    return verify_session_claims(token)[0]
+
+
+def verify_session_claims(token: str):
+    """Returns (key_id, uid) - (None, None) if invalid. uid is the owning user id or None. Mirrors gateway/keys.js verifySessionToken exactly (HMAC-SHA256 over the base64url
     payload string, unpadded base64url). Returns the API-key id, or None if invalid/expired."""
     if not SESSION_SECRET or not token:
-        return None
+        return (None, None)
     try:
         payload_b64, sig_b64 = token.split(".")
     except ValueError:
-        return None
+        return (None, None)
     expected = base64.urlsafe_b64encode(
         hmac.new(SESSION_SECRET.encode(), payload_b64.encode(), hashlib.sha256).digest()
     ).decode().rstrip("=")
     if not hmac.compare_digest(sig_b64, expected):
-        return None
+        return (None, None)
     try:
         payload = json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
     except Exception:
-        return None
+        return (None, None)
     if "id" not in payload or "exp" not in payload or time.time() * 1000 > payload["exp"]:
-        return None
-    return payload["id"]
+        return (None, None)
+    uid = payload.get("uid")
+    return payload["id"], (uid if isinstance(uid, str) and uid else None)
 
 
 def report_usage(key_id: str, chars: int):
@@ -324,7 +335,7 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
     auth_header = ws.headers.get("authorization", "")
     bearer = auth_header.removeprefix("Bearer ") if auth_header.startswith("Bearer ") else ""
     presented = token or bearer
-    key_id = verify_session_token(presented)  # metered API-key session, or None
+    key_id, uid = verify_session_claims(presented)  # metered API-key session, or (None, None)
     static_ok = bool(AUTH_TOKEN) and bool(presented) and hmac.compare_digest(presented.encode(), AUTH_TOKEN.encode())
     if key_id is None and not static_ok:
         await ws.close(code=4401)
@@ -388,7 +399,7 @@ async def tts(ws: WebSocket, token: str = Query(default="")):
                 continue
             try:
                 try:
-                    eng = await loop.run_in_executor(pool, get_engine, msg.get("voice"), key_id)
+                    eng = await loop.run_in_executor(pool, get_engine, msg.get("voice"), key_id, uid)
                 except VoiceError as e:
                     await ws.send_json({"type": "error", "message": str(e)})
                     continue
@@ -449,7 +460,7 @@ async def tts_stream(request: Request):
     global _active
     auth = request.headers.get("authorization", "")
     presented = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
-    key_id = verify_session_token(presented)
+    key_id, uid = verify_session_claims(presented)
     static_ok = bool(AUTH_TOKEN) and bool(presented) and hmac.compare_digest(presented.encode(), AUTH_TOKEN.encode())
     if key_id is None and not static_ok:
         return _http_err(401, "unauthorized", **{"WWW-Authenticate": "Bearer"})
@@ -487,7 +498,7 @@ async def tts_stream(request: Request):
             return _http_err(400, str(e) if "format" in str(e) else "invalid speed")
         loop = asyncio.get_running_loop()
         try:
-            eng = await loop.run_in_executor(pool, get_engine, body.get("voice", "default"), key_id)
+            eng = await loop.run_in_executor(pool, get_engine, body.get("voice", "default"), key_id, uid)
         except VoiceError as e:
             release()
             return _http_err(404, str(e))
