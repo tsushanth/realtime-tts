@@ -1,0 +1,668 @@
+[
+  {
+    "engine": "piper",
+    "lang": "de",
+    "id": "greeting-1",
+    "text": "Vielen Dank f\u00fcr Ihren Anruf, wie kann ich Ihnen helfen?",
+    "transcript": "Wellen dann, dass ihre M\u00e4nner t\u00fctter und da ist ihnen helfen.",
+    "wer": 0.9,
+    "naturalness_mos": 4.447
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "de",
+    "id": "order-1",
+    "text": "Ihre Bestellung sollte innerhalb von drei bis f\u00fcnf Werktagen eintreffen.",
+    "transcript": "Ihre Bestellung sollte innerhalb von drei bis f\u00fcnf Werktagen eintreffen.",
+    "wer": 0.0,
+    "naturalness_mos": null
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "fr",
+    "id": "order-1",
+    "text": "Votre commande devrait arriver dans un d\u00e9lai de trois \u00e0 cinq jours ouvrables.",
+    "transcript": "votre commande devrait arriver dans un d\u00e9lai de 3 \u00e0 5 jours souvrables.",
+    "wer": 0.2308,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "multiclause-2",
+    "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
+    "transcript": "I've added a note to your account so the carrier calls before delivery and if anything changes  I will text you right away.",
+    "wer": 0.0,
+    "naturalness_mos": null
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "es",
+    "id": "deescalate-1",
+    "text": "Entiendo su frustraci\u00f3n, perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "transcript": "Entiendo su frustraci\u00f3n, perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "wer": 0.0,
+    "naturalness_mos": null
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "order-3",
+    "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
+    "transcript": "I can see your account and the recent order you mentioned and it's shipped on Tuesday.",
+    "wer": 0.0625,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "question-1",
+    "text": "Is there anything else I can help you with today?",
+    "transcript": "Is there anything else I can help you with today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "greeting-2",
+    "text": "Good afternoon, you've reached customer support.",
+    "transcript": "Good afternoon. You've reached customer support.",
+    "wer": 0.0,
+    "naturalness_mos": 4.187
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "order-1",
+    "text": "Your order should arrive within three to five business days.",
+    "transcript": "Your order should arrive within three to five business days.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "greeting-1",
+    "text": "Thanks for calling, how can I help you today?",
+    "transcript": "Thanks for calling. How can I help you today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.233
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "question-2",
+    "text": "Could you please confirm the billing address on the account?",
+    "transcript": "Could you please confirm the Billing Address on the Account?",
+    "wer": 0.0,
+    "naturalness_mos": 4.344
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "de",
+    "id": "deescalate-1",
+    "text": "Ich verstehe Ihren \u00c4rger, lassen Sie mich sehen, was ich tun kann.",
+    "transcript": "Ich verstehe Ihren \u00c4rger, lassen Sie mich sehen, was ich tun kann.",
+    "wer": 0.0,
+    "naturalness_mos": 4.48
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "question-1",
+    "text": "Is there anything else I can help you with today?",
+    "transcript": "Is there anything else I can help you with today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.294
+  },
+  {
+    "engine": "piper",
+    "lang": "fr",
+    "id": "deescalate-1",
+    "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
+    "transcript": "Je comprend votre frustration.  Laissez-moi voir ce que je peux faire.",
+    "wer": 0.0909,
+    "naturalness_mos": 4.04
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "question-2",
+    "text": "Could you please confirm the billing address on the account?",
+    "transcript": "Quertu, please confirm the billing address on the account.",
+    "wer": 0.2,
+    "naturalness_mos": 4.993
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "multiclause-2",
+    "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
+    "transcript": "I've added a note to your account so the carrier calls before delivery and if anything changes  I will text you right away.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "order-2",
+    "text": "Your extension is six six three five.",
+    "transcript": "Your extension is 6635.",
+    "wer": 0.5714,
+    "naturalness_mos": 4.061
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "question-2",
+    "text": "Could you please confirm the billing address on the account?",
+    "transcript": "Could you please confirm the billing address on the account?",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "piper",
+    "lang": "fr",
+    "id": "greeting-1",
+    "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
+    "transcript": "Merci de votre appel.  Comment puis-je vous aider aujourd'hui ?",
+    "wer": 0.0,
+    "naturalness_mos": 4.157
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "question-2",
+    "text": "Could you please confirm the billing address on the account?",
+    "transcript": "Could you please confirm the billing address on the account?",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "order-2",
+    "text": "Your extension is six six three five.",
+    "transcript": "Your extension is 6635.",
+    "wer": 0.5714,
+    "naturalness_mos": 4.99
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "deescalate-1",
+    "text": "I understand your frustration, let me see what I can do to make this right.",
+    "transcript": "I understand your frustration.  Let me see what I can do to make this right.",
+    "wer": 0.0,
+    "naturalness_mos": 3.973
+  },
+  {
+    "engine": "piper",
+    "lang": "es",
+    "id": "order-1",
+    "text": "Su pedido deber\u00eda llegar en un plazo de tres a cinco d\u00edas h\u00e1biles.",
+    "transcript": "Su pedido deber\u00eda llegar en un plazo de 3 a 5 d\u00edas h\u00e1biles.",
+    "wer": 0.1538,
+    "naturalness_mos": 4.497
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "fr",
+    "id": "greeting-1",
+    "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
+    "transcript": "Merci de votre appel.  Comment puis-je vous aider aujourd'hui ?",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "es",
+    "id": "order-1",
+    "text": "Su pedido deber\u00eda llegar en un plazo de tres a cinco d\u00edas h\u00e1biles.",
+    "transcript": "Su pedido deber\u00eda collegar en un plazo de 3 a 5 d\u00edas h\u00e1biles.",
+    "wer": 0.2308,
+    "naturalness_mos": 4.13
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "deescalate-1",
+    "text": "I understand your frustration, let me see what I can do to make this right.",
+    "transcript": "I understand your frustration, let me see what I can do to make this right.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "piper",
+    "lang": "fr",
+    "id": "order-1",
+    "text": "Votre commande devrait arriver dans un d\u00e9lai de trois \u00e0 cinq jours ouvrables.",
+    "transcript": "votre commande, devrais t'arriver dans un d\u00e9lai de trois \u00e0 cinq choses ouvrable.",
+    "wer": 0.3077,
+    "naturalness_mos": 2.697
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "question-1",
+    "text": "Is there anything else I can help you with today?",
+    "transcript": "Is there anything else I can help you with today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.566
+  },
+  {
+    "engine": "piper",
+    "lang": "es",
+    "id": "greeting-1",
+    "text": "Gracias por llamar, \u00bfen qu\u00e9 puedo ayudarle hoy?",
+    "transcript": "Gracias por llamar, \u00bfen qu\u00e9 puedo ayudarle hoy?",
+    "wer": 0.0,
+    "naturalness_mos": 4.232
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "deescalate-2",
+    "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "transcript": "I'm very sorry for the inconvenience.  We'll fix this as quickly as possible.",
+    "wer": 0.0,
+    "naturalness_mos": 4.055
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "es",
+    "id": "deescalate-1",
+    "text": "Entiendo su frustraci\u00f3n, perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "transcript": "Entiendo su frustraci\u00f3n,  perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "wer": 0.0,
+    "naturalness_mos": 4.114
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "de",
+    "id": "order-1",
+    "text": "Ihre Bestellung sollte innerhalb von drei bis f\u00fcnf Werktagen eintreffen.",
+    "transcript": "Ihre Bestellung sollte innerhalb von drei bis f\u00fcnf Werktagen eintreffen.",
+    "wer": 0.0,
+    "naturalness_mos": 4.381
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "multiclause-1",
+    "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
+    "transcript": "Unfortunately, the item you ordered is currently out of stock, but we expect a new shipment  by next Friday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.377
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "de",
+    "id": "greeting-1",
+    "text": "Vielen Dank f\u00fcr Ihren Anruf, wie kann ich Ihnen helfen?",
+    "transcript": "Vielen Dank f\u00fcr Ihren Anruf. Wie kann ich Ihnen helfen?",
+    "wer": 0.0,
+    "naturalness_mos": 4.25
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "greeting-1",
+    "text": "Thanks for calling, how can I help you today?",
+    "transcript": "Thanks for calling.  How can I help you today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "order-1",
+    "text": "Your order should arrive within three to five business days.",
+    "transcript": "Your order should arrive within three to five business days.",
+    "wer": 0.0,
+    "naturalness_mos": 4.445
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "es",
+    "id": "greeting-1",
+    "text": "Gracias por llamar, \u00bfen qu\u00e9 puedo ayudarle hoy?",
+    "transcript": "Gracias por llamar, \u00bfen qu\u00e9 puedo ayudarle hoy?",
+    "wer": 0.0,
+    "naturalness_mos": 4.474
+  },
+  {
+    "engine": "piper",
+    "lang": "es",
+    "id": "question-1",
+    "text": "\u00bfHay algo m\u00e1s en lo que pueda ayudarle hoy?",
+    "transcript": "Hay algo m\u00e1s en lo que pueda ayudarle a hoy.",
+    "wer": 0.1111,
+    "naturalness_mos": 4.41
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "fr",
+    "id": "order-1",
+    "text": "Votre commande devrait arriver dans un d\u00e9lai de trois \u00e0 cinq jours ouvrables.",
+    "transcript": "Votre commande devrait arriver dans un d\u00e9lai de 3 \u00e0 5 jours souvrables.",
+    "wer": 0.2308,
+    "naturalness_mos": null
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "order-1",
+    "text": "Your order should arrive within three to five business days.",
+    "transcript": "Your order should arrive within 3-5 business days.",
+    "wer": 0.3,
+    "naturalness_mos": 4.22
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "order-3",
+    "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
+    "transcript": "I can see your account and the recent order you mentioned and it shipped on Tuesday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "es",
+    "id": "greeting-1",
+    "text": "Gracias por llamar, \u00bfen qu\u00e9 puedo ayudarle hoy?",
+    "transcript": "Gracias por llamar en que puedo ayudarle hoy.",
+    "wer": 0.0,
+    "naturalness_mos": 4.972
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "multiclause-1",
+    "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
+    "transcript": "Unfortunately, the item you ordered is currently out of stock, but we expect a new shipment  by next Friday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.385
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "greeting-2",
+    "text": "Good afternoon, you've reached customer support.",
+    "transcript": "Good afternoon, you've reached customer support.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "fr",
+    "id": "deescalate-1",
+    "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
+    "transcript": "Je comprend votre frustration, laissez-moi voir ce que je peux faire.",
+    "wer": 0.0909,
+    "naturalness_mos": 4.018
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "es",
+    "id": "order-1",
+    "text": "Su pedido deber\u00eda llegar en un plazo de tres a cinco d\u00edas h\u00e1biles.",
+    "transcript": "Su pedido deber\u00eda llegar en un plazo de 3 a 5 d\u00edas sables.",
+    "wer": 0.2308,
+    "naturalness_mos": 4.449
+  },
+  {
+    "engine": "piper",
+    "lang": "es",
+    "id": "deescalate-1",
+    "text": "Entiendo su frustraci\u00f3n, perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "transcript": "Entiendo su frustraci\u00f3n, perm\u00edtame ver qu\u00e9 puedo hacer para solucionarlo.",
+    "wer": 0.0,
+    "naturalness_mos": 4.304
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "greeting-2",
+    "text": "Good afternoon, you've reached customer support.",
+    "transcript": "Good afternoon.  You've reached customer support.",
+    "wer": 0.0,
+    "naturalness_mos": 4.591
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "order-3",
+    "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
+    "transcript": "I can see your account and the recent order you mentioned and it shipped on Tuesday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.584
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "question-1",
+    "text": "Is there anything else I can help you with today?",
+    "transcript": "Is there anything else I can help you with today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.992
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "de",
+    "id": "greeting-1",
+    "text": "Vielen Dank f\u00fcr Ihren Anruf, wie kann ich Ihnen helfen?",
+    "transcript": "Vielen Dank f\u00fcr Ihren Anruf.  Wie kann ich Ihnen helfen?",
+    "wer": 0.0,
+    "naturalness_mos": 4.174
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "greeting-1",
+    "text": "Thanks for calling, how can I help you today?",
+    "transcript": "Thanks for calling, how can I help you today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "order-2",
+    "text": "Your extension is six six three five.",
+    "transcript": "Your extension is 6, 6, 3, 5.",
+    "wer": 0.5714,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "deescalate-2",
+    "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "transcript": "I'm very sorry for the inconvenience. We'll fix this as quickly as possible.",
+    "wer": 0.0,
+    "naturalness_mos": 4.383
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "multiclause-2",
+    "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
+    "transcript": "I've added a note to your account so the carrier calls before delivery and if anything changes I will text you right away.",
+    "wer": 0.0,
+    "naturalness_mos": 4.992
+  },
+  {
+    "engine": "piper",
+    "lang": "de",
+    "id": "order-1",
+    "text": "Ihre Bestellung sollte innerhalb von drei bis f\u00fcnf Werktagen eintreffen.",
+    "transcript": "Ihre bestellen sollte innerhalb, rundher bis von Erktalen intreffen.",
+    "wer": 0.6,
+    "naturalness_mos": 4.4
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "order-2",
+    "text": "Your extension is six six three five.",
+    "transcript": "Your extension is 6-6-3-5.",
+    "wer": 0.5714,
+    "naturalness_mos": 3.968
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "deescalate-2",
+    "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "transcript": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "piper",
+    "lang": "de",
+    "id": "deescalate-1",
+    "text": "Ich verstehe Ihren \u00c4rger, lassen Sie mich sehen, was ich tun kann.",
+    "transcript": "Ich werde steh ihren Arer und lassen sie mit Sehens, was ich tonn kann.",
+    "wer": 0.5833,
+    "naturalness_mos": 4.388
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "de",
+    "id": "deescalate-1",
+    "text": "Ich verstehe Ihren \u00c4rger, lassen Sie mich sehen, was ich tun kann.",
+    "transcript": "Ich verstehe ihren \u00c4rger, lassen Sie mich sehen, was ich tun kann.",
+    "wer": 0.0,
+    "naturalness_mos": 4.416
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "order-1",
+    "text": "Your order should arrive within three to five business days.",
+    "transcript": "Your order should arrive within three to five business days.",
+    "wer": 0.0,
+    "naturalness_mos": 4.995
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "deescalate-2",
+    "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "transcript": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
+    "wer": 0.0,
+    "naturalness_mos": 4.198
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "multiclause-2",
+    "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
+    "transcript": "I've added a note to your accounts of the carrier calls before delivery.  And if anything changes I will text you right away.",
+    "wer": 0.087,
+    "naturalness_mos": 4.452
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "fr",
+    "id": "greeting-1",
+    "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
+    "transcript": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
+    "wer": 0.0,
+    "naturalness_mos": 4.302
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "greeting-2",
+    "text": "Good afternoon, you've reached customer support.",
+    "transcript": "Good afternoon, you've reached customer support.",
+    "wer": 0.0,
+    "naturalness_mos": 4.736
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "deescalate-1",
+    "text": "I understand your frustration, let me see what I can do to make this right.",
+    "transcript": "I understand your frustration, let me see what I can do to make this right.",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "en",
+    "id": "multiclause-1",
+    "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
+    "transcript": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment  by next Friday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "es",
+    "id": "question-1",
+    "text": "\u00bfHay algo m\u00e1s en lo que pueda ayudarle hoy?",
+    "transcript": "\u00bfHay algo m\u00e1s en lo que pueda ayudarle hoy?",
+    "wer": 0.0,
+    "naturalness_mos": 4.459
+  },
+  {
+    "engine": "elevenlabs-multilingual",
+    "lang": "en",
+    "id": "greeting-1",
+    "text": "Thanks for calling, how can I help you today?",
+    "transcript": "Thanks for calling. How can I help you today?",
+    "wer": 0.0,
+    "naturalness_mos": 4.991
+  },
+  {
+    "engine": "piper",
+    "lang": "en",
+    "id": "deescalate-1",
+    "text": "I understand your frustration, let me see what I can do to make this right.",
+    "transcript": "I understand your frustration.  Let me see what I can do to make this right.",
+    "wer": 0.0,
+    "naturalness_mos": 4.994
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "multiclause-1",
+    "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
+    "transcript": "Unfortunately, the item you ordered is currently out of stock.  But we expect a new shipment by next Friday.",
+    "wer": 0.0,
+    "naturalness_mos": 4.984
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "es",
+    "id": "question-1",
+    "text": "\u00bfHay algo m\u00e1s en lo que pueda ayudarle hoy?",
+    "transcript": "\u00bfHay algo m\u00e1s en lo que pueda ayudarle hoy?",
+    "wer": 0.0,
+    "naturalness_mos": 4.99
+  },
+  {
+    "engine": "elevenlabs-flash",
+    "lang": "fr",
+    "id": "deescalate-1",
+    "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
+    "transcript": "Je comprend votre frustration, laissez-moi voir ce que je peux faire.",
+    "wer": 0.0909,
+    "naturalness_mos": 4.109
+  },
+  {
+    "engine": "kokoro",
+    "lang": "en",
+    "id": "order-3",
+    "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
+    "transcript": "I can see your account and the recent order you mentioned, and it's shipped on Tuesday.",
+    "wer": 0.0625,
+    "naturalness_mos": 4.986
+  }
+]

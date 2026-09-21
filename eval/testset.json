@@ -1,0 +1,30 @@
+{
+  "version": "2026-09-1",
+  "note": "Small, representative call-center-style sentences for the latency/quality eval framework (see eval/README.md). Not statistically powered - directional, rerunnable after any engine change.",
+  "sentences": [
+    { "id": "greeting-1", "lang": "en", "category": "greeting", "text": "Thanks for calling, how can I help you today?" },
+    { "id": "greeting-2", "lang": "en", "category": "greeting", "text": "Good afternoon, you've reached customer support." },
+    { "id": "order-1", "lang": "en", "category": "order-status", "text": "Your order should arrive within three to five business days." },
+    { "id": "order-2", "lang": "en", "category": "order-status", "text": "Your extension is six six three five." },
+    { "id": "order-3", "lang": "en", "category": "order-status", "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday." },
+    { "id": "deescalate-1", "lang": "en", "category": "de-escalation", "text": "I understand your frustration, let me see what I can do to make this right." },
+    { "id": "deescalate-2", "lang": "en", "category": "de-escalation", "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible." },
+    { "id": "question-1", "lang": "en", "category": "question", "text": "Is there anything else I can help you with today?" },
+    { "id": "question-2", "lang": "en", "category": "question", "text": "Could you please confirm the billing address on the account?" },
+    { "id": "multiclause-1", "lang": "en", "category": "multi-clause", "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday." },
+    { "id": "multiclause-2", "lang": "en", "category": "multi-clause", "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away." },
+
+    { "id": "greeting-1", "lang": "es", "category": "greeting", "text": "Gracias por llamar, ¿en qué puedo ayudarle hoy?" },
+    { "id": "order-1", "lang": "es", "category": "order-status", "text": "Su pedido debería llegar en un plazo de tres a cinco días hábiles." },
+    { "id": "deescalate-1", "lang": "es", "category": "de-escalation", "text": "Entiendo su frustración, permítame ver qué puedo hacer para solucionarlo." },
+    { "id": "question-1", "lang": "es", "category": "question", "text": "¿Hay algo más en lo que pueda ayudarle hoy?" },
+
+    { "id": "greeting-1", "lang": "de", "category": "greeting", "text": "Vielen Dank für Ihren Anruf, wie kann ich Ihnen helfen?" },
+    { "id": "order-1", "lang": "de", "category": "order-status", "text": "Ihre Bestellung sollte innerhalb von drei bis fünf Werktagen eintreffen." },
+    { "id": "deescalate-1", "lang": "de", "category": "de-escalation", "text": "Ich verstehe Ihren Ärger, lassen Sie mich sehen, was ich tun kann." },
+
+    { "id": "greeting-1", "lang": "fr", "category": "greeting", "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?" },
+    { "id": "order-1", "lang": "fr", "category": "order-status", "text": "Votre commande devrait arriver dans un délai de trois à cinq jours ouvrables." },
+    { "id": "deescalate-1", "lang": "fr", "category": "de-escalation", "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire." }
+  ]
+}
