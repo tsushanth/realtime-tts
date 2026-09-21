@@ -17,11 +17,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 process.env.MODAL_SESSION_SECRET = "testsecret";
 process.env.KEYS_PATH = path.join(os.tmpdir(), "rt-k.json");
 const keys = await import(path.join(HERE, "../../gateway/keys.js"));
-const OWNER = keys.createSessionToken("owner-id");
-const OTHER = keys.createSessionToken("other-id");
-const UA1 = keys.createSessionToken("ukey-1", "user-A");  // two different keys, same owning user
-const UA2 = keys.createSessionToken("ukey-2", "user-A");
-const UB = keys.createSessionToken("ukey-3", "user-B");
+// Session tokens live 60 s and this suite runs longer (60 MB uploads): mint them with the clock shifted +1 h
+// so they are still valid when the later tests use them. The server verifies against its real clock.
+const mint = (...a) => { const real = Date.now; Date.now = () => real() + 3600_000; try { return keys.createSessionToken(...a); } finally { Date.now = real; } };
+const OWNER = mint("owner-id");
+const OTHER = mint("other-id");
+const UA1 = mint("ukey-1", "user-A");  // two different keys, same owning user
+const UA2 = mint("ukey-2", "user-A");
+const UB = mint("ukey-3", "user-B");
 const STATIC = "static";
 const auth = (t) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
 
@@ -85,7 +88,12 @@ async function putVoice(id, owner, expectStatus = 200, modelBase = "full_ft") {
   fs.copyFileSync(path.join(models, `${modelBase}.onnx.json`), path.join(d, "model.onnx.json"));
   fs.writeFileSync(path.join(d, "owner.json"), JSON.stringify(owner));
   execFileSync("tar", ["-cf", path.join(d, "v.tar"), "-C", d, "model.onnx", "model.onnx.json", "owner.json"]);
-  const r = await fetch(`http://${BASE}/admin/voices/${id}`, { method: "PUT", headers: { authorization: "Bearer adm" }, body: fs.readFileSync(path.join(d, "v.tar")) });
+  const body = fs.readFileSync(path.join(d, "v.tar"));
+  let r;
+  for (let attempt = 0; ; attempt++) {  // a reused keep-alive socket may have been closed by the server while tar ran
+    try { r = await fetch(`http://${BASE}/admin/voices/${id}`, { method: "PUT", headers: { authorization: "Bearer adm" }, body }); break; }
+    catch (e) { if (attempt >= 2) throw e; }
+  };
   fs.rmSync(d, { recursive: true });
   return { status: r.status, body: await r.text() };
 }
@@ -234,8 +242,8 @@ console.log("--- voices: user_ids ownership (uid embedded in session token)");
   const s2 = wsSession(UB); await s2.opened;
   w = await s2.synth({ text: SHORT, voice: "custom:userv" }); ok("ws: other user denied", w.end.type === "error" && w.end.message === "unknown voice");
   s2.ws.close();
-  const tok = keys.createSessionToken("x", "user-A");
-  const forged = tok.split(".")[0] + "." + keys.createSessionToken("y").split(".")[1];
+  const tok = mint("x", "user-A");
+  const forged = tok.split(".")[0] + "." + mint("y").split(".")[1];
   r = await post(forged, "custom:userv"); ok("forged uid (bad signature) rejected", r.status === 401);
 }
 
