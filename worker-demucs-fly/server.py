@@ -24,7 +24,10 @@ Endpoint: POST /v1/isolate
 
 Other env: MODEL_NAME (default htdemucs), MAX_UPLOAD_BYTES (default 25MB), MAX_DURATION_S
 (default 120s), MAX_CONNECTIONS (default 2 - Demucs is heavy per-request; this is much lower
-than worker-piper-fly's default), TORCH_THREADS (default: os.cpu_count()), PORT (8080).
+than worker-piper-fly's default), TORCH_THREADS (default: os.cpu_count()), PORT (8080),
+USAGE_REPORT_URL/USAGE_REPORT_SECRET (usage metering hook, same shape as worker-piper-fly's
+report_usage - fires after each successful /v1/isolate with {id, audio_seconds, engine:
+"denoise"}; unset USAGE_REPORT_SECRET means usage simply isn't reported).
 """
 import base64
 import hashlib
@@ -34,6 +37,7 @@ import json
 import os
 import threading
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -50,6 +54,13 @@ MAX_CONNECTIONS = int(os.environ.get("MAX_CONNECTIONS", "2"))
 TORCH_THREADS = int(os.environ.get("TORCH_THREADS", str(os.cpu_count() or 2)))
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
 SESSION_SECRET = os.environ.get("SESSION_SECRET")
+# Usage/billing hook, same endpoint+auth shape as worker-piper-fly/server.py's report_usage -
+# fire-and-forget POST to the gateway after each successful separation, tagged engine "denoise"
+# with clip duration (not TTS chars - see gateway/keys.js recordUsageById's audioSeconds param).
+# Unset USAGE_REPORT_SECRET => usage is simply not reported (no error), same as piper's worker
+# when it's run standalone/locally without the gateway wired up.
+USAGE_REPORT_URL = os.environ.get("USAGE_REPORT_URL", "https://api.readaloudai.org/admin/usage/report")
+USAGE_REPORT_SECRET = os.environ.get("USAGE_REPORT_SECRET")
 VALID_STEMS = ("vocals", "drums", "bass", "other")
 # Formats soundfile can read without ffmpeg. Mirrors worker-piper-fly's "reject early, clear
 # message" style rather than letting a decode error surface as a 500 deep in the model call.
@@ -192,6 +203,23 @@ class Separator:
             return mono, model.samplerate
 
 
+def report_usage(key_id: str, audio_seconds: float):
+    """Best-effort, off the request path (runs in the thread pool): a failed report must never
+    affect the caller's response. Same endpoint/payload shape the piper worker uses, engine
+    "denoise" and audio_seconds instead of chars - see gateway/keys.js applyUsage."""
+    if not key_id or not audio_seconds or not USAGE_REPORT_SECRET:
+        return
+    try:
+        req = urllib.request.Request(
+            USAGE_REPORT_URL,
+            data=json.dumps({"id": key_id, "audio_seconds": audio_seconds, "engine": "denoise"}).encode(),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {USAGE_REPORT_SECRET}"},
+            method="POST")
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception as e:  # noqa: BLE001
+        print(f"usage report failed for key {key_id}: {e}")
+
+
 separator = Separator(MODEL_NAME)
 pool = ThreadPoolExecutor(max_workers=max(1, MAX_CONNECTIONS))
 app = FastAPI()
@@ -212,7 +240,7 @@ def _err(status: int, message: str) -> JSONResponse:
 async def isolate(request: Request, file: UploadFile = File(...), stem: str = Form(default="vocals")):
     global _active
     try:
-        check_auth(request)
+        key_id, _uid = check_auth(request)
     except ValidationError as e:
         return _err(e.status, e.message)
 
@@ -230,7 +258,7 @@ async def isolate(request: Request, file: UploadFile = File(...), stem: str = Fo
 
     try:
         audio, sr = decode_audio(data)
-        validate_duration(audio.shape[0], sr)
+        duration_s = validate_duration(audio.shape[0], sr)
     except ValidationError as e:
         return _err(e.status, e.message)
 
@@ -249,6 +277,7 @@ async def isolate(request: Request, file: UploadFile = File(...), stem: str = Fo
             _active -= 1
 
     mono, out_sr = loop_result
+    pool.submit(report_usage, key_id, duration_s)
     buf = io.BytesIO()
     sf.write(buf, mono, out_sr, format="WAV", subtype="PCM_16")
     return Response(

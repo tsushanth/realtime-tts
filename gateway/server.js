@@ -20,6 +20,15 @@ import { URL } from "node:url";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
 import * as keys from "./keys.js";
 import { handleVoiceApi } from "./voiceApiProxy.js";
+import { auditLog } from "./audit.js";
+
+// Best-effort caller IP for audit records — trusts XFF from Fly's proxy in front of
+// this gateway; fine for an audit trail (not used for any access-control decision).
+function clientIp(req) {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length) return xff.split(",")[0].trim();
+  return req.socket?.remoteAddress || null;
+}
 
 const PORT = process.env.PORT || 8080;
 const WORKER_URL = process.env.WORKER_WS_URL || "ws://127.0.0.1:8765";
@@ -34,6 +43,9 @@ const STT_WORKER_URL = process.env.STT_WORKER_URL;
 // Streaming/realtime STT worker (worker-stt-realtime/, deployed separately from the batch worker - see DESIGN.md).
 // Unset => /stt/authorize with mode:"realtime" returns 501, same as the batch worker being unconfigured.
 const STT_REALTIME_WORKER_URL = process.env.STT_REALTIME_WORKER_URL;
+// Audio isolation / denoising worker (worker-demucs-fly/, Demucs htdemucs). Unset => /audio/authorize returns 501,
+// same "opt-in, absent-by-default" shape as PIPER_WORKER_URL/STT_WORKER_URL above.
+const DEMUCS_WORKER_URL = process.env.DEMUCS_WORKER_URL;
 const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
 // Separate from ADMIN_SECRET on purpose — this only lets the holder report
 // usage numbers for a key it already has the ID for, not manage keys at all.
@@ -231,8 +243,51 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (realtime) warmRealtimeWorker(); // fire-and-forget; never blocks or fails this response
+    const sttId = keys.getIdForKey(key);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ token: keys.createSessionToken(keys.getIdForKey(key)), url: workerUrl }));
+    res.end(JSON.stringify({ token: keys.createSessionToken(sttId), url: workerUrl }));
+    return;
+  }
+
+  // Audio isolation / denoising (worker-demucs-fly, Demucs htdemucs): same checks as
+  // /tts/authorize and /stt/authorize. The client then POSTs the clip as multipart/form-data
+  // to `url` + "/v1/isolate" with the token as a Bearer header. Usage is reported by the worker
+  // to /admin/usage/report tagged with engine "denoise" (audio_seconds), once a per-second price
+  // is set - see worker-demucs-fly/README.md "What's left".
+  if (url.pathname === "/audio/authorize" && req.method === "POST") {
+    const body = await readBody(req);
+    const { key, engine } = body ? JSON.parse(body) : {};
+    if (engine !== undefined && engine !== "denoise") {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: 'engine must be "denoise"' }));
+      return;
+    }
+    if (!DEMUCS_WORKER_URL) {
+      res.writeHead(501, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "audio isolation not available" }));
+      return;
+    }
+    if (!keys.isValidKey(key)) {
+      auditLog("auth_failure", { surface: "audio_authorize", reason: "invalid_key", ip: clientIp(req) });
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
+      auditLog("auth_failure", { surface: "audio_authorize", reason: "free_tier_exhausted", id: keys.getIdForKey(key), ip: clientIp(req) });
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+      }));
+      return;
+    }
+    const audioId = keys.getIdForKey(key);
+    auditLog("auth_success", { surface: "audio_authorize", id: audioId, engine: "denoise", ip: clientIp(req) });
+    res.writeHead(200, { "content-type": "application/json" });
+    // wss-style url isn't applicable here (plain HTTP worker) - `url` is the base the client
+    // POSTs `<url>/v1/isolate` to, exactly like the piper http_url shape in /tts/authorize.
+    res.end(JSON.stringify({ token: keys.createSessionToken(audioId), url: DEMUCS_WORKER_URL }));
     return;
   }
 

@@ -63,20 +63,34 @@ Example:
       -F "file=@noisy.wav" -F "stem=vocals" \
       -o isolated.wav
 
-## Auth wiring (documented, not fully wired to production)
+## Auth wiring: gateway -> worker (now live)
 
-`worker-piper-fly`/the gateway pattern: a client calls `POST /tts/authorize {key, engine}` on
-the gateway, which validates the API key, checks billing access, and returns a short-lived
-HMAC session token + the worker's URL; the client then talks to the worker directly with that
-token as a bearer token (see `gateway/server.js` around `/tts/authorize` and `/stt/authorize`).
+Same pattern as `/tts/authorize` and `/stt/authorize`: a client calls
+`POST /audio/authorize {key, engine?: "denoise"}` on the gateway (`gateway/server.js`), which
+validates the API key (`keys.isValidKey`), checks billing access (`keys.checkAccess`), and
+returns `{token, url}` — a short-lived HMAC session token (`keys.createSessionToken`) plus this
+worker's base URL (`DEMUCS_WORKER_URL`, set analogously to `PIPER_WORKER_URL`/`STT_WORKER_URL` -
+unset means `/audio/authorize` returns `501`). The client then POSTs the clip directly to
+`<url>/v1/isolate` with that token as the bearer, which this worker verifies with
+`verify_session_claims` using `SESSION_SECRET` — **`SESSION_SECRET` here must be the same value
+as the gateway's `MODAL_SESSION_SECRET`**, since the gateway signs tokens and this worker
+verifies them independently (no shared code, no network call between them at request time).
 
-For this engine, the same shape extends naturally: gateway would gain e.g.
-`POST /audio/authorize {key, engine: "denoise"}` (or fold it into `/tts/authorize`'s existing
-`engine` enum) returning `{token, url}` for this worker, with a `DEMUCS_WORKER_URL` env var on
-the gateway analogous to `PIPER_WORKER_URL`. **This task does not implement that gateway route**
-(out of scope per the task brief - "doc it, but full production wiring is not required") - only
-the worker-side token verification (`verify_session_claims`, identical HMAC scheme) exists so
-it's a drop-in once the gateway route is added.
+End-to-end:
+
+    curl -s -X POST https://api.readaloudai.org/audio/authorize \
+      -H "Content-Type: application/json" -d '{"key":"'"$API_KEY"'"}'
+    # => {"token":"<session token>","url":"https://demucs-isolation-dev.fly.dev"}
+
+    curl -s -X POST https://demucs-isolation-dev.fly.dev/v1/isolate \
+      -H "Authorization: Bearer <token from above>" \
+      -F "file=@noisy.wav" -F "stem=vocals" -o isolated.wav
+
+Gateway-side auth attempts on this route (`auth_success`/`auth_failure`, `surface: "audio_authorize"`)
+are structured-logged via `gateway/audit.js`'s `auditLog`, same as the other authorize routes.
+Usage is reported by this worker after each successful separation to `USAGE_REPORT_URL`
+(`{id, audio_seconds, engine: "denoise"}`, gated on `USAGE_REPORT_SECRET` being set) — see
+`report_usage` below and "What's left" for the pricing caveat.
 
 ## Performance
 
@@ -153,14 +167,21 @@ model - not mocked.
 
 ## What's left before production
 
-- **Gateway routing**: no `/audio/authorize`-equivalent route exists yet on the gateway; only
-  documented above. `DEMUCS_WORKER_URL`-style env wiring, the `engine` enum, and a
-  `PIPER_WORKER_URL`-analogous secret all need adding to `gateway/server.js`/`keys.js`.
-- **fly.toml is a draft, unverified, and NOT deployed**: app name is a placeholder
-  (`demucs-isolation-sjc-DRAFT`), VM sizing (`performance-2x`/4GB) is a guess based on Demucs
-  being CPU/memory-heavier than Piper, not benchmarked under load.
-- **Auth secrets**: `AUTH_TOKEN`/`SESSION_SECRET` need real values provisioned as Fly secrets,
-  not the dev placeholders used here.
+Done as of this pass: gateway routing (`/audio/authorize` in `gateway/server.js`, tested in
+`gateway/audio.test.js`), `DEMUCS_WORKER_URL`/`engine` wiring, audit logging on the new surface,
+and a usage-metering hook (`report_usage` in `server.py`, mirrors `worker-piper-fly`). Still open:
+
+- **fly.toml is filled in but still NOT deployed** (do not `fly deploy` it from this state):
+  app name is `demucs-isolation-dev` (deliberately not a production app name), VM sizing
+  (`performance-2x`/4GB, `MAX_CONNECTIONS=2`) is a guess based on Piper's CPU-worker `fly.toml`
+  as a reference point and Demucs being heavier per-request, not benchmarked under load.
+- **Auth secrets**: `AUTH_TOKEN`/`SESSION_SECRET` need real values provisioned as Fly secrets
+  (`fly secrets set`), not the dev placeholders used locally - and `SESSION_SECRET` specifically
+  must match the gateway's `MODAL_SESSION_SECRET` value (see "Auth wiring" above).
+- **Usage/billing pricing undecided**: `report_usage` now sends `{id, audio_seconds,
+  engine: "denoise"}` to the gateway's `/admin/usage/report`, which stores it in the generic
+  `usageAudioSecondsSinceLastReport` counter (`gateway/keys.js`) - same as STT does - but no
+  per-second (or per-request/per-MB) *price* for this engine has been set on the billing side yet.
 - **Load testing**: concurrency (`MAX_CONNECTIONS=2` is a guess), memory usage under concurrent
   120s clips, and cold-start behavior (first request after a scale-from-zero, including model
   weight load if not baked into the image) are all unmeasured.
@@ -171,9 +192,6 @@ model - not mocked.
 - **Broader verification**: only one synthetic clip/noise profile was tested (see
   "Verification" caveats above) - real customer audio (phone calls, real background noise/
   music, multiple speakers) has not been tried.
-- **No usage billing/metering hook**: worker-piper-fly reports usage to
-  `USAGE_REPORT_URL`/`admin/usage/report` after each request; this worker does not, since
-  pricing for this feature (per-second? per-request? per-MB?) hasn't been decided.
 - **Streaming/chunking**: Demucs here processes the whole clip in memory; very long inputs
   (near `MAX_DURATION_S`) will have higher latency and memory than a chunked/streaming
   implementation would - untested.
