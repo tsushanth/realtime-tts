@@ -143,8 +143,38 @@ def train(steps: int = 60000, hours: float = 20.0, name: str = "es2spk", batch: 
     return res
 
 
+@app.function(cpu=4, memory=16384, timeout=1800, volumes={"/data": vol})
+def sample(name: str = "es2spk", tag: str = ""):
+    """Export the newest last.ckpt of run <name> on CPU and write 5 Spanish call-centre samples per speaker to
+    /data/runs/<name>/samples_<tag or step>/ (for listening checks while training continues)."""
+    import glob, json, os, runpy, shutil, sys
+    import numpy as np, soundfile as sf, torch
+    vol.reload()
+    out = f"/data/runs/{name}"
+    ck = sorted(glob.glob(f"{out}/lightning_logs/version_*/checkpoints/last.ckpt"), key=os.path.getmtime)[-1]
+    step = torch.load(ck, map_location="cpu", weights_only=False)["global_step"]
+    work = f"/tmp/snap"; os.makedirs(work, exist_ok=True)
+    _orig = torch.load
+    torch.load = lambda *a, **k: _orig(*a, **{**k, "weights_only": False})
+    sys.argv = ["piper.train.export_onnx", "--checkpoint", ck, "--output-file", f"{work}/model.onnx"]
+    runpy.run_module("piper.train.export_onnx", run_name="__main__")
+    shutil.copy(f"{out}/config.json", f"{work}/model.onnx.json")
+    from piper import PiperVoice, SynthesisConfig
+    v = PiperVoice.load(f"{work}/model.onnx")
+    smap = json.load(open(f"{work}/model.onnx.json", encoding="utf-8"))["speaker_id_map"]
+    d = f"{out}/samples_{tag or step}"; os.makedirs(d, exist_ok=True)
+    for t, sid in smap.items():
+        for i, text in enumerate(TEXTS):
+            pcm = np.concatenate([c.audio_int16_array for c in v.synthesize(text, SynthesisConfig(speaker_id=sid))])
+            sf.write(f"{d}/{t}_{i+1}.wav", pcm, v.config.sample_rate, "PCM_16")
+    vol.commit()
+    return {"step": int(step), "dir": d}
+
+
 @app.local_entrypoint()
-def main(steps: int = 60000, hours: float = 20.0, name: str = "es2spk", batch: int = 32, espeak: str = "es", wait: bool = False):
+def main(steps: int = 60000, hours: float = 20.0, name: str = "es2spk", batch: int = 32, espeak: str = "es", wait: bool = False, mode: str = "train"):
+    if mode == "sample":
+        print(sample.remote(name)); return
     if wait:  # smoke tests: block and print the result
         print(train.remote(steps, hours, name, batch, espeak))
     else:  # long runs: use `modal run --detach`
