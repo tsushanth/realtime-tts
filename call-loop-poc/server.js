@@ -2533,7 +2533,14 @@ class CallSession {
         toSpeak = text;
       }
       const said = speakableText(toSpeak);
-      if (isStageDirection(toSpeak) || !/[a-z0-9]/i.test(said)) {
+      // Unicode-aware "has real content" check — a-z0-9 only matched Latin
+      // script/digits, so any sentence written purely in a non-Latin script
+      // (Arabic, Hindi/Devanagari, etc., with no Latin letters or digits in
+      // it) always failed this test and got silently dropped, never sent to
+      // TTS at all — a real, reproducible bug found testing Arabic (whole
+      // greeting dropped, zero TTS cost) and Hindi (intermittent silent
+      // turns) shopper calls. \p{L}/\p{N} match any Unicode letter/number.
+      if (isStageDirection(toSpeak) || !/[\p{L}\p{N}]/u.test(said)) {
         console.log(`[call-loop] turn ${turnId} dropped a stage direction or silence marker instead of speaking it: "${sentence}"`);
         return;
       }
