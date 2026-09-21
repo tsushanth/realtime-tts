@@ -20,7 +20,7 @@ test("audio seconds accumulate; chars/piperChars semantics unchanged", () => {
   assert.ok(keys.recordUsageById(id, undefined, "stt", 12.5));
   assert.ok(keys.recordUsageById(id, 0, "stt", 7.5));
   const d = keys.drainUsage().find((x) => x.id === id);
-  assert.deepEqual(d, { id, chars: 150, piperChars: 50, audioSeconds: 20 });
+  assert.deepEqual(d, { id, chars: 150, piperChars: 50, audioSeconds: 20, realtimeAudioSeconds: 0 });
   assert.equal(keys.drainUsage().find((x) => x.id === id), undefined); // reset
 });
 
@@ -30,8 +30,8 @@ test("chars-only key drains with audioSeconds 0; audio-only key is included", ()
   keys.recordUsageById(a.id, 10);
   keys.recordUsageById(b.id, undefined, "stt", 3);
   const out = keys.drainUsage();
-  assert.deepEqual(out.find((x) => x.id === a.id), { id: a.id, chars: 10, piperChars: 0, audioSeconds: 0 });
-  assert.deepEqual(out.find((x) => x.id === b.id), { id: b.id, chars: 0, piperChars: 0, audioSeconds: 3 });
+  assert.deepEqual(out.find((x) => x.id === a.id), { id: a.id, chars: 10, piperChars: 0, audioSeconds: 0, realtimeAudioSeconds: 0 });
+  assert.deepEqual(out.find((x) => x.id === b.id), { id: b.id, chars: 0, piperChars: 0, audioSeconds: 3, realtimeAudioSeconds: 0 });
 });
 
 test("invalid audio seconds are ignored", () => {
@@ -96,10 +96,45 @@ test("/stt/authorize + usage report end to end", async () => {
     const rep = await post(base, "/admin/usage/report", { id, audio_seconds: 42, engine: "stt" }, "usg");
     assert.deepEqual(await rep.json(), { recorded: true });
     const dr = await (await post(base, "/admin/usage/drain", {}, "adm")).json();
-    assert.deepEqual(dr.find((x) => x.id === id), { id, chars: 0, piperChars: 0, audioSeconds: 42 });
+    assert.deepEqual(dr.find((x) => x.id === id), { id, chars: 0, piperChars: 0, audioSeconds: 42, realtimeAudioSeconds: 0 });
     // exhausted free key => 402
     const f = keys.issueKey("free2");
     keys.recordUsageById(f.id, undefined, "stt", 4000);
     assert.equal((await post(base, "/stt/authorize", { key: f.key })).status, 402);
+  } finally { p.kill(); }
+});
+
+test("/stt/authorize mode:realtime returns 501 when STT_REALTIME_WORKER_URL unset (batch still works)", async () => {
+  const { p, base } = await startServer({ STT_WORKER_URL: "https://stt.example", STT_REALTIME_WORKER_URL: "" });
+  try {
+    const { key } = keys.issueKey("rt1");
+    keys.setBillingEnabledById(keys.getIdForKey(key), true);
+    const r = await post(base, "/stt/authorize", { key, mode: "realtime" });
+    assert.equal(r.status, 501);
+    // batch (default mode) is unaffected by the realtime worker being unconfigured
+    const b = await post(base, "/stt/authorize", { key });
+    assert.equal(b.status, 200);
+    assert.equal((await b.json()).url, "https://stt.example");
+  } finally { p.kill(); }
+});
+
+test("/stt/authorize mode:realtime returns the realtime worker url + token, distinct from batch", async () => {
+  const { p, base } = await startServer({
+    STT_WORKER_URL: "https://stt.example",
+    STT_REALTIME_WORKER_URL: "wss://stt-realtime.example/v1/stt/realtime",
+  });
+  try {
+    const { id, key } = keys.issueKey("rt2");
+    keys.setBillingEnabledById(id, true);
+    const r = await post(base, "/stt/authorize", { key, mode: "realtime" });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.url, "wss://stt-realtime.example/v1/stt/realtime");
+    assert.equal(keys.verifySessionToken(j.token), id);
+    // usage from the realtime worker is tagged with its own engine string and stays separable from batch "stt"
+    await post(base, "/admin/usage/report", { id, audio_seconds: 5, engine: "stt-realtime" }, "usg");
+    await post(base, "/admin/usage/report", { id, audio_seconds: 2, engine: "stt" }, "usg");
+    const dr = await (await post(base, "/admin/usage/drain", {}, "adm")).json();
+    assert.deepEqual(dr.find((x) => x.id === id), { id, chars: 0, piperChars: 0, audioSeconds: 7, realtimeAudioSeconds: 5 });
   } finally { p.kill(); }
 });

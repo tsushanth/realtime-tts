@@ -245,6 +245,12 @@ function applyUsage(entry, chars, engine, audioSeconds = 0) {
     }
     if (audioSeconds) {
       entry.usageAudioSecondsSinceLastReport = (entry.usageAudioSecondsSinceLastReport || 0) + audioSeconds;
+      // Same "total stays total, subset breaks out separately" pattern as piperChars above: engine "stt-realtime"
+      // (worker-stt-realtime/, streaming) is tracked as a subset of audioSeconds so it can be billed at its own
+      // rate once one is set, without a billing job that hasn't learned about it yet missing the seconds entirely.
+      if (engine === "stt-realtime") {
+        entry.usageRealtimeAudioSecondsSinceLastReport = (entry.usageRealtimeAudioSecondsSinceLastReport || 0) + audioSeconds;
+      }
     }
     return;
   }
@@ -334,9 +340,11 @@ export function drainUsage() {
       chars: k.usageCharsSinceLastReport || 0,
       piperChars: k.usagePiperCharsSinceLastReport || 0,
       audioSeconds: Math.round((k.usageAudioSecondsSinceLastReport || 0) * 1000) / 1000,
+      realtimeAudioSeconds: Math.round((k.usageRealtimeAudioSecondsSinceLastReport || 0) * 1000) / 1000,
     }));
   for (const k of keys) {
     k.usageCharsSinceLastReport = 0; k.usagePiperCharsSinceLastReport = 0; k.usageAudioSecondsSinceLastReport = 0;
+    k.usageRealtimeAudioSecondsSinceLastReport = 0;
   }
   save(keys);
   return result;

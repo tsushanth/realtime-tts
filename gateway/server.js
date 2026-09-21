@@ -15,6 +15,7 @@
 // See ../DECISIONS.md.
 import { WebSocketServer, WebSocket } from "ws";
 import http from "node:http";
+import https from "node:https";
 import { URL } from "node:url";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
 import * as keys from "./keys.js";
@@ -29,6 +30,9 @@ const MODAL_WORKER_URL = process.env.MODAL_READALOUD_WS_URL;
 const PIPER_WORKER_URL = process.env.PIPER_WORKER_URL;
 // Batch speech-to-text worker (worker-stt/, Modal app realtime-stt-worker). Unset => /stt/authorize returns 501.
 const STT_WORKER_URL = process.env.STT_WORKER_URL;
+// Streaming/realtime STT worker (worker-stt-realtime/, deployed separately from the batch worker - see DESIGN.md).
+// Unset => /stt/authorize with mode:"realtime" returns 501, same as the batch worker being unconfigured.
+const STT_REALTIME_WORKER_URL = process.env.STT_REALTIME_WORKER_URL;
 const MODAL_AUTH_TOKEN = process.env.MODAL_READALOUD_AUTH_TOKEN;
 // Separate from ADMIN_SECRET on purpose — this only lets the holder report
 // usage numbers for a key it already has the ID for, not manage keys at all.
@@ -60,6 +64,23 @@ function readBody(req) {
     req.on("data", (c) => (body += c));
     req.on("end", () => resolve(body));
   });
+}
+
+// Best-effort wake-up ping for a scale-to-zero realtime STT worker: fired from /stt/authorize (mode:"realtime")
+// so the Fly machine (or Modal container) is warming while the client sets up its mic/socket, instead of paying
+// full cold start on the first WebSocket frame. Never blocks or fails the authorize response - errors/timeouts
+// are swallowed; the worker's own WebSocket handler has a second safety net (buffers audio while loading).
+function warmRealtimeWorker() {
+  if (!STT_REALTIME_WORKER_URL) return;
+  try {
+    const u = new URL(STT_REALTIME_WORKER_URL);
+    u.protocol = u.protocol === "wss:" ? "https:" : u.protocol === "ws:" ? "http:" : u.protocol;
+    u.pathname = "/health";
+    const mod = u.protocol === "https:" ? https : http;
+    const r = mod.get(u, { timeout: 3000 }, (resp) => resp.resume());
+    r.on("error", () => {});
+    r.on("timeout", () => r.destroy());
+  } catch { /* malformed STT_REALTIME_WORKER_URL: skip the ping */ }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -177,15 +198,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Speech-to-text: same checks as /tts/authorize; the client then POSTs audio to `url` + "/v1/stt"
-  // with the token as a Bearer header. Usage is reported by the worker to /admin/usage/report.
+  // with the token as a Bearer header (batch), or opens a WebSocket at `url` (realtime, mode:"realtime").
+  // Usage is reported by the worker to /admin/usage/report, tagged with engine "stt" (batch) or "stt-realtime".
   if (url.pathname === "/stt/authorize" && req.method === "POST") {
-    if (!STT_WORKER_URL) {
+    let key, mode, engineReq;
+    try { ({ key, mode, engine: engineReq } = JSON.parse((await readBody(req)) || "{}")); } catch { key = undefined; }
+    const realtime = mode === "realtime" || engineReq === "realtime"; // `engine` accepted as an alias of `mode` for forward-compat
+    const workerUrl = realtime ? STT_REALTIME_WORKER_URL : STT_WORKER_URL;
+    if (!workerUrl) {
       res.writeHead(501, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "speech-to-text not available" }));
+      res.end(JSON.stringify({ error: realtime ? "realtime speech-to-text not available" : "speech-to-text not available" }));
       return;
     }
-    let key;
-    try { ({ key } = JSON.parse((await readBody(req)) || "{}")); } catch { key = undefined; }
     if (!keys.isValidKey(key)) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "invalid or missing API key" }));
@@ -198,8 +222,9 @@ const server = http.createServer(async (req, res) => {
       }));
       return;
     }
+    if (realtime) warmRealtimeWorker(); // fire-and-forget; never blocks or fails this response
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ token: keys.createSessionToken(keys.getIdForKey(key)), url: STT_WORKER_URL }));
+    res.end(JSON.stringify({ token: keys.createSessionToken(keys.getIdForKey(key)), url: workerUrl }));
     return;
   }
 
