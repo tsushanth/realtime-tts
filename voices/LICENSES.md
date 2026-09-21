@@ -236,3 +236,37 @@ alba has a moral-rights no-derogatory-use clause.
 ## Data-side coverage research (for languages with no tier-A voice)
 
 See `voices/COVERAGE.md`.
+
+## Mining batch 2026-09-21: 10 new languages
+
+Full detail, per-voice verification level and the espeak-tag check outcome: `voices/MINING_BATCH_2026-09-21.md`.
+Summary of new licences introduced (none of these categories were previously in this file):
+
+| voice id | locale | dataset | licence (+evidence) | base lineage | tier |
+|---|---|---|---|---|---|
+| el-gr-rapunzelina | el_GR | bryanpark/greek-single-speaker-speech-dataset (Kaggle) | CC0 (card) | Scratch (card) | **A** |
+| uk-ua-ukrainian_tts-lada / -mykyta | uk_UA | OHF-Voice/voice-datasets (ukrainian_tts, 3 speakers) | CC0 (card) | Scratch (card) | **A** |
+| no-no-nvcc-f / -m | no_NO | NB Sprakbanken NVCC (nb.no/sprakbanken, oai-nb-no-sbr-75, 10 speakers) | CC0 (card) | Fine-tuned from the scratch-trained, CC BY 4.0 LibriTTS-R base model (card): clean-base lineage, same rule as es-pilot | **A** |
+| cs-cz-jirka | cs_CZ | OHF-Voice/voice-datasets (jirka) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| da-dk-talesyntese | da_DK | NB Sprakbanken Talesyntese (nb.no/sprakbanken, oai-nb-no-sbr-21) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| fi-fi-harri | fi_FI | bryanpark/finnish-single-speaker-speech-dataset (Kaggle) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| hu-hu-anna, hu-hu-imre | hu_HU | OHF-Voice/voice-datasets (anna, imre; berta not exported) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| ro-ro-mihai | ro_RO | OHF-Voice/voice-datasets (mihai) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| sk-sk-lili | sk_SK | OHF-Voice/voice-datasets (lili) | CC0 (card) | Finetuned from Lessac medium (card) | **B** |
+| vi-vn-vais1000 | vi_VN | VAIS-1000 Vietnamese Speech Synthesis Corpus (ieee-dataport.org) | CC BY 4.0 (card) | Finetuned from Lessac medium (card) | **B** |
+
+Same "owner risk decision" caveat as every other tier-B voice: weights descend from Piper's Lessac base (Blizzard 2013,
+research-only licence). Not published; catalogued only.
+
+**Rejected as tier C in this same batch** (checked, not exported): `ca/ca_ES/upc_ona` (dataset CC BY-SA 3.0 ES, SA +
+Lessac lineage); `sr/sr_RS/serbski_institut` and `tr/tr_TR/dfki` (both CC BY-NC-SA 4.0, non-commercial); `ko/ko_KR/kss`
+(CC BY-NC-SA 4.0); `ka/ka_GE/natia` (LICENSE file restricts use to individuals/personal use, prohibits organizations —
+explicitly non-commercial); `no/no_NO/talesyntese` (redundant second Norwegian voice, Lessac lineage, skipped in favour
+of the tier-A nvcc pair).
+
+**espeak/language-tag note (not the known bug class, but adjacent):** `no_NO` checkpoints ship `espeak.voice="nb"`
+(Norwegian Bokmål), not `"no"` — this is *correct*, not a mislabeling, because espeak-ng has no bare `"no"` voice.
+`export_v2.py`'s mismatch check was extended with an `EXPECTED_ESPEAK` override table (`{"no": "nb"}`) so this
+legitimate divergence doesn't get flagged or auto-"corrected" to a nonexistent espeak voice. All other new-language
+checkpoints in this batch shipped an espeak.voice that matched their directory language exactly — no instance of the
+upstream de/de_DE/mls Dutch-tag bug class was found in this batch.

@@ -70,7 +70,64 @@ TEXTS = {
            "Я понимаю ваше недовольство, позвольте посмотреть, что я могу сделать.",
            "Могу ли я вам ещё чем-нибудь помочь сегодня?",
            "Ваш добавочный номер шесть шесть три пять."],
+    # --- mining batch 2026-09-21: new languages ---
+    "cs": ["Děkuji za zavolání, mohu vám s tím pomoci. Hned si otevřu údaje o vašem účtu.",
+           "Vaše objednávka by měla dorazit do tří až pěti pracovních dnů a brzy vám pošlu potvrzovací e-mail.",
+           "Chápu vaši frustraci, podívám se, co pro vás mohu udělat.",
+           "Můžu vám dnes pomoci ještě s něčím?",
+           "Vaše linka je šest šest tři pět."],
+    "da": ["Tak fordi du ringede, jeg kan hjælpe dig med det. Jeg henter dine kontooplysninger med det samme.",
+           "Din ordre skulle ankomme inden for tre til fem hverdage, og jeg sender snart en bekræftelse på e-mail.",
+           "Jeg forstår din frustration, lad mig se, hvad jeg kan gøre for at ordne det.",
+           "Er der andet, jeg kan hjælpe dig med i dag?",
+           "Dit lokalnummer er seks seks tre fem."],
+    "el": ["Ευχαριστώ που καλέσατε, μπορώ να σας βοηθήσω με αυτό. Ανοίγω αμέσως τα στοιχεία του λογαριασμού σας.",
+           "Η παραγγελία σας θα πρέπει να φτάσει εντός τριών έως πέντε εργάσιμων ημερών και σύντομα θα σας στείλω email επιβεβαίωσης.",
+           "Καταλαβαίνω την απογοήτευσή σας, ας δούμε τι μπορώ να κάνω για να το διορθώσω.",
+           "Μπορώ να σας βοηθήσω με κάτι άλλο σήμερα;",
+           "Το εσωτερικό σας είναι έξι έξι τρία πέντε."],
+    "fi": ["Kiitos soitostasi, voin auttaa sinua tässä. Avaan tilisi tiedot heti.",
+           "Tilauksesi pitäisi saapua kolmen–viiden arkipäivän kuluessa, ja lähetän pian vahvistuksen sähköpostitse.",
+           "Ymmärrän turhautumisesi, katsotaan mitä voin tehdä asian korjaamiseksi.",
+           "Voinko auttaa sinua vielä jossain muussa tänään?",
+           "Alanumerosi on kuusi kuusi kolme viisi."],
+    "hu": ["Köszönöm a hívást, ebben tudok segíteni. Máris megnyitom a fiókja adatait.",
+           "A rendelésének három-öt munkanapon belül meg kell érkeznie, és hamarosan küldök egy visszaigazoló e-mailt.",
+           "Megértem a bosszúságát, hadd nézzem meg, mit tehetek, hogy rendbe hozzam.",
+           "Segíthetek még valamiben ma?",
+           "A mellékének száma hat hat három öt."],
+    "no": ["Takk for at du ringte, jeg kan hjelpe deg med det. Jeg henter opp kontoopplysningene dine med en gang.",
+           "Bestillingen din bør ankomme innen tre til fem virkedager, og jeg sender snart en bekreftelse på e-post.",
+           "Jeg forstår frustrasjonen din, la meg se hva jeg kan gjøre for å ordne opp i dette.",
+           "Er det noe annet jeg kan hjelpe deg med i dag?",
+           "Linjenummeret ditt er seks seks tre fem."],
+    "ro": ["Mulțumesc că ați sunat, vă pot ajuta cu asta. Deschid imediat detaliile contului dumneavoastră.",
+           "Comanda dumneavoastră ar trebui să ajungă în trei până la cinci zile lucrătoare și vă voi trimite în curând un e-mail de confirmare.",
+           "Înțeleg frustrarea dumneavoastră, să vedem ce pot face pentru a rezolva situația.",
+           "Mai pot să vă ajut cu ceva astăzi?",
+           "Interiorul dumneavoastră este șase șase trei cinci."],
+    "sk": ["Ďakujem za zavolanie, môžem vám s tým pomôcť. Hneď si otvorím údaje o vašom účte.",
+           "Vaša objednávka by mala doraziť do troch až piatich pracovných dní a čoskoro vám pošlem potvrdzovací e-mail.",
+           "Chápem vašu frustráciu, pozriem sa, čo môžem urobiť, aby som to napravil.",
+           "Môžem vám dnes pomôcť ešte s niečím?",
+           "Vaša klapka je šesť šesť tri päť."],
+    "uk": ["Дякую за дзвінок, я можу вам з цим допомогти. Зараз відкрию дані вашого облікового запису.",
+           "Ваше замовлення має прибути протягом трьох-п'яти робочих днів, і незабаром я надішлю електронного листа з підтвердженням.",
+           "Я розумію ваше розчарування, дозвольте подивитися, що я можу зробити, щоб це виправити.",
+           "Чи можу я вам ще чимось допомогти сьогодні?",
+           "Ваш додатковий номер шість шість три п'ять."],
+    "vi": ["Cảm ơn quý khách đã gọi, tôi có thể giúp quý khách việc này. Tôi sẽ mở thông tin tài khoản của quý khách ngay bây giờ.",
+           "Đơn hàng của quý khách sẽ đến trong vòng ba đến năm ngày làm việc, và tôi sẽ gửi email xác nhận trong thời gian ngắn.",
+           "Tôi hiểu sự khó chịu của quý khách, để tôi xem có thể làm gì để khắc phục.",
+           "Hôm nay tôi có thể giúp gì thêm cho quý khách không?",
+           "Số máy lẻ của quý khách là sáu sáu ba năm."],
 }
+
+# rhasspy/piper-checkpoints known-bug class: locales whose shipped espeak.voice legitimately differs from the
+# locale-prefix guess because espeak-ng has no code for the bare language (e.g. no_NO has no "no" voice, only
+# "nb"/"nn"). These are NOT the upstream mislabeling bug - do not auto-correct them - but the plain
+# locale-prefix comparison used below needs the right expected value or it will false-positive.
+EXPECTED_ESPEAK = {"no": "nb"}
 
 # ----------------------------------------------------------------------------- licences / attribution
 PD = "Public domain"
@@ -157,6 +214,22 @@ SPEC = [
     E("it-it-paola", "pv:it/it_IT/paola/medium/it_IT-paola-medium", "it_IT", "Italy", "F", "B", *cc0("paolapersico1/Voice-Dataset-Italian"), note=LESSAC_NOTE),
     E("de-de-thorsten", "vol:de-de-thorsten", "de_DE", "Germany", "M", "B", "CC0-1.0", "Thorsten-Voice (Thorsten Mueller), CC0; via rhasspy/piper-checkpoints.", note=LESSAC_NOTE + "; best-sounding German voice"),
     E("ru-ru-denis", "vol:ru-ru-denis", "ru_RU", "Russia", "M", "B", "CC0-1.0", "Denis dataset (OHF-Voice/voice-datasets), CC0; via rhasspy/piper-checkpoints.", note=LESSAC_NOTE + " (Russian is outside the current priority list)"),
+    # ---------------- mining batch 2026-09-21: new languages from rhasspy/piper-checkpoints ----------------
+    # tier A: scratch or clean-base (LibriTTS-R) lineage, clean data licence
+    E("el-gr-rapunzelina", "pv:el/el_GR/rapunzelina/medium/el_GR-rapunzelina-medium", "el_GR", "Greece", "F", "A", *cc0("Greek single-speaker speech dataset (bryanpark, Kaggle)"), note="scratch (card)"),
+    E("uk-ua-ukrainian_tts-lada", "pv:uk/uk_UA/ukrainian_tts/medium/uk_UA-ukrainian_tts-medium", "uk_UA", "Ukraine", "F", "A", *cc0("Ukrainian TTS dataset (OHF-Voice/voice-datasets)"), "lada", "scratch (card); multi-speaker model, speaker 'lada'"),
+    E("uk-ua-ukrainian_tts-mykyta", "pv:uk/uk_UA/ukrainian_tts/medium/uk_UA-ukrainian_tts-medium", "uk_UA", "Ukraine", "M", "A", *cc0("Ukrainian TTS dataset (OHF-Voice/voice-datasets)"), "mykyta", "scratch (card); multi-speaker model, speaker 'mykyta'"),
+    E("no-no-nvcc-f", "pv:no/no_NO/nvcc/medium/no_NO-nvcc-medium", "no_NO", "Norway", "F", "A", *cc0("NB Sprakbanken NVCC Norwegian multi-speaker dataset (nb.no/sprakbanken)"), "KNN", "Fine-tuned from LibriTTS-R base model (card): clean-base lineage per LICENSES.md tier-A rule. espeak has no bare 'no' code; uses 'nb' (Bokmal). Speaker 'KNN'"),
+    E("no-no-nvcc-m", "pv:no/no_NO/nvcc/medium/no_NO-nvcc-medium", "no_NO", "Norway", "M", "A", *cc0("NB Sprakbanken NVCC Norwegian multi-speaker dataset (nb.no/sprakbanken)"), "MMN", "Fine-tuned from LibriTTS-R base model (card): clean-base lineage per LICENSES.md tier-A rule. espeak has no bare 'no' code; uses 'nb' (Bokmal). Speaker 'MMN'"),
+    # tier B: clean data licence, Lessac lineage
+    E("cs-cz-jirka", "pv:cs/cs_CZ/jirka/medium/cs_CZ-jirka-medium", "cs_CZ", "Czechia", "M", "B", *cc0("Jirka dataset (OHF-Voice/voice-datasets)"), note=LESSAC_NOTE),
+    E("da-dk-talesyntese", "pv:da/da_DK/talesyntese/medium/da_DK-talesyntese-medium", "da_DK", "Denmark", "M", "B", *cc0("NB Sprakbanken Talesyntese Danish dataset (nb.no/sprakbanken)"), note=LESSAC_NOTE),
+    E("fi-fi-harri", "pv:fi/fi_FI/harri/medium/fi_FI-harri-medium", "fi_FI", "Finland", "M", "B", *cc0("Finnish single-speaker speech dataset (bryanpark, Kaggle)"), note=LESSAC_NOTE),
+    E("hu-hu-anna", "pv:hu/hu_HU/anna/medium/hu_HU-anna-medium", "hu_HU", "Hungary", "F", "B", *cc0("Anna dataset (OHF-Voice/voice-datasets)"), note=LESSAC_NOTE),
+    E("hu-hu-imre", "pv:hu/hu_HU/imre/medium/hu_HU-imre-medium", "hu_HU", "Hungary", "M", "B", *cc0("Imre dataset (OHF-Voice/voice-datasets)"), note=LESSAC_NOTE),
+    E("ro-ro-mihai", "pv:ro/ro_RO/mihai/medium/ro_RO-mihai-medium", "ro_RO", "Romania", "M", "B", *cc0("Mihai dataset (OHF-Voice/voice-datasets)"), note=LESSAC_NOTE),
+    E("sk-sk-lili", "pv:sk/sk_SK/lili/medium/sk_SK-lili-medium", "sk_SK", "Slovakia", "F", "B", *cc0("Lili dataset (OHF-Voice/voice-datasets)"), note=LESSAC_NOTE),
+    E("vi-vn-vais1000", "pv:vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium", "vi_VN", "Vietnam", "M", "B", "CC-BY-4.0", "VAIS-1000 Vietnamese Speech Synthesis Corpus (ieee-dataport.org), CC BY 4.0; via rhasspy/piper-checkpoints.", note=LESSAC_NOTE),
 ]
 # libritts_r speakers are appended by voices/libritts_picks.json (written after the survey)
 _p = os.path.join(HERE, "libritts_picks.json")
@@ -206,6 +279,7 @@ def _export_group(src, entries):
         if isinstance(spk, str):  # speaker given by name (sharvard "M"/"F")
             spk = smap[spk]
         lang = e["locale"].split("_")[0]
+        expected_espeak = EXPECTED_ESPEAK.get(lang, lang)
         d = f"/vol/{e['id']}"
         os.makedirs(d, exist_ok=True)
         shutil.copy(f"{work}/model.onnx", f"{d}/model.onnx")
@@ -217,10 +291,10 @@ def _export_group(src, entries):
         # per-voice override here (mirrors export_voices.py's _export_one fix) since this script copies
         # model.onnx.json independently rather than reading the already-fixed base from the volume.
         voice_espeak = espeak
-        if espeak != lang:
-            print(f"WARNING: {e['id']}: source config espeak.voice={espeak!r} != expected {lang!r} - "
-                  f"overriding to {lang!r}. Re-verify by ear/WER before trusting this for a NEW voice.")
-            voice_espeak = lang
+        if espeak != expected_espeak:
+            print(f"WARNING: {e['id']}: source config espeak.voice={espeak!r} != expected {expected_espeak!r} - "
+                  f"overriding to {expected_espeak!r}. Re-verify by ear/WER before trusting this for a NEW voice.")
+            voice_espeak = expected_espeak
         cfg_out = json.load(open(f"{work}/model.onnx.json"))
         cfg_out["espeak"]["voice"] = voice_espeak
         json.dump(cfg_out, open(f"{d}/model.onnx.json", "w"))
