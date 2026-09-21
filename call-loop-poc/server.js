@@ -520,6 +520,12 @@ const shopperSpeakFirst = new Set();
 const shopperLanguages = new Map(); // place-test-call {language}: language the shopper speaks (STT + voice + prompt)
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
+// Batch Call personalization (calldesktech's Batch Call feature): per-call dynamic
+// variables for one outbound call, keyed by CallSid, set via /place-test-call's
+// `variables` body field and merged into the resolved flow's globalSettings.variables
+// for that call only — same substitution mechanism (_applyVariables), just overridden
+// per-recipient instead of per-agent.
+const outboundVariables = new Map();
 const SHOPPER_PERSONA_RULES =
   ' You are NOT an AI — you are a real person on a phone call. Wait for the business to speak first and answer only what is asked, one thing at a time, in whatever order they ask; do not volunteer details early. ' +
   'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
@@ -825,6 +831,17 @@ app.post('/twilio/voice', async (req, res) => {
         // /test-tts-override, and only for this one call.
         const override = testTtsOverrides.get(toNumber);
         const ttsOverride = override && override.expiresAt > Date.now() ? override : null;
+        // Batch Call per-recipient personalization (see outboundVariables above) —
+        // one-shot, consumed here so a later call to the same number doesn't reuse it.
+        const perCallVariables = callSid ? outboundVariables.get(callSid) : null;
+        if (perCallVariables) outboundVariables.delete(callSid);
+        resolved.flow = {
+          ...resolved.flow,
+          globalSettings: {
+            ...resolved.flow.globalSettings,
+            variables: { ...(resolved.flow.globalSettings?.variables || {}), ...(perCallVariables || {}) },
+          },
+        };
         pendingCallContext.set(callSid, {
           ...resolved,
           ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
@@ -1038,7 +1055,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables } = req.body || {};
   const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
@@ -1136,6 +1153,10 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
     if (shopper && typeof shopperLanguage === 'string') shopperLanguages.set(callBody.sid, shopperLanguage);
+    if (!shopper && callVariables && typeof callVariables === 'object') {
+      outboundVariables.set(callBody.sid, callVariables);
+      setTimeout(() => outboundVariables.delete(callBody.sid), 120_000).unref?.();
+    }
     if (shopper) {
       findTenantIdByNumber(toNumber)
         .then((tenantId) => {
