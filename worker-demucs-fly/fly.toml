@@ -1,0 +1,39 @@
+# NOT deployed (do not `fly deploy` this). Dev/staging app name, deliberately not one of the
+# production apps (piper-tts-sjc, realtime-tts-gateway, realtime-stt-worker). AUTH_TOKEN and
+# SESSION_SECRET must be provisioned as Fly secrets (`fly secrets set`), never plaintext env here -
+# SESSION_SECRET in particular MUST match the gateway's MODAL_SESSION_SECRET, since the gateway
+# signs the session tokens this worker verifies (see gateway/server.js /audio/authorize and
+# worker-demucs-fly/server.py verify_session_claims).
+app = "demucs-isolation-dev"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8080"
+  MAX_CONNECTIONS = "2"
+  MAX_UPLOAD_BYTES = "26214400"
+  MAX_DURATION_S = "120"
+  MODEL_NAME = "htdemucs"
+  USAGE_REPORT_URL = "https://api.readaloudai.org/admin/usage/report"
+
+# Demucs on CPU is much heavier per-request than Piper TTS (a few seconds of compute per
+# 10s of audio on a modern core - see README.md "Performance"), so this keeps a low
+# concurrency ceiling and a bigger machine than worker-piper-fly's default.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 2
+    hard_limit = 3
+
+[[vm]]
+  # performance-2x/4GB - bigger than worker-piper-fly's shared-cpu-4x/2GB (see its fly.toml):
+  # Demucs is CPU/memory-heavier per-request than Piper TTS, so this trades cost for headroom.
+  # Not benchmarked under load - see README.md "What's left".
+  size = "performance-2x"
+  memory = "4gb"

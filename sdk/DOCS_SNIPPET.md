@@ -42,3 +42,23 @@ const wav = pcmToWav(await client.convert('Hello there.'), 24000);
 Errors: `AuthError` (401), `QuotaError` (402), `CapacityError` (503 / at capacity, has retry-after),
 `VoiceError` (unknown voice). Source: https://github.com/tsushanth/realtime-tts/tree/main/sdk.
 Using an AI assistant instead? See the MCP server: https://readaloudai.org/developers/mcp
+
+### Audio isolation (beta, `worker-demucs-fly`)
+
+Given a noisy/mixed clip, isolates the speech track (Demucs `htdemucs`, +9.4dB SNR improvement
+measured on a synthetic 0dB-SNR test clip — see `worker-demucs-fly/README.md`). Not yet wrapped
+by the official SDKs above — authorize, then call the worker directly, same two-step shape as
+the TTS/STT engines:
+
+```
+curl -s -X POST https://api.readaloudai.org/audio/authorize \
+  -H "Content-Type: application/json" -d '{"key":"YOUR_API_KEY"}'
+# => {"token":"...","url":"https://<demucs-worker>.fly.dev"}
+
+curl -s -X POST https://<demucs-worker>.fly.dev/v1/isolate \
+  -H "Authorization: Bearer <token>" -F "file=@noisy.wav" -F "stem=vocals" -o isolated.wav
+```
+
+`stem` defaults to `vocals` (the speech track); `drums`/`bass`/`other` are also available (htdemucs'
+other separated sources). Clip limits: 25MB / 120s by default. **Undeployed as of this writing** —
+`worker-demucs-fly/fly.toml` is configured (app `demucs-isolation-dev`) but not yet pushed to Fly.
