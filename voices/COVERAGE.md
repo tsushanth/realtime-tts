@@ -47,3 +47,17 @@ no en-au, en-nz, en-ca, en-in, en-sg: those accents can only come from audio, no
 
 Accent of CML es speakers; audio quality (never listened); CSS10 rate and Kaggle licence; IndicTTS licence; IndicVoices-R Hindi
 hours; Arabic Speech Corpus hours/rate; Dutch per-speaker CML hours; Egyptian/Gulf/Panama/US-Hispanic/fr-CA/Indonesian TTS corpora.
+
+## Spanish pilot result (voices/es_pilot/, catalog ids es-pilot-f / es-pilot-m)
+
+- Recipe: piper1-gpl `--model.warmstart_ckpt` from the scratch-trained LibriTTS-R English base (`piper-checkpoints/en/en_US/libritts_r/medium/best.ckpt`,
+  CC BY 4.0), `--data.espeak_voice es`, 2 speakers. Warm-start across languages works because piper1-gpl uses one fixed 256-slot
+  phoneme-id table (universal espeak IPA inventory; the espeak voice only changes phonemization): 803 parameters copied, 55 skipped
+  (speaker embedding 904 -> 2 and the new discriminator modules).
+- Data: CML-TTS es (CC BY 4.0) speaker 10246 (F) and 3946 (M), 12 h each after filtering (wav2vec agreement >= 0.93, 9-17 s clips),
+  resampled 24 -> 22.05 kHz. Extraction of the two speakers from the 70 GB parquet set: 203 CPU tasks, ~10 minutes, negligible cost.
+- Training: A10G, batch 32, ~1 it/s; audible/intelligible Spanish by ~4k steps (Whisper-small WER 0.28), stopped at 15.4k steps
+  (WER 0.21 over 5 short call-centre sentences; digits transcribed as numerals inflate WER; short 3-6 word sentences are the weak spot because
+  training clips are 9-17 s). Wall time ~4 h, ~$5 of A10G in total including smoke tests. Full 25k-step target would add ~2.5 h (~$3).
+- Not verified: naturalness by ear, and whether the readers are Castilian or Latin American (nothing labels it). Whisper is only an
+  intelligibility proxy. Samples: voices/samples/es-pilot-{f,m}/, voices/listen_es.wav.

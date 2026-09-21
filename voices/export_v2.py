@@ -78,6 +78,8 @@ MLS_ATTR = ("Multilingual LibriSpeech (Pratap et al., openslr.org/94), CC BY 4.0
 LIBRIVOX = "Voice trained on LibriVox recordings (public domain) by Bryce Beattie, via rhasspy/piper-voices."
 VCTK_ATTR = ("CSTR VCTK Corpus 0.92 (Yamagishi, Veaux, MacDonald; University of Edinburgh, doi:10.7488/ds/2645), CC BY 4.0. "
              "Piper voice via rhasspy/piper-voices.")
+ES_ATTR = ("CML-TTS Spanish (Oliveira et al. 2023, openslr.org/146, derived from Multilingual LibriSpeech / LibriVox), CC BY 4.0; base model LibriTTS-R "
+           "(openslr.org/141, CC BY 4.0) via rhasspy/piper-checkpoints; finetuned by realtime-tts.")
 LESSAC_NOTE = "weights finetuned from Piper's Lessac base (Blizzard 2013 research-only licence): owner risk decision"
 
 
@@ -115,6 +117,8 @@ SPEC = [
     E("nl-nl-alex", "pv:nl/nl_NL/alex/medium/nl_NL-alex-medium", "nl_NL", "Netherlands", "M", "A", *cc0("OHF-Voice/voice-datasets nl_NL alex"), note="finetuned from nl_BE rdh (scratch, CC0) per card only; unverified beyond card"),
     E("it-it-serena", "vol:it-it-serena", "it_IT", "Italy", "F", "A", "CC-BY-4.0", "Trained on committa/serena-synthetic-it-27h (CC BY 4.0, synthetic data from Qwen3-TTS voice cloning; Tatoeba sentences CC BY 2.0 FR) via rhasspy/piper-checkpoints.", note="scratch, SYNTHETIC training data: reference-clip provenance unknown"),
     E("es-es-carlfm-xlow", "pv:es/es_ES/carlfm/x_low/es_ES-carlfm-x_low", "es_ES", "Spain", "M", "A", PD, "carlfm01/my-speech-datasets (public domain per repo README; audio origin not stated), via rhasspy/piper-voices.", note="WEAK: x_low 16 kHz, uploader-asserted public-domain, audio source unstated", quality="x_low"),
+    E("es-pilot-f", "vol:_work/es_pilot", "es_ES", "Spanish (accent unlabelled; CML-TTS reader 10246, LibriVox)", "F", "A", "CC-BY-4.0", ES_ATTR, 0, "PILOT, 15.4k steps. 2-speaker finetune from the scratch-trained LibriTTS-R base on CML-TTS speakers 10246 (12 h). Accent (Spain vs Latin America) unverified: audition"),
+    E("es-pilot-m", "vol:_work/es_pilot", "es_ES", "Spanish (accent unlabelled; CML-TTS reader 3946, LibriVox)", "M", "A", "CC-BY-4.0", ES_ATTR, 1, "PILOT, 15.4k steps. Same model, CML-TTS speaker 3946 (12 h). Accent unverified: audition"),
     # ---------------- tier B: clean data licence, Lessac lineage (or unknown base) ----------------
     E("en-us-joe", "vol:en-us-joe", "en_US", "US", "M", "B", "CC0-1.0", "Joe dataset (OHF-Voice/voice-datasets), CC0; via rhasspy/piper-checkpoints.", note=LESSAC_NOTE),
     E("en-us-mike", "vol:en-us-mike", "en_US", "US", "M", "B", "CC0-1.0", "Mike dataset (OHF-Voice/voice-datasets), CC0; via rhasspy/piper-checkpoints.", note=LESSAC_NOTE + "; CC0 claim from card only"),

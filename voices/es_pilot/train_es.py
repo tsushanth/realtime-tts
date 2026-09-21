@@ -167,6 +167,7 @@ def sample(name: str = "es2spk", tag: str = ""):
         for i, text in enumerate(TEXTS):
             pcm = np.concatenate([c.audio_int16_array for c in v.synthesize(text, SynthesisConfig(speaker_id=sid))])
             sf.write(f"{d}/{t}_{i+1}.wav", pcm, v.config.sample_rate, "PCM_16")
+    shutil.copy(f"{work}/model.onnx", f"{out}/model_{step}.onnx"); shutil.copy(f"{work}/model.onnx.json", f"{out}/model_{step}.onnx.json")
     vol.commit()
     return {"step": int(step), "dir": d}
 
