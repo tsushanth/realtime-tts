@@ -18,6 +18,7 @@ import http from "node:http";
 import { URL } from "node:url";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
 import * as keys from "./keys.js";
+import { handleVoiceApi } from "./voiceApiProxy.js";
 
 const PORT = process.env.PORT || 8080;
 const WORKER_URL = process.env.WORKER_WS_URL || "ws://127.0.0.1:8765";
@@ -135,6 +136,13 @@ const server = http.createServer(async (req, res) => {
   // latency). Only does the cheap checks (valid key, not revoked, free-tier
   // flag / billing enabled) — actual usage is metered by Modal reporting back
   // to /admin/usage/report after synthesis, not by this endpoint.
+  // Customer voice cloning via API key (no browser/Supabase login) - validated here the same way
+  // /tts/authorize validates a key, then forwarded to the ReadAloudAI backend's voice-studio logic.
+  // See voiceApiProxy.js and ../VOICE_API_DRAFT.md.
+  if (url.pathname.startsWith("/v1/voices")) {
+    if (await handleVoiceApi(req, res, url)) return;
+  }
+
   if (url.pathname === "/tts/authorize" && req.method === "POST") {
     const body = await readBody(req);
     const { key, engine } = body ? JSON.parse(body) : {};
