@@ -75,6 +75,20 @@ def to_pcm16(samples) -> bytes:
     return (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
 
 
+def trim_silence(samples, from_end=False, thr=0.01, keep_ms=10, sr=24000):
+    """Drops leading (or, with from_end, trailing) near-silence, keeping a small pad. Used only at
+    the artificial word-boundary split point (see chunk_text_meta) to close the gap that trimming
+    nothing leaves between the shortened first half and the chunk that continues it."""
+    import numpy as np
+
+    a = samples.detach().cpu().numpy() if hasattr(samples, "detach") else np.asarray(samples)
+    idx = np.where(np.abs(a) > thr)[0]
+    if len(idx) == 0:
+        return a
+    keep = int(sr * keep_ms / 1000)
+    return a[: idx[-1] + 1 + keep] if from_end else a[max(0, idx[0] - keep):]
+
+
 # Same clause/comma chunking as worker/synth.py's chunk_text, kept in sync
 # deliberately — this worker exists to serve the same latency profile the
 # RunPod Pod path was measured at, not a from-scratch redesign.
@@ -85,9 +99,25 @@ _SUBSPLIT_RE = re.compile(r"(?<=[,])\s+")
 
 
 def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
+    return chunk_text_meta(text, max_chars, first_chunk_max_chars)[0]
+
+
+def chunk_text_meta(text, max_chars=90, first_chunk_max_chars=35):
+    """Same chunking as before, plus the index of an artificial mid-sentence split (if any) so
+    the caller can smooth just that one seam. See chunk_text's original docstring: cutting a long
+    first chunk at a word boundary cuts first-audio latency, but a listening test (see git history: listen_seam_fix.py / kokoro_seam_compare.wav, removed after
+    landing this fix) found the plain cut sounds
+    like two finished sentences stitched together — the first half's prosody drops to a full stop.
+    Fix, applied ONLY at this artificial boundary (a real sentence/clause boundary keeps its
+    natural pause): end the first half with an ellipsis so Kokoro trails off instead of stopping,
+    and have the caller trim the trailing/leading silence at the cut so there is no extra gap.
+    Returns (chunks, split_index) — split_index is the index of the half that was cut short (its
+    audio should have trailing silence trimmed and its ellipsis is only for prosody, not read
+    aloud), or None if no split happened.
+    """
     text = text.strip()
     if not text:
-        return []
+        return [], None
     parts = [p.strip() for p in _SPLIT_RE.split(text) if p.strip()]
     if not parts:
         parts = [text]
@@ -102,10 +132,12 @@ def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
     if buf:
         chunks.append(buf)
 
+    had_comma_split = False
     if chunks and len(chunks[0]) > first_chunk_max_chars:
         sub_parts = [p.strip() for p in _SUBSPLIT_RE.split(chunks[0]) if p.strip()]
         if len(sub_parts) > 1:
             chunks = [sub_parts[0], " ".join(sub_parts[1:])] + chunks[1:]
+            had_comma_split = True
 
     # No comma to split on (most short sentences) -> the first chunk was the whole
     # sentence, i.e. a 100-300 KB first PCM frame. Measured: on a fresh TCP/WebSocket
@@ -113,12 +145,24 @@ def chunk_text(text, max_chars=90, first_chunk_max_chars=35):
     # before the client sees "first audio". Cut at the last word boundary within
     # first_chunk_max_chars so the first frame stays small; the rest follows as chunk 2
     # (generated in ~100 ms, far less than the first chunk's playback time).
-    if chunks and len(chunks[0]) > first_chunk_max_chars:
+    #
+    # BUT: a listening test (see git history, same commit range as above) found that cutting a
+    # short sentence that has NO comma anywhere sounds like two unrelated sentences stitched
+    # together — there is no nearby natural pause for the ellipsis-and-trim smoothing (below) to
+    # blend into, and the latency saved on an already-short sentence is small. When the comma
+    # subsplit above fired, the cut lands right before a real pause and reads fine even when
+    # short, so only the pure-word-boundary case (no comma in the sentence at all) needs the
+    # higher bar.
+    split_index = None
+    word_split_min_chars = first_chunk_max_chars if had_comma_split else 55
+    if chunks and len(chunks[0]) > word_split_min_chars:
         head = chunks[0][: first_chunk_max_chars + 1]
         cut = head.rfind(" ")
         if cut >= 12 and len(chunks[0]) - cut > 10:  # no tiny first chunk / dangling one-word tail
-            chunks = [chunks[0][:cut].strip(), chunks[0][cut:].strip()] + chunks[1:]
-    return chunks
+            first_half = chunks[0][:cut].strip()
+            chunks = [first_half + "...", chunks[0][cut:].strip()] + chunks[1:]
+            split_index = 0
+    return chunks, split_index
 
 
 @app.function(
@@ -266,12 +310,20 @@ def web():
                 frame_bytes = (max(20, min(frame_ms, 1000)) * 24 * 2) & ~1 if frame_ms else 0
 
                 try:
-                    for clause in chunk_text(text):
+                    clauses, split_index = chunk_text_meta(text)
+                    for idx, clause in enumerate(clauses):
                         if cancel:
                             await ws.send_json({"type": "cancelled"})
                             break
                         t0 = time.perf_counter()
                         audio = await loop.run_in_executor(gpu_pool, synth_clause, clause, voice, speed)
+                        # See chunk_text_meta: only the artificial split seam gets its silence
+                        # trimmed — trimming a real sentence/clause boundary would remove a pause
+                        # the listener expects.
+                        if split_index is not None and idx == split_index:
+                            audio = trim_silence(audio, from_end=True)
+                        elif split_index is not None and idx == split_index + 1:
+                            audio = trim_silence(audio, from_end=False)
                         gen_ms = (time.perf_counter() - t0) * 1000
                         audio_s = len(audio) / 24000
                         await ws.send_json({
