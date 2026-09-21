@@ -1,0 +1,3 @@
+    0.0s  tier B  pl-pl-darkman  (pl_PL, Poland, M)
+    6.5s  tier B  pl-pl-gosia  (pl_PL, Poland, F)
+   13.1s  tier B  pl-pl-mc_speech  (pl_PL, Poland, M)

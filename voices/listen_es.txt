@@ -1,0 +1,5 @@
+    0.0s  tier A  es-es-carlfm-xlow  (es_ES, Spain, M)
+    6.5s  tier B  es-es-davefx  (es_ES, Spain, M)
+   12.9s  tier B  es-es-sharvard-f  (es_ES, Spain, F, spk 1)
+   19.7s  tier B  es-es-sharvard-m  (es_ES, Spain, M, spk 0)
+   26.6s  tier B  es-mx-ald  (es_MX, Mexico, F)
