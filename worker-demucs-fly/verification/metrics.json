@@ -1,0 +1,12 @@
+{
+  "input_clip": "noisy_mix.wav",
+  "output_clip": "isolated.wav",
+  "target_mix_snr_db": 0.0,
+  "measured_input_snr_db": 1.6,
+  "estimated_output_snr_db": 10.99,
+  "snr_improvement_db": 9.39,
+  "non_speech_band_energy_fraction_before": 0.1309,
+  "non_speech_band_energy_fraction_after": 0.0238,
+  "non_speech_band_energy_reduction_pct": 81.8,
+  "note": "SNR is an ESTIMATE (cross-correlation-aligned, best-fit-scaled residual against the known clean speech reference used to build the mix), not a ground-truth measurement of the model's actual denoising quality on arbitrary audio."
+}

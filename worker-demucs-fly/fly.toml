@@ -1,0 +1,32 @@
+# NOT deployed. Placeholder app name - deliberately not one of the production apps
+# (piper-tts-sjc, realtime-tts-gateway, realtime-stt-worker). Rename before any real deploy
+# and provision AUTH_TOKEN / SESSION_SECRET as Fly secrets, not plaintext env here.
+app = "demucs-isolation-sjc-DRAFT"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8080"
+  MAX_CONNECTIONS = "2"
+  MAX_UPLOAD_BYTES = "26214400"
+  MAX_DURATION_S = "120"
+  MODEL_NAME = "htdemucs"
+
+# Demucs on CPU is much heavier per-request than Piper TTS (a few seconds of compute per
+# 10s of audio on a modern core - see README.md "Performance"), so this keeps a low
+# concurrency ceiling and a bigger machine than worker-piper-fly's default.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 2
+    hard_limit = 3
+
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
