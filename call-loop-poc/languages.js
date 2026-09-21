@@ -154,6 +154,55 @@ export function resolveLanguage(code) {
   return { code: key, ...LANGS[key], tts: { backend: 'elevenlabs', elevenVoiceId: EL_VOICE } };
 }
 
+// --- Mid-call language switching (additive only; nothing above this point is touched) ---
+//
+// Deepgram research (2026-09-21, docs.deepgram.com): Flux (our 8-language STT path above) has no
+// `language=multi`/auto-detect mode as of this writing — `language` is a fixed hint per connection,
+// same as Nova-3. Nova-3's own multi-language auto-detect (`language=multi`) only covers a fixed
+// English+Spanish(+9 more) code-switching set and does not report which language a given
+// utterance was in via a clean per-turn field usable here. So there is no supported way to keep one
+// STT socket open and have Deepgram itself tell us the caller switched languages — the only real
+// mechanism is what the engine already does for Transcription Mode and per-agent language: close
+// the socket and reopen it with a new hint. That's what _maybeSwitchLanguage in server.js does.
+//
+// Trigger: a small set of near-unambiguous function words/diacritics per language, checked against
+// the caller's own transcript text (not the LLM's reply — the LLM can echo a language back without
+// the caller actually having switched, and we don't want a false trigger off that). Deliberately
+// conservative: requires an actual marker hit, not just "not English", so ordinary short replies
+// ("yes", "okay", "sure") never trigger a switch.
+const DETECT_MARKERS = {
+  en: [/\b(the|is|are|and|you|please|thanks|yes|okay)\b/i],
+  es: [/\b(el|la|los|las|est[aá]|por favor|gracias|s[ií]|hola|qu[eé]|c[oó]mo|quiero|necesito)\b/i, /[ñáéíóúü¿¡]/],
+  fr: [/\b(le|la|les|est|s'il vous pla[iî]t|merci|oui|bonjour|c'est|je voudrais)\b/i, /[çàâêëîïôùûœ]/],
+  'pt-BR': [/\b(o|a|os|as|[eé]|por favor|obrigad[oa]|sim|ol[aá]|n[aã]o)\b/i, /[ãõç]/],
+  it: [/\b(il|lo|la|gli|[eè]|per favore|grazie|s[ií]|ciao|buongiorno)\b/i],
+  nl: [/\b(de|het|een|is|alstublieft|dank je|ja|hallo|goedendag)\b/i],
+  de: [/\b(der|die|das|ist|bitte|danke|ja|hallo|guten tag)\b/i, /[äöüß]/],
+  hi: [/[ऀ-ॿ]/],
+  pl: [/\b(tak|dzie[nń] dobry|prosz[eę]|dzi[eę]kuj[eę])\b/i, /[ąćęłńóśźż]/i],
+  id: [/\b(saya|anda|tidak|terima kasih|selamat)\b/i],
+  ar: [/[؀-ۿ]/],
+};
+
+// Guesses which of `allowedCodes` the caller's transcript `text` is in. Returns a code from
+// `allowedCodes` (which may include 'en') or null when no marker fires — null means "stay on the
+// current language", never "switch to something". Not ASR-grade; only used when a flow explicitly
+// opts in via globalSettings.allowLanguageSwitching.
+export function detectSpokenLanguage(text, allowedCodes) {
+  if (typeof text !== 'string' || !Array.isArray(allowedCodes) || allowedCodes.length === 0) return null;
+  const t = text.trim();
+  if (t.length < 4) return null; // too short to guess reliably
+  let best = null;
+  let bestHits = 0;
+  for (const code of allowedCodes) {
+    const markers = DETECT_MARKERS[code];
+    if (!markers) continue;
+    const hits = markers.reduce((n, re) => n + (re.test(t) ? 1 : 0), 0);
+    if (hits > bestHits) { best = code; bestHits = hits; }
+  }
+  return bestHits > 0 ? best : null;
+}
+
 // Appended to the system prompt for every turn of a non-English agent.
 export function languageInstruction(lang) {
   return (

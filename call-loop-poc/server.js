@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
-import { resolveLanguage, languageInstruction } from './languages.js';
+import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
@@ -514,6 +514,52 @@ const SHOPPER_SYSTEM_PROMPT =
 // What is actually said aloud: the model's silence marker and *action* notes are dropped.
 const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*([^*\n]{1,80})\*/g, (_m, inner) => (inner.trim().split(/\s+/).length >= 3 ? '' : inner)).replace(/\s{2,}/g, ' ').trim();
 const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
+
+// Expressive/emotion-aware delivery (opt-in, globalSettings.expressiveDelivery
+// — see CallSession.expressiveDelivery). Same precedent as the stage-direction
+// stripping above: the LLM is asked (see EXPRESSIVE_DELIVERY_INSTRUCTION,
+// appended to systemPrompt only when the flag is on) to prefix each response
+// with a small bracketed tone tag, e.g. "[tone:apologetic] Sorry about that —
+// let's get it fixed.". extractToneTag pulls the tag off the front of a
+// sentence and returns the tag (or null if absent/unrecognized) plus the
+// text with the tag removed, so the tag is NEVER spoken — only the backend
+// TTS parameter maps below see it.
+const EXPRESSIVE_TONES = ['empathetic', 'apologetic', 'upbeat', 'calm', 'urgent', 'neutral'];
+const TONE_TAG_RE = /^\s*\[\s*tone\s*:\s*([a-z_-]+)\s*\]\s*/i;
+const extractToneTag = (t) => {
+  const m = TONE_TAG_RE.exec(t);
+  if (!m) return { tone: null, text: t };
+  const tone = m[1].toLowerCase();
+  const text = t.slice(m[0].length);
+  return { tone: EXPRESSIVE_TONES.includes(tone) ? tone : null, text };
+};
+// Real, current, documented per-backend expressiveness controls only — see
+// the research notes near _speakElevenLabs/_speakCartesia/_speakMinimax for
+// citations. No entry for kokoro: its gateway (realtime-tts/gateway) only
+// forwards {text, voice, speed} to the model, nothing emotion-shaped — a
+// real, honest limitation, not something faked here.
+//
+// ElevenLabs: voice_settings.style (0-1, "style exaggeration") is the only
+// real emotional-intensity knob the API exposes — there is no discrete
+// per-emotion enum, so tones map to a style value (higher = more
+// exaggerated/expressive, lower = flatter/more stable-sounding).
+const TONE_TO_ELEVEN_STYLE = { empathetic: 0.15, apologetic: 0.1, upbeat: 0.55, calm: 0.1, urgent: 0.45, neutral: 0 };
+// Cartesia: generation_config.emotion is a single enum string (current API,
+// docs.cartesia.ai/api-reference/tts/bytes) — the older array form
+// (e.g. ["positivity:high","curiosity"]) is not what the current schema
+// takes; this maps our tones to real enum values from that field.
+const TONE_TO_CARTESIA_EMOTION = { empathetic: 'calm', apologetic: 'sad', upbeat: 'content', calm: 'calm', urgent: 'scared', neutral: 'neutral' };
+// MiniMax: voice_setting.emotion is a real documented enum (platform.minimax.io
+// docs/api-reference/speech-t2a-http) — happy/sad/angry/fearful/disgusted/
+// surprised/calm/fluent/whisper.
+const TONE_TO_MINIMAX_EMOTION = { empathetic: 'calm', apologetic: 'sad', upbeat: 'happy', calm: 'calm', urgent: 'fearful', neutral: 'calm' };
+const EXPRESSIVE_DELIVERY_INSTRUCTION =
+  '\n\nExpressive delivery: at the very start of EVERY response, before anything else, prefix it with a ' +
+  `bracketed tone tag reflecting the emotional register you intend for that response, one of: ${EXPRESSIVE_TONES.join(', ')}. ` +
+  'Format exactly as "[tone:X] " (e.g. "[tone:apologetic] Sorry about that, let\'s get it sorted out."). ' +
+  'Pick whichever tone best fits what you are actually saying (apologetic for a mistake/delay, upbeat for good news, ' +
+  'empathetic when the caller is frustrated or upset, urgent for something time-sensitive, calm for routine information, ' +
+  'neutral otherwise). This tag is never read aloud — it only controls delivery.';
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
 const shopperSpeakFirst = new Set();
@@ -1460,6 +1506,27 @@ class CallSession {
     this.backchannelFrequency = BACKCHANNEL_FREQUENCY_DEFAULT;
     this.backchannelDelayMs = BACKCHANNEL_DELAY_MS_DEFAULT;
     this.backchannelWords = BACKCHANNEL_WORDS_DEFAULT;
+    // Mid-call language switching (opt-in, globalSettings.allowLanguageSwitching +
+    // switchableLanguages — see _maybeSwitchLanguage). Off by default: when unset, nothing below
+    // this point ever runs and the call is byte-for-byte identical to before this feature existed.
+    this.allowLanguageSwitching = false;
+    this.switchableLanguages = [];
+    // Snapshot of the pre-language TTS/backchannel config, taken once here before any
+    // _applyLanguage() call can mutate it, so switching back to English mid-call can restore it
+    // exactly (mirrors the stash/resume pattern used for call transfer/resume above).
+    this._preLangState = {
+      ttsBackend: this.ttsBackend,
+      elevenVoiceId: this.elevenVoiceId,
+      ttsModel: this.ttsModel,
+      backchannelWords: this.backchannelWords,
+    };
+    // Expressive/emotion-aware delivery — opt-in via globalSettings.expressiveDelivery
+    // (see the `bcs` block in onClientMessage's flow-set handler). Off by
+    // default so existing agents' TTS requests are byte-for-byte unchanged.
+    // See EXPRESSIVE_TONE_MAP for what this does per backend — real support
+    // only for elevenlabs/cartesia/minimax; kokoro has no expressiveness
+    // control to wire up (see _speak's kokoro branch — untouched, no-op).
+    this.expressiveDelivery = false;
     // Conversation flow (optional) — a real node-based state machine, set via
     // the {"type":"context"} message's `flow` field. When absent, the session
     // behaves exactly as before (this.systemPrompt used verbatim every turn).
@@ -1681,6 +1748,38 @@ class CallSession {
     prewarmLangFillers(lang, this.elevenVoiceId);
   }
 
+  // Mid-call language switching (opt-in — see this.allowLanguageSwitching). Called on every user
+  // turn's final transcript, BEFORE it's handed to the LLM, so a switch this turn is already in
+  // effect for that same turn's reply-language instruction (languageInstruction()) and TTS voice.
+  //
+  // Mechanism: reconnect Deepgram STT with a new language hint for subsequent turns, same as the
+  // existing per-agent-language and Transcription-Mode reconnects above — there is no supported
+  // Deepgram mode (Flux or Nova-3) that reports a detected language per utterance on one open
+  // socket (see the note above detectSpokenLanguage in languages.js), so close+reopen is the only
+  // real mechanism. The LLM conversation history (this.history) is untouched — this is not a call
+  // restart, just a swap of STT config / this.lang / TTS voice for what comes next.
+  _maybeSwitchLanguage(text) {
+    if (!this.allowLanguageSwitching || !this.switchableLanguages.length) return;
+    const currentCode = this.lang?.code || 'en';
+    const detected = detectSpokenLanguage(text, this.switchableLanguages);
+    if (!detected || detected === currentCode) return;
+    if (detected === 'en') {
+      console.log(`[call-loop] language switch (mid-call): ${currentCode} -> en`);
+      this.lang = null;
+      this.ttsBackend = this._preLangState.ttsBackend;
+      this.elevenVoiceId = this._preLangState.elevenVoiceId;
+      this.ttsModel = this._preLangState.ttsModel;
+      this.backchannelWords = this._preLangState.backchannelWords;
+      if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
+      return;
+    }
+    const lang = resolveLanguage(detected);
+    if (!lang) return; // detected code isn't in languages.js — stay put rather than guess
+    console.log(`[call-loop] language switch (mid-call): ${currentCode} -> ${lang.code}`);
+    this._applyLanguage(lang);
+    if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
+  }
+
   // Nova-3 (v1) events -> the same three internal signals the Flux handler produces: voice onset
   // (pending barge-in), interim transcript (Update), and a finished turn (_scheduleUserTurn).
   // A turn ends on Deepgram's speech_final (endpointing silence) or, as a backstop, UtteranceEnd.
@@ -1811,6 +1910,14 @@ class CallSession {
         if (typeof bcs.backchannelEnabled === 'boolean') this.backchannelEnabled = bcs.backchannelEnabled;
         if (typeof bcs.backchannelFrequency === 'number' && bcs.backchannelFrequency >= 0 && bcs.backchannelFrequency <= 1) this.backchannelFrequency = bcs.backchannelFrequency;
         if (typeof bcs.backchannelDelayMs === 'number' && bcs.backchannelDelayMs > 0) this.backchannelDelayMs = bcs.backchannelDelayMs;
+        if (typeof bcs.expressiveDelivery === 'boolean') this.expressiveDelivery = bcs.expressiveDelivery;
+        // Mid-call language switching — strictly opt-in (see _maybeSwitchLanguage). Unset/false
+        // leaves allowLanguageSwitching false and switchableLanguages empty, i.e. zero behavior
+        // change from before this feature existed.
+        if (bcs.allowLanguageSwitching === true && Array.isArray(bcs.switchableLanguages) && bcs.switchableLanguages.length > 0) {
+          this.allowLanguageSwitching = true;
+          this.switchableLanguages = bcs.switchableLanguages.filter((c) => typeof c === 'string' && c.trim()).map((c) => c.trim());
+        }
         console.log(`[call-loop] flow set — ${this.flow.nodes.length} nodes, starting at "${this.currentNodeId}"`);
         this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
         // Transcription Mode reconnect — this arrives essentially
@@ -1923,6 +2030,7 @@ class CallSession {
   // before the timer fires cancels the pending one and reschedules with
   // the newer (more complete) text, rather than both firing.
   _scheduleUserTurn(text) {
+    this._maybeSwitchLanguage(text);
     if (this._reminderTimer) { clearTimeout(this._reminderTimer); this._reminderTimer = null; }
     if (this._pendingResponseTimer) {
       clearTimeout(this._pendingResponseTimer);
@@ -2285,7 +2393,7 @@ class CallSession {
       return;
     }
 
-    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '');
+    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '') + (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -2407,17 +2515,29 @@ class CallSession {
 
     let firstTokenAt = null;
     let assistantText = '';
+    // Expressive delivery: the tone tag only ever appears on the turn's
+    // first sentence (see EXPRESSIVE_DELIVERY_INSTRUCTION — "at the very
+    // start of EVERY response"), but the intended tone applies to the whole
+    // response, so it's captured once here and reused for every later
+    // sentence in this same turn.
+    let turnTone = null;
     const chunker = new SentenceChunker((sentence) => {
       if (this.activeTurn !== turnId) {
         console.log(`[call-loop] turn ${turnId} sentence chunk dropped — activeTurn is now ${this.activeTurn}: "${sentence}"`);
         return;
       }
-      const said = speakableText(sentence);
-      if (isStageDirection(sentence) || !/[a-z0-9]/i.test(said)) {
+      let toSpeak = sentence;
+      if (this.expressiveDelivery) {
+        const { tone, text } = extractToneTag(toSpeak);
+        if (tone) turnTone = tone;
+        toSpeak = text;
+      }
+      const said = speakableText(toSpeak);
+      if (isStageDirection(toSpeak) || !/[a-z0-9]/i.test(said)) {
         console.log(`[call-loop] turn ${turnId} dropped a stage direction or silence marker instead of speaking it: "${sentence}"`);
         return;
       }
-      this._speak(said, turnId, turnStartedAt);
+      this._speak(said, turnId, turnStartedAt, turnTone);
     });
 
     // Backchanneling. Used to be gated on !isNodeEntry ("no caller utterance
@@ -4296,7 +4416,7 @@ class CallSession {
     }
   }
 
-  _speak(text, turnId, turnStartedAt) {
+  _speak(text, turnId, turnStartedAt, tone = null) {
     if (this.turnState?.id === turnId) this.turnState.spokeText = true;
     this.cost.addTtsChars(text.length);
     // Reserve this turn's "still speaking" slot immediately, synchronously —
@@ -4313,15 +4433,15 @@ class CallSession {
       this.cost.ttsBackend = 'elevenlabs';
     }
     if (this.ttsBackend === 'elevenlabs') {
-      this._speakElevenLabs(text, turnId, turnStartedAt);
+      this._speakElevenLabs(text, turnId, turnStartedAt, tone);
       return;
     }
     if (this.ttsBackend === 'cartesia') {
-      this._speakCartesia(text, turnId, turnStartedAt);
+      this._speakCartesia(text, turnId, turnStartedAt, tone);
       return;
     }
     if (this.ttsBackend === 'minimax') {
-      this._speakMinimax(text, turnId, turnStartedAt);
+      this._speakMinimax(text, turnId, turnStartedAt, tone);
       return;
     }
 
@@ -4506,10 +4626,17 @@ class CallSession {
   // and this sidesteps it entirely by letting ElevenLabs's own (properly
   // filtered) resampler produce 8kHz mu-law directly. Forwards each chunk
   // to onChunk as it arrives instead of buffering the full response.
-  _speakElevenLabs(text, turnId, turnStartedAt) {
+  // `tone` (one of EXPRESSIVE_TONES, or null) is only ever non-null when
+  // globalSettings.expressiveDelivery is on for this agent — see
+  // extractToneTag/TONE_TO_ELEVEN_STYLE. Maps to voice_settings.style, the
+  // real "style exaggeration" knob (elevenlabs.io TTS docs); everything else
+  // in voice_settings is unchanged, so a non-expressive call's request body
+  // is byte-for-byte identical to before this feature existed.
+  _speakElevenLabs(text, turnId, turnStartedAt, tone = null) {
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
     const format = isTwilio ? 'mulaw8k' : 'pcm16';
     const outputFormat = isTwilio ? 'ulaw_8000' : 'pcm_24000';
+    const style = tone && TONE_TO_ELEVEN_STYLE[tone] !== undefined ? TONE_TO_ELEVEN_STYLE[tone] : 0;
     this._speakHttpTts('elevenlabs', async (text, signal, turnId, onChunk) => {
       const res = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${this.elevenVoiceId}/stream?output_format=${outputFormat}`,
@@ -4519,11 +4646,14 @@ class CallSession {
           body: JSON.stringify({
             text,
             model_id: this.ttsModel || ELEVENLABS_MODEL,
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            voice_settings: { stability: 0.5, similarity_boost: 0.75, style },
           }),
           signal,
         }
       );
+      if (this.expressiveDelivery) {
+        console.log(`[call-loop] turn ${turnId}: elevenlabs voice_settings.style=${style} (tone=${tone || 'none'})`);
+      }
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');
         console.error(`[call-loop] ElevenLabs request failed: ${res.status} ${detail.slice(0, 220)}`);
@@ -4541,12 +4671,18 @@ class CallSession {
   // schema. See docs.cartesia.ai/api-reference/tts/bytes. Requests
   // pcm_mulaw @ 8000 directly for a real Twilio call — same reasoning as
   // ElevenLabs above.
-  _speakCartesia(text, turnId, turnStartedAt) {
+  // `tone` maps to generation_config.emotion, the current documented Cartesia
+  // control (docs.cartesia.ai/api-reference/tts/bytes) — a single enum
+  // string, not the older array form. Omitted entirely (no generation_config
+  // key at all) when there's no tone, so a non-expressive call's request
+  // body is unchanged.
+  _speakCartesia(text, turnId, turnStartedAt, tone = null) {
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
     const format = isTwilio ? 'mulaw8k' : 'pcm16';
     const outputFormat = isTwilio
       ? { container: 'raw', encoding: 'pcm_mulaw', sample_rate: 8000 }
       : { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 };
+    const emotion = tone && TONE_TO_CARTESIA_EMOTION[tone];
     this._speakHttpTts('cartesia', async (text, signal, turnId, onChunk) => {
       const res = await fetch('https://api.cartesia.ai/tts/bytes', {
         method: 'POST',
@@ -4560,9 +4696,13 @@ class CallSession {
           transcript: text,
           voice: { id: CARTESIA_VOICE_ID },
           output_format: outputFormat,
+          ...(emotion ? { generation_config: { emotion } } : {}),
         }),
         signal,
       });
+      if (this.expressiveDelivery) {
+        console.log(`[call-loop] turn ${turnId}: cartesia generation_config.emotion=${emotion || 'none'} (tone=${tone || 'none'})`);
+      }
       if (!res.ok || !res.body) {
         console.error(`[call-loop] Cartesia request failed: ${res.status}`);
         return;
@@ -4581,12 +4721,18 @@ class CallSession {
   // completes or it doesn't). See platform.minimax.io/docs/api-reference/
   // speech-t2a-http. Requests pcmu_raw (G.711 mu-law, fixed 8kHz) directly
   // for a real Twilio call — same reasoning as ElevenLabs/Cartesia above.
-  _speakMinimax(text, turnId, turnStartedAt) {
+  // `tone` maps to voice_setting.emotion, a real documented MiniMax enum
+  // (platform.minimax.io/docs/api-reference/speech-t2a-http). Omitted when
+  // there's no tone, matching MiniMax's own documented default (model
+  // auto-selects the tone from the text) — same request body as before this
+  // feature existed for a non-expressive call.
+  _speakMinimax(text, turnId, turnStartedAt, tone = null) {
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
     const format = isTwilio ? 'mulaw8k' : 'pcm16';
     const audioSetting = isTwilio
       ? { sample_rate: 8000, format: 'pcmu_raw', channel: 1 }
       : { sample_rate: 24000, format: 'pcm', channel: 1 };
+    const emotion = tone && TONE_TO_MINIMAX_EMOTION[tone];
     this._speakHttpTts('minimax', async (text, signal, turnId, onChunk) => {
       const res = await fetch(`https://api-uw.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(MINIMAX_GROUP_ID)}`, {
         method: 'POST',
@@ -4596,11 +4742,14 @@ class CallSession {
           text,
           stream: false,
           output_format: 'hex',
-          voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0 },
+          voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0, ...(emotion ? { emotion } : {}) },
           audio_setting: audioSetting,
         }),
         signal,
       });
+      if (this.expressiveDelivery) {
+        console.log(`[call-loop] turn ${turnId}: minimax voice_setting.emotion=${emotion || 'none'} (tone=${tone || 'none'})`);
+      }
       if (!res.ok) {
         console.error(`[call-loop] MiniMax request failed: ${res.status}`);
         return;
