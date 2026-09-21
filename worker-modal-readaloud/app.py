@@ -49,6 +49,7 @@ image = (
         "transformers==4.44.0",
         "soundfile==0.12.1",
         "numpy>=1.24.0,<2.0.0",
+        "scipy",
         "fastapi==0.109.0",
         "uvicorn[standard]==0.27.0",
         extra_index_url="https://download.pytorch.org/whl/cu121",
@@ -62,6 +63,7 @@ image = (
         "next(p('Test.', voice='af_heart'))"
         "\""
     )
+    .add_local_python_source("audiofmt")  # shared PCM/mu-law/A-law encoder + resampler, see that file
 )
 
 app = modal.App("realtime-tts-worker-readaloud", image=image)
@@ -192,13 +194,17 @@ def web():
     import time
     import urllib.request
 
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request
+    from fastapi.responses import JSONResponse, Response, StreamingResponse
     from kokoro import KPipeline
 
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
+    import audiofmt
+
     web_app = FastAPI()
+    MAX_TEXT_CHARS = 5000
     # One inference thread: keeps the asyncio loop free (previously the blocking
     # pipeline() call stalled every other socket on this container, up to 8 with
     # max_inputs=8) while still serializing GPU/phonemizer use as before, since
@@ -213,8 +219,13 @@ def web():
     )
 
     def synth_clause(clause, voice, speed):
+        import numpy as np
         _gs, _ps, audio = next(pipeline(clause, voice=voice, speed=speed))
-        return audio
+        # Kokoro yields a torch tensor; audiofmt.encode's pcm_24000 fast path (no resample needed,
+        # since 24 kHz is already the model's native rate) skips resample_poly entirely and goes
+        # straight to .astype(), which a torch tensor doesn't have — convert once here so every
+        # caller (WS, HTTP, trim_silence) always gets a plain numpy array.
+        return audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio)
 
     def b64url_decode(s: str) -> bytes:
         return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
@@ -270,6 +281,74 @@ def web():
     async def health():
         return {"status": "healthy", "model": "kokoro", "device": "cuda"}
 
+    # ---- HTTP streaming: POST /v1/tts/stream ----
+    # Mirrors worker-piper-fly/server.py's endpoint of the same name/shape exactly, so a client
+    # (or the SDKs) can use either engine through one code path. Body {text, voice?, speed?,
+    # format?}; auth = Authorization: Bearer <session token | TTS_WS_AUTH_TOKEN>. Response: chunked
+    # body of raw audio in the requested format, one sentence at a time as it is synthesized.
+    CORS = {
+        "Access-Control-Allow-Origin": "*",  # bearer-token auth, no cookies, so * is safe here
+        "Access-Control-Expose-Headers": "X-Sample-Rate, X-Audio-Format",
+    }
+
+    def _http_err(status: int, message: str, **headers):
+        return JSONResponse({"error": message}, status_code=status, headers={**CORS, **headers})
+
+    @web_app.options("/v1/tts/stream")
+    async def tts_stream_preflight():
+        return Response(status_code=204, headers={
+            **CORS,
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Max-Age": "86400",
+        })
+
+    @web_app.post("/v1/tts/stream")
+    async def tts_stream(request: Request):
+        auth = request.headers.get("authorization", "")
+        presented = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+        session_key_id = verify_session_token(presented)
+        if session_key_id is None and presented != AUTH_TOKEN:
+            return _http_err(401, "unauthorized", **{"WWW-Authenticate": "Bearer"})
+        try:
+            body = await request.json()
+            assert isinstance(body, dict)
+        except Exception:
+            return _http_err(400, "body must be a JSON object")
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return _http_err(400, "text must be a non-empty string")
+        if len(text) > MAX_TEXT_CHARS:
+            return _http_err(413, f"text too long (max {MAX_TEXT_CHARS} chars)")
+        try:
+            speed = float(body.get("speed", 1.0))
+            fmt = audiofmt.parse_format(body.get("format"))
+        except (ValueError, TypeError) as e:
+            return _http_err(400, str(e) if "format" in str(e) else "invalid speed")
+        voice = body.get("voice", "af_heart")
+        sr = audiofmt.FORMATS[fmt][0]
+        loop = asyncio.get_running_loop()
+        clauses, split_index = chunk_text_meta(text)
+
+        async def gen():
+            for idx, clause in enumerate(clauses):
+                if await request.is_disconnected():
+                    return  # client went away: stop, don't bill
+                audio = await loop.run_in_executor(gpu_pool, synth_clause, clause, voice, speed)
+                if split_index is not None and idx == split_index:
+                    audio = trim_silence(audio, from_end=True)
+                elif split_index is not None and idx == split_index + 1:
+                    audio = trim_silence(audio, from_end=False)
+                data, _ = await loop.run_in_executor(gpu_pool, audiofmt.encode, audio, 24000, fmt)
+                yield data
+            if session_key_id and not await request.is_disconnected():  # bill only fully delivered requests
+                report_usage(session_key_id, len(text))
+
+        return StreamingResponse(
+            gen(), media_type=audiofmt.FORMATS[fmt][2],
+            headers={**CORS, "X-Sample-Rate": str(sr), "X-Audio-Format": fmt, "Cache-Control": "no-store"},
+        )
+
     @web_app.websocket("/tts")
     async def tts(ws: WebSocket, token: str = Query(default="")):
         auth_header = ws.headers.get("authorization", "")
@@ -305,9 +384,22 @@ def web():
                 cancel = False
                 text = msg.get("text", "")
                 voice = msg.get("voice", "af_heart")
-                speed = float(msg.get("speed", 1.0))
+                try:
+                    speed = float(msg.get("speed", 1.0))
+                    fmt = audiofmt.parse_format(msg.get("format"))
+                except (ValueError, TypeError) as e:
+                    await ws.send_json({"type": "error", "message": str(e) if "format" in str(e) else "invalid speed"})
+                    continue
+                if not isinstance(text, str):
+                    await ws.send_json({"type": "error", "message": "text must be a string"})
+                    continue
+                if len(text) > MAX_TEXT_CHARS:
+                    await ws.send_json({"type": "error", "message": f"text too long (max {MAX_TEXT_CHARS} chars)"})
+                    continue
                 frame_ms = int(msg.get("frame_ms", 0) or 0)
-                frame_bytes = (max(20, min(frame_ms, 1000)) * 24 * 2) & ~1 if frame_ms else 0
+                sr_for_frames = audiofmt.FORMATS[fmt][0]
+                bytes_per_sample = 1 if audiofmt.FORMATS[fmt][1] in ("mulaw", "alaw") else 2
+                frame_bytes = (max(20, min(frame_ms, 1000)) * sr_for_frames // 1000 * bytes_per_sample) if frame_ms else 0
 
                 try:
                     clauses, split_index = chunk_text_meta(text)
@@ -326,14 +418,16 @@ def web():
                             audio = trim_silence(audio, from_end=False)
                         gen_ms = (time.perf_counter() - t0) * 1000
                         audio_s = len(audio) / 24000
+                        pcm, out_sr = audiofmt.encode(audio, 24000, fmt)
                         await ws.send_json({
                             "type": "chunk_meta",
                             "text": clause,
                             "gen_ms": gen_ms,
                             "audio_s": audio_s,
+                            "format": fmt,
+                            "sample_rate": out_sr,
                             "providers": ["modal-t4-cuda"],
                         })
-                        pcm = to_pcm16(audio)
                         if frame_bytes and len(pcm) > frame_bytes:
                             # Opt-in (client sends "frame_ms"): several small binary frames
                             # per chunk_meta so the first bytes arrive before slow start
