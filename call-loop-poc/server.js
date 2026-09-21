@@ -3793,7 +3793,22 @@ class CallSession {
       // resolving" without a new Map to clean up.
       const startedAt = Date.now();
       const actionUrl = `https://${PUBLIC_HOST}/twilio/dial-status?startedAt=${startedAt}`;
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial action="${actionUrl}" method="POST">${to}</Dial></Response>`;
+      // transferMode: 'warm' (default 'cold', unchanged behavior) — bridges
+      // the caller straight to the target with the caller's own number as
+      // caller ID, instead of hanging up and redialing blind. Twilio only
+      // allows callerId to be set to the To/From of the TwiML request that's
+      // driving the call, a Twilio number, or a Twilio-verified number (see
+      // https://www.twilio.com/docs/voice/twiml/dial#callerid) — this.phoneNumber
+      // IS the From of this very call (the original caller), so it's always
+      // an allowed value here, no separate verification needed. An optional
+      // spokenMessage is queued by the normal fixedLine path before this
+      // runs (see 'turn queued speech to finish' callers of _executeTransfer),
+      // so no separate announcement step is needed here.
+      const isWarm = params?.transferMode === 'warm';
+      const dialAttrs = isWarm && this.phoneNumber
+        ? ` callerId="${this.phoneNumber}"`
+        : '';
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial action="${actionUrl}" method="POST"${dialAttrs}>${to}</Dial></Response>`;
       const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
       const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls/${callSid}.json`,
