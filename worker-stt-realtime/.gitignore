@@ -3,4 +3,3 @@ data/
 models/
 __pycache__/
 docker_models/
-bench/results/
