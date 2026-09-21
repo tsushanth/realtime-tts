@@ -30,7 +30,7 @@ Send `"voice": "custom:<id>"` in the synthesize message. Any other `voice` value
 name from an existing client) uses the default voice, unchanged. Voices live in `VOICES_DIR`
 (default `/voices`) as `<id>/model.onnx`, `model.onnx.json` and `owner.json` (`{"key_ids": [...]}`,
 the gateway API-key ids allowed to use it; required for session-token clients, ignored for the
-internal static token). `voice-pipeline/train_job.py` produces the model files. Loaded lazily with
+internal static token). owner.json may also hold `"user_ids": [...]`: the gateway embeds the key's owning user (`uid`, set when the key is issued with an `owner`, or backfilled through `POST /admin/keys/owner`) in session tokens, and a token whose uid is listed may use the voice, so access follows the user across new keys; a token without uid never matches user_ids (key_ids still work for such keys). Either rule suffices. `voice-pipeline/train_job.py` produces the model files. Loaded lazily with
 an LRU of `MAX_VOICES` (default 6). Local test: cold first request ~1.9 s, warm ~116 ms; wrong
 owner, missing voice and path traversal all return the same "unknown voice" error. Not yet
 deployed: needs a Fly volume (or baked image) holding the voices and a sync from the Modal
@@ -83,6 +83,11 @@ path only; auth is the bearer token, never cookies. The gateway's `/tts/authoriz
 
 `owner.json` may be `{"key_ids": [<non-empty>]}` (as before) or `{"public": true}`: any authenticated client
 may then use `custom:<id>`. Admin PUT rejects anything else. Missing and forbidden voices give the same error.
+
+Optional `"speaker_id": <int>` in `owner.json` pins a speaker of a multi-speaker model (e.g. the MLS or VCTK
+voices), so one model file can back several distinct voices. It is passed as `SynthesisConfig(speaker_id=...)`.
+Omitted = unchanged behaviour. A non-integer, negative or out-of-range value (or non-zero on a single-speaker
+model) fails the voice with `voice misconfigured: ...` at first use.
 
 ## First-chunk split (`FIRST_CHUNK_SPLIT=1`, default OFF)
 

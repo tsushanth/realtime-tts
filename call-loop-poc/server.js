@@ -183,7 +183,7 @@ const CALENDAR_LOOKUP_FILLER_PHRASE = process.env.CALENDAR_LOOKUP_FILLER_PHRASE 
 // (see CallSession._maybeSpeakBackchannel) rather than synthesizing live.
 const fillerCache = new Map();
 
-async function fetchElevenLabsPcmOnce(text, voiceId = ELEVENLABS_VOICE_ID) {
+async function fetchElevenLabsPcmOnce(text, voiceId = ELEVENLABS_VOICE_ID, modelId = ELEVENLABS_MODEL) {
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_24000`,
     {
@@ -191,7 +191,7 @@ async function fetchElevenLabsPcmOnce(text, voiceId = ELEVENLABS_VOICE_ID) {
       headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        model_id: ELEVENLABS_MODEL,
+        model_id: modelId,
         voice_settings: { stability: 0.5, similarity_boost: 0.75 },
       }),
     }
@@ -382,16 +382,22 @@ async function prewarmFillerCache() {
 // Lazily warms a non-English language's filler clips (once per language+voice per process; the
 // first call in a language may find them not ready yet, in which case fillers are simply skipped —
 // same behavior as any uncached backend).
+const LANG_ELEVEN_MODEL = 'eleven_flash_v2_5';
 const langPrewarmed = new Set();
 function prewarmLangFillers(lang, voiceId) {
   const k = `${lang.code}::${voiceId}`;
   if (langPrewarmed.has(k) || !ELEVENLABS_API_KEY) return;
   langPrewarmed.add(k);
-  for (const text of [...lang.say.backchannel, lang.say.calendar]) {
-    withRetry(() => fetchElevenLabsPcmOnce(text, voiceId))
-      .then((buf) => fillerCache.set(`elevenlabs::${voiceId}::${text}`, buf))
-      .catch((err) => console.warn(`[call-loop] lang filler prewarm (${lang.code}, "${text}") failed:`, err.message));
-  }
+  // Sequential: ElevenLabs plans cap concurrent requests (a burst of 5 here competes with live calls).
+  (async () => {
+    for (const text of [...lang.say.backchannel, lang.say.calendar]) {
+      try {
+        fillerCache.set(`elevenlabs::${voiceId}::${text}`, await withRetry(() => fetchElevenLabsPcmOnce(text, voiceId, LANG_ELEVEN_MODEL)));
+      } catch (err) {
+        console.warn(`[call-loop] lang filler prewarm (${lang.code}, "${text}") failed:`, err.message);
+      }
+    }
+  })();
 }
 // Haiku over Sonnet for the voice path specifically — a phone reply doesn't
 // need Sonnet's depth of reasoning, and LLM TTFB was the single biggest
@@ -1644,7 +1650,12 @@ class CallSession {
         console.warn(`[call-loop] language ${lang.code} needs ElevenLabs but ELEVENLABS_API_KEY is unset — staying on ${this.ttsBackend} (English voice)`);
       }
     }
-    if (this.ttsBackend === 'elevenlabs') this.elevenVoiceId = lang.tts.elevenVoiceId;
+    if (this.ttsBackend === 'elevenlabs') {
+      this.elevenVoiceId = lang.tts.elevenVoiceId;
+      // eleven_multilingual_v2 measured ~1.3s to first byte vs ~0.3s for flash v2.5 (same 32-language
+      // coverage incl. all of ours); an explicit ttsModel from the context message still wins.
+      if (!this.ttsModel) this.ttsModel = LANG_ELEVEN_MODEL;
+    }
     this.backchannelWords = lang.say.backchannel;
     prewarmLangFillers(lang, this.elevenVoiceId);
   }

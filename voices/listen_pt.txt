@@ -1,0 +1,3 @@
+    0.0s  tier B  pt-br-cadu  (pt_BR, Brazil, M)
+    7.6s  tier B  pt-br-faber  (pt_BR, Brazil, M)
+   13.8s  tier B  pt-br-jeff  (pt_BR, Brazil, M)

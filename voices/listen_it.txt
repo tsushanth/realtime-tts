@@ -1,0 +1,2 @@
+    0.0s  tier A  it-it-serena  (it_IT, Italy, F)
+    6.2s  tier B  it-it-paola  (it_IT, Italy, F)

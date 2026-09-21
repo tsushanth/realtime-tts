@@ -1,0 +1,765 @@
+[
+ {
+  "speaker_id": 0,
+  "vctk": "p239",
+  "gender": "F",
+  "accent": "English",
+  "region": "SW  England"
+ },
+ {
+  "speaker_id": 1,
+  "vctk": "p236",
+  "gender": "F",
+  "accent": "English",
+  "region": "Manchester"
+ },
+ {
+  "speaker_id": 2,
+  "vctk": "p264",
+  "gender": "F",
+  "accent": "Scottish",
+  "region": "West  Lothian"
+ },
+ {
+  "speaker_id": 3,
+  "vctk": "p250",
+  "gender": "F",
+  "accent": "English",
+  "region": "SE  England"
+ },
+ {
+  "speaker_id": 4,
+  "vctk": "p259",
+  "gender": "M",
+  "accent": "English",
+  "region": "Nottingham"
+ },
+ {
+  "speaker_id": 5,
+  "vctk": "p247",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Argyll"
+ },
+ {
+  "speaker_id": 6,
+  "vctk": "p261",
+  "gender": "F",
+  "accent": "NorthernIrish",
+  "region": "Belfast"
+ },
+ {
+  "speaker_id": 7,
+  "vctk": "p263",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Aberdeen"
+ },
+ {
+  "speaker_id": 8,
+  "vctk": "p283",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "Cork"
+ },
+ {
+  "speaker_id": 9,
+  "vctk": "p286",
+  "gender": "M",
+  "accent": "English",
+  "region": "Newcastle"
+ },
+ {
+  "speaker_id": 10,
+  "vctk": "p274",
+  "gender": "M",
+  "accent": "English",
+  "region": "Essex"
+ },
+ {
+  "speaker_id": 11,
+  "vctk": "p276",
+  "gender": "F",
+  "accent": "English",
+  "region": "Oxford"
+ },
+ {
+  "speaker_id": 12,
+  "vctk": "p270",
+  "gender": "M",
+  "accent": "English",
+  "region": "Yorkshire"
+ },
+ {
+  "speaker_id": 13,
+  "vctk": "p281",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Edinburgh"
+ },
+ {
+  "speaker_id": 14,
+  "vctk": "p277",
+  "gender": "F",
+  "accent": "English",
+  "region": "NE  England"
+ },
+ {
+  "speaker_id": 15,
+  "vctk": "p231",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 16,
+  "vctk": "p271",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Fife"
+ },
+ {
+  "speaker_id": 17,
+  "vctk": "p238",
+  "gender": "F",
+  "accent": "NorthernIrish",
+  "region": "Belfast"
+ },
+ {
+  "speaker_id": 18,
+  "vctk": "p257",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 19,
+  "vctk": "p273",
+  "gender": "M",
+  "accent": "English",
+  "region": "Suffolk"
+ },
+ {
+  "speaker_id": 20,
+  "vctk": "p284",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Fife"
+ },
+ {
+  "speaker_id": 21,
+  "vctk": "p329",
+  "gender": "F",
+  "accent": "American",
+  "region": ""
+ },
+ {
+  "speaker_id": 22,
+  "vctk": "p361",
+  "gender": "F",
+  "accent": "American",
+  "region": "New  Jersey"
+ },
+ {
+  "speaker_id": 23,
+  "vctk": "p287",
+  "gender": "M",
+  "accent": "English",
+  "region": "York"
+ },
+ {
+  "speaker_id": 24,
+  "vctk": "p360",
+  "gender": "M",
+  "accent": "American",
+  "region": "New  Jersey"
+ },
+ {
+  "speaker_id": 25,
+  "vctk": "p374",
+  "gender": "M",
+  "accent": "Australian",
+  "region": "English  "
+ },
+ {
+  "speaker_id": 26,
+  "vctk": "p376",
+  "gender": "M",
+  "accent": "Indian",
+  "region": ""
+ },
+ {
+  "speaker_id": 27,
+  "vctk": "p310",
+  "gender": "F",
+  "accent": "American",
+  "region": "Tennessee"
+ },
+ {
+  "speaker_id": 28,
+  "vctk": "p304",
+  "gender": "M",
+  "accent": "NorthernIrish",
+  "region": "Belfast"
+ },
+ {
+  "speaker_id": 29,
+  "vctk": "p334",
+  "gender": "M",
+  "accent": "American",
+  "region": "Chicago"
+ },
+ {
+  "speaker_id": 30,
+  "vctk": "p340",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "Dublin"
+ },
+ {
+  "speaker_id": 31,
+  "vctk": "p323",
+  "gender": "F",
+  "accent": "SouthAfrican",
+  "region": "Pretoria"
+ },
+ {
+  "speaker_id": 32,
+  "vctk": "p347",
+  "gender": "M",
+  "accent": "SouthAfrican",
+  "region": "Johannesburg"
+ },
+ {
+  "speaker_id": 33,
+  "vctk": "p330",
+  "gender": "F",
+  "accent": "American",
+  "region": ""
+ },
+ {
+  "speaker_id": 34,
+  "vctk": "p308",
+  "gender": "F",
+  "accent": "American",
+  "region": "Alabama"
+ },
+ {
+  "speaker_id": 35,
+  "vctk": "p314",
+  "gender": "F",
+  "accent": "SouthAfrican",
+  "region": "Cape  Town"
+ },
+ {
+  "speaker_id": 36,
+  "vctk": "p317",
+  "gender": "F",
+  "accent": "Canadian",
+  "region": "Hamilton"
+ },
+ {
+  "speaker_id": 37,
+  "vctk": "p339",
+  "gender": "F",
+  "accent": "American",
+  "region": "Pennsylvania"
+ },
+ {
+  "speaker_id": 38,
+  "vctk": "p311",
+  "gender": "M",
+  "accent": "American",
+  "region": "Iowa"
+ },
+ {
+  "speaker_id": 39,
+  "vctk": "p294",
+  "gender": "F",
+  "accent": "American",
+  "region": "San  Francisco"
+ },
+ {
+  "speaker_id": 40,
+  "vctk": "p305",
+  "gender": "F",
+  "accent": "American",
+  "region": "Philadelphia"
+ },
+ {
+  "speaker_id": 41,
+  "vctk": "p266",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "Athlone"
+ },
+ {
+  "speaker_id": 42,
+  "vctk": "p335",
+  "gender": "F",
+  "accent": "NewZealand",
+  "region": "English    "
+ },
+ {
+  "speaker_id": 43,
+  "vctk": "p318",
+  "gender": "F",
+  "accent": "American",
+  "region": "Napa"
+ },
+ {
+  "speaker_id": 44,
+  "vctk": "p351",
+  "gender": "F",
+  "accent": "NorthernIrish",
+  "region": "Derry"
+ },
+ {
+  "speaker_id": 45,
+  "vctk": "p333",
+  "gender": "F",
+  "accent": "American",
+  "region": "Indiana"
+ },
+ {
+  "speaker_id": 46,
+  "vctk": "p313",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "County  Down"
+ },
+ {
+  "speaker_id": 47,
+  "vctk": "p316",
+  "gender": "M",
+  "accent": "Canadian",
+  "region": "Alberta"
+ },
+ {
+  "speaker_id": 48,
+  "vctk": "p244",
+  "gender": "F",
+  "accent": "English",
+  "region": "Manchester"
+ },
+ {
+  "speaker_id": 49,
+  "vctk": "p307",
+  "gender": "F",
+  "accent": "Canadian",
+  "region": "Ontario"
+ },
+ {
+  "speaker_id": 50,
+  "vctk": "p363",
+  "gender": "M",
+  "accent": "Canadian",
+  "region": "Toronto"
+ },
+ {
+  "speaker_id": 51,
+  "vctk": "p336",
+  "gender": "F",
+  "accent": "SouthAfrican",
+  "region": "Johannesburg"
+ },
+ {
+  "speaker_id": 52,
+  "vctk": "p297",
+  "gender": "F",
+  "accent": "American",
+  "region": "New  York"
+ },
+ {
+  "speaker_id": 53,
+  "vctk": "p312",
+  "gender": "F",
+  "accent": "Canadian",
+  "region": "Hamilton"
+ },
+ {
+  "speaker_id": 54,
+  "vctk": "p267",
+  "gender": "F",
+  "accent": "English",
+  "region": "Yorkshire"
+ },
+ {
+  "speaker_id": 55,
+  "vctk": "p275",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Midlothian"
+ },
+ {
+  "speaker_id": 56,
+  "vctk": "p295",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "Dublin"
+ },
+ {
+  "speaker_id": 57,
+  "vctk": "p258",
+  "gender": "M",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 58,
+  "vctk": "p288",
+  "gender": "F",
+  "accent": "Irish",
+  "region": "Dublin"
+ },
+ {
+  "speaker_id": 59,
+  "vctk": "p301",
+  "gender": "F",
+  "accent": "American",
+  "region": "North  Carolina"
+ },
+ {
+  "speaker_id": 60,
+  "vctk": "p232",
+  "gender": "M",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 61,
+  "vctk": "p292",
+  "gender": "M",
+  "accent": "NorthernIrish",
+  "region": "Belfast"
+ },
+ {
+  "speaker_id": 62,
+  "vctk": "p272",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Edinburgh"
+ },
+ {
+  "speaker_id": 63,
+  "vctk": "p280",
+  "gender": "F",
+  "accent": "Unknown",
+  "region": "France (mic2 files unavailable)  "
+ },
+ {
+  "speaker_id": 64,
+  "vctk": "p278",
+  "gender": "M",
+  "accent": "English",
+  "region": "Cheshire"
+ },
+ {
+  "speaker_id": 65,
+  "vctk": "p341",
+  "gender": "F",
+  "accent": "American",
+  "region": "Ohio"
+ },
+ {
+  "speaker_id": 66,
+  "vctk": "p268",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 67,
+  "vctk": "p298",
+  "gender": "M",
+  "accent": "Irish",
+  "region": "Tipperary"
+ },
+ {
+  "speaker_id": 68,
+  "vctk": "p299",
+  "gender": "F",
+  "accent": "American",
+  "region": "California"
+ },
+ {
+  "speaker_id": 69,
+  "vctk": "p279",
+  "gender": "M",
+  "accent": "English",
+  "region": "Leicester"
+ },
+ {
+  "speaker_id": 70,
+  "vctk": "p285",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Edinburgh"
+ },
+ {
+  "speaker_id": 71,
+  "vctk": "p326",
+  "gender": "M",
+  "accent": "Australian",
+  "region": "English  Sydney"
+ },
+ {
+  "speaker_id": 72,
+  "vctk": "p300",
+  "gender": "F",
+  "accent": "American",
+  "region": "California"
+ },
+ {
+  "speaker_id": 73,
+  "vctk": "s5",
+  "gender": "F",
+  "accent": "British",
+  "region": "(new speaker, more data would be released for training a speaker-dependent model) "
+ },
+ {
+  "speaker_id": 74,
+  "vctk": "p230",
+  "gender": "F",
+  "accent": "English",
+  "region": "Stockton-on-tees"
+ },
+ {
+  "speaker_id": 75,
+  "vctk": "p345",
+  "gender": "M",
+  "accent": "American",
+  "region": "Florida"
+ },
+ {
+  "speaker_id": 76,
+  "vctk": "p254",
+  "gender": "M",
+  "accent": "English",
+  "region": "Surrey"
+ },
+ {
+  "speaker_id": 77,
+  "vctk": "p269",
+  "gender": "F",
+  "accent": "English",
+  "region": "Newcastle"
+ },
+ {
+  "speaker_id": 78,
+  "vctk": "p293",
+  "gender": "F",
+  "accent": "NorthernIrish",
+  "region": "Belfast"
+ },
+ {
+  "speaker_id": 79,
+  "vctk": "p252",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Edinburgh"
+ },
+ {
+  "speaker_id": 80,
+  "vctk": "p262",
+  "gender": "F",
+  "accent": "Scottish",
+  "region": "Edinburgh"
+ },
+ {
+  "speaker_id": 81,
+  "vctk": "p243",
+  "gender": "M",
+  "accent": "English",
+  "region": "London"
+ },
+ {
+  "speaker_id": 82,
+  "vctk": "p227",
+  "gender": "M",
+  "accent": "English",
+  "region": "Cumbria"
+ },
+ {
+  "speaker_id": 83,
+  "vctk": "p343",
+  "gender": "F",
+  "accent": "Canadian",
+  "region": "Alberta"
+ },
+ {
+  "speaker_id": 84,
+  "vctk": "p255",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Galloway"
+ },
+ {
+  "speaker_id": 85,
+  "vctk": "p229",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 86,
+  "vctk": "p240",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 87,
+  "vctk": "p248",
+  "gender": "F",
+  "accent": "Indian",
+  "region": ""
+ },
+ {
+  "speaker_id": 88,
+  "vctk": "p253",
+  "gender": "F",
+  "accent": "Welsh",
+  "region": "Cardiff"
+ },
+ {
+  "speaker_id": 89,
+  "vctk": "p233",
+  "gender": "F",
+  "accent": "English",
+  "region": "Staffordshire"
+ },
+ {
+  "speaker_id": 90,
+  "vctk": "p228",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 91,
+  "vctk": "p282",
+  "gender": "F",
+  "accent": "English",
+  "region": "Newcastle"
+ },
+ {
+  "speaker_id": 92,
+  "vctk": "p251",
+  "gender": "M",
+  "accent": "Indian",
+  "region": ""
+ },
+ {
+  "speaker_id": 93,
+  "vctk": "p246",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Selkirk"
+ },
+ {
+  "speaker_id": 94,
+  "vctk": "p234",
+  "gender": "F",
+  "accent": "Scottish",
+  "region": "West  Dumfries"
+ },
+ {
+  "speaker_id": 95,
+  "vctk": "p226",
+  "gender": "M",
+  "accent": "English",
+  "region": "Surrey"
+ },
+ {
+  "speaker_id": 96,
+  "vctk": "p260",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Orkney"
+ },
+ {
+  "speaker_id": 97,
+  "vctk": "p245",
+  "gender": "M",
+  "accent": "Irish",
+  "region": "Dublin"
+ },
+ {
+  "speaker_id": 98,
+  "vctk": "p241",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Perth"
+ },
+ {
+  "speaker_id": 99,
+  "vctk": "p303",
+  "gender": "F",
+  "accent": "Canadian",
+  "region": "Toronto"
+ },
+ {
+  "speaker_id": 100,
+  "vctk": "p265",
+  "gender": "F",
+  "accent": "Scottish",
+  "region": "Ross"
+ },
+ {
+  "speaker_id": 101,
+  "vctk": "p306",
+  "gender": "F",
+  "accent": "American",
+  "region": "New  York"
+ },
+ {
+  "speaker_id": 102,
+  "vctk": "p237",
+  "gender": "M",
+  "accent": "Scottish",
+  "region": "Fife"
+ },
+ {
+  "speaker_id": 103,
+  "vctk": "p249",
+  "gender": "F",
+  "accent": "Scottish",
+  "region": "Aberdeen"
+ },
+ {
+  "speaker_id": 104,
+  "vctk": "p256",
+  "gender": "M",
+  "accent": "English",
+  "region": "Birmingham"
+ },
+ {
+  "speaker_id": 105,
+  "vctk": "p302",
+  "gender": "M",
+  "accent": "Canadian",
+  "region": "Montreal"
+ },
+ {
+  "speaker_id": 106,
+  "vctk": "p364",
+  "gender": "M",
+  "accent": "Irish",
+  "region": "Donegal"
+ },
+ {
+  "speaker_id": 107,
+  "vctk": "p225",
+  "gender": "F",
+  "accent": "English",
+  "region": "Southern  England"
+ },
+ {
+  "speaker_id": 108,
+  "vctk": "p362",
+  "gender": "F",
+  "accent": "American",
+  "region": ""
+ }
+]

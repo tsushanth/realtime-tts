@@ -17,8 +17,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 process.env.MODAL_SESSION_SECRET = "testsecret";
 process.env.KEYS_PATH = path.join(os.tmpdir(), "rt-k.json");
 const keys = await import(path.join(HERE, "../../gateway/keys.js"));
-const OWNER = keys.createSessionToken("owner-id");
-const OTHER = keys.createSessionToken("other-id");
+// Session tokens live 60 s and this suite runs longer (60 MB uploads): mint them with the clock shifted +1 h
+// so they are still valid when the later tests use them. The server verifies against its real clock.
+const mint = (...a) => { const real = Date.now; Date.now = () => real() + 3600_000; try { return keys.createSessionToken(...a); } finally { Date.now = real; } };
+const OWNER = mint("owner-id");
+const OTHER = mint("other-id");
+const UA1 = mint("ukey-1", "user-A");  // two different keys, same owning user
+const UA2 = mint("ukey-2", "user-A");
+const UB = mint("ukey-3", "user-B");
 const STATIC = "static";
 const auth = (t) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
 
@@ -32,7 +38,7 @@ http.createServer((req, res) => {
   let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => {
     reports.push({ auth: req.headers.authorization, ...JSON.parse(b) }); res.end("{}");
   });
-}).listen(9111);
+}).listen(parseInt(process.env.REPORT_PORT || "9111", 10));
 
 // ---- helpers ----
 const SHORT = "Thanks for calling, I can help you with that.";
@@ -75,14 +81,19 @@ async function stream(token, body, opts = {}) {
 async function active() { return (await (await fetch(`http://${BASE}/health`)).json()).active; }
 
 // ---- admin: upload voices ----
-async function putVoice(id, owner, expectStatus = 200) {
+async function putVoice(id, owner, expectStatus = 200, modelBase = "full_ft") {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "voice-"));
   const models = path.join(HERE, "../models");
-  fs.copyFileSync(path.join(models, "full_ft.onnx"), path.join(d, "model.onnx"));
-  fs.copyFileSync(path.join(models, "full_ft.onnx.json"), path.join(d, "model.onnx.json"));
+  fs.copyFileSync(path.join(models, `${modelBase}.onnx`), path.join(d, "model.onnx"));
+  fs.copyFileSync(path.join(models, `${modelBase}.onnx.json`), path.join(d, "model.onnx.json"));
   fs.writeFileSync(path.join(d, "owner.json"), JSON.stringify(owner));
   execFileSync("tar", ["-cf", path.join(d, "v.tar"), "-C", d, "model.onnx", "model.onnx.json", "owner.json"]);
-  const r = await fetch(`http://${BASE}/admin/voices/${id}`, { method: "PUT", headers: { authorization: "Bearer adm" }, body: fs.readFileSync(path.join(d, "v.tar")) });
+  const body = fs.readFileSync(path.join(d, "v.tar"));
+  let r;
+  for (let attempt = 0; ; attempt++) {  // a reused keep-alive socket may have been closed by the server while tar ran
+    try { r = await fetch(`http://${BASE}/admin/voices/${id}`, { method: "PUT", headers: { authorization: "Bearer adm" }, body }); break; }
+    catch (e) { if (attempt >= 2) throw e; }
+  };
   fs.rmSync(d, { recursive: true });
   return { status: r.status, body: await r.text() };
 }
@@ -91,10 +102,12 @@ async function putVoice(id, owner, expectStatus = 200) {
 console.log("--- admin owner.json validation");
 for (const [label, owner, want] of [
   ["key_ids ok", { key_ids: ["owner-id"] }, 200], ["public ok", { public: true }, 200],
+  ["user_ids ok", { user_ids: ["user-A"] }, 200], ["key_ids+user_ids ok", { key_ids: ["owner-id"], user_ids: ["user-A"] }, 200],
+  ["empty user_ids rejected", { user_ids: [] }, 400], ["non-string user_ids rejected", { user_ids: [1] }, 400],
   ["empty key_ids rejected", { key_ids: [] }, 400], ["public:false rejected", { public: false }, 400],
   ["public:'yes' rejected", { public: "yes" }, 400], ["empty object rejected", {}, 400], ["array rejected", [1], 400],
 ]) {
-  const id = label.startsWith("key_ids ok") ? "ownerv" : label === "public ok" ? "pubv" : "badv";
+  const id = label.startsWith("key_ids ok") ? "ownerv" : label === "user_ids ok" ? "userv" : label === "key_ids+user_ids ok" ? "bothv" : label === "public ok" ? "pubv" : "badv";
   const r = await putVoice(id, owner);
   ok(`PUT owner.json ${label}`, r.status === want, `status ${r.status} ${want === 400 ? r.body : ""}`);
 }
@@ -209,6 +222,53 @@ console.log("--- voices: public vs owner");
   w = await s.synth({ text: SHORT }); ok("ws: still usable after voice error", w.end.type === "done");
   s.ws.close();
 }
+
+console.log("--- voices: user_ids ownership (uid embedded in session token)");
+{
+  const post = async (tok, voice) => { const r = await stream(tok, { text: SHORT, voice }); const t = await r.arrayBuffer(); return { status: r.status, len: t.byteLength, txt: r.status === 200 ? "" : new TextDecoder().decode(t) }; };
+  let r = await post(UA1, "custom:userv"); ok("owner user, key 1 can use user_ids voice", r.status === 200 && r.len > 1000);
+  r = await post(UA2, "custom:userv"); ok("owner user, NEW key 2 can use it too (no stale key list)", r.status === 200 && r.len > 1000);
+  r = await post(UB, "custom:userv"); const f = r; ok("other user denied", r.status === 404 && /unknown voice/.test(r.txt), r.txt);
+  r = await post(OTHER, "custom:userv"); ok("key without uid denied (same error)", r.status === 404 && r.txt === f.txt, r.txt);
+  r = await post(OWNER, "custom:userv"); ok("legacy key_id token without uid denied on user_ids-only voice", r.status === 404);
+  r = await post(STATIC, "custom:userv"); ok("static token may use any voice", r.status === 200);
+  r = await post(OWNER, "custom:bothv"); ok("both: listed key id (no uid) allowed", r.status === 200);
+  r = await post(UA2, "custom:bothv"); ok("both: listed user allowed via unlisted key", r.status === 200);
+  r = await post(UB, "custom:bothv"); ok("both: unrelated user+key denied", r.status === 404);
+  r = await post(UA1, "custom:ownerv"); ok("key_ids-only voice ignores uid (user A's other key not listed)", r.status === 404);
+  const s = wsSession(UA2); await s.opened;
+  let w = await s.synth({ text: SHORT, voice: "custom:userv" }); ok("ws: owner user allowed", w.end.type === "done" && w.chunks.length > 0);
+  s.ws.close();
+  const s2 = wsSession(UB); await s2.opened;
+  w = await s2.synth({ text: SHORT, voice: "custom:userv" }); ok("ws: other user denied", w.end.type === "error" && w.end.message === "unknown voice");
+  s2.ws.close();
+  const tok = mint("x", "user-A");
+  const forged = tok.split(".")[0] + "." + mint("y").split(".")[1];
+  r = await post(forged, "custom:userv"); ok("forged uid (bad signature) rejected", r.status === 401);
+}
+
+console.log("--- voices: speaker_id pinning (multi-speaker model = models/multi.onnx)");
+if (fs.existsSync(path.join(HERE, "../models/multi.onnx"))) {
+  const post = async (voice) => { const r = await stream(STATIC, { text: SHORT, voice }); const t = await r.arrayBuffer(); return { status: r.status, len: t.byteLength, txt: r.status === 200 ? "" : new TextDecoder().decode(t) }; };
+  for (const [id, owner, good] of [
+    ["spk3", { public: true, speaker_id: 3 }, true], ["spk0", { public: true, speaker_id: 0 }, true],
+    ["spknone", { public: true }, true], ["spkhigh", { public: true, speaker_id: 100000 }, false],
+    ["spkneg", { public: true, speaker_id: -1 }, false], ["spkstr", { public: true, speaker_id: "3" }, false],
+    ["spkbool", { public: true, speaker_id: true }, false],
+  ]) {
+    await putVoice(id, owner, 200, "multi");
+    const r = await post(`custom:${id}`);
+    ok(`speaker_id ${JSON.stringify(owner.speaker_id)} ${good ? "accepted" : "rejected"}`, good ? r.status === 200 && r.len > 1000 : r.status === 404 && /misconfigured/.test(r.txt), `${r.status} ${r.txt}`);
+  }
+  // single-speaker model with a non-zero speaker_id is a config error, not silently ignored
+  await putVoice("spk1single", { public: true, speaker_id: 1 });
+  const r = await post("custom:spk1single");
+  ok("speaker_id on single-speaker model rejected", r.status === 404 && /misconfigured/.test(r.txt), `${r.status} ${r.txt}`);
+  // different pinned speakers sound different: compare mean absolute sample-to-sample slope (pitch/brightness proxy) over several runs
+  const feat = async (voice) => { let acc = 0; for (let i = 0; i < 3; i++) { const t = await (await stream(STATIC, { text: SHORT, voice })).arrayBuffer(); const x = new Int16Array(t); let s = 0; for (let k = 1; k < x.length; k++) s += Math.abs(x[k] - x[k - 1]); acc += s / x.length; } return acc / 3; };
+  const f3 = await feat("custom:spk3"), f3b = await feat("custom:spk3"), f0 = await feat("custom:spk0");
+  ok("pinned speakers differ more than the same speaker vs itself", Math.abs(f3 - f0) > 3 * Math.abs(f3 - f3b), `spk3 ${f3.toFixed(1)}/${f3b.toFixed(1)} spk0 ${f0.toFixed(1)}`);
+} else console.log("SKIP  no models/multi.onnx");
 
 console.log("--- websocket: billing unchanged");
 {

@@ -1,13 +1,20 @@
 {
   "name": "readaloud",
   "version": "0.1.0",
-  "description": "JavaScript client for the ReadAloud streaming text-to-speech API",
+  "description": "JavaScript client for the ReadAloud streaming text-to-speech API (WebSocket and HTTP streaming). Zero dependencies.",
+  "keywords": ["tts", "text-to-speech", "speech-synthesis", "streaming", "realtime", "websocket", "readaloud", "piper", "kokoro"],
+  "homepage": "https://readaloudai.org/developers",
+  "bugs": { "url": "https://github.com/tsushanth/realtime-tts/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/tsushanth/realtime-tts.git", "directory": "sdk/js" },
+  "license": "MIT",
+  "author": "Sushanth Tiruvaipati",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
-  "exports": { ".": { "types": "./index.d.ts", "default": "./index.js" } },
-  "files": ["index.js", "index.d.ts", "README.md"],
+  "exports": { ".": { "types": "./index.d.ts", "default": "./index.js" }, "./package.json": "./package.json" },
+  "files": ["index.js", "index.d.ts", "README.md", "LICENSE"],
+  "sideEffects": false,
   "engines": { "node": ">=22" },
-  "scripts": { "test": "node --test test/" },
-  "license": "MIT"
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": { "test": "node --test test/" }
 }

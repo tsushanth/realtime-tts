@@ -1,0 +1,6 @@
+    0.0s  tier A  nl-be-rdh  (nl_BE, Flemish, M)
+    6.1s  tier A  nl-nl-alex  (nl_NL, Netherlands, M)
+   11.9s  tier A  nl-nl-mls-f  (nl_NL, Netherlands, F, spk 23)
+   18.5s  tier A  nl-nl-mls-m  (nl_NL, Netherlands, M, spk 7)
+   25.3s  tier B  nl-nl-pim  (nl_NL, Netherlands, M)
+   33.8s  tier B  nl-nl-ronnie  (nl_NL, Netherlands, M)

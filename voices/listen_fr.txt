@@ -1,0 +1,3 @@
+    0.0s  tier A  fr-fr-mls-f  (fr_FR, France, F, spk 55)
+    8.3s  tier A  fr-fr-mls-m  (fr_FR, France, M, spk 105)
+   17.7s  tier B  fr-fr-siwis  (fr_FR, France, F)
