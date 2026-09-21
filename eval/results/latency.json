@@ -4,8 +4,8 @@
     "lang": "de",
     "id": "greeting-1",
     "text": "Vielen Dank für Ihren Anruf, wie kann ich Ihnen helfen?",
-    "first_byte_ms": 243,
-    "audio_bytes": 162170,
+    "first_byte_ms": 301,
+    "audio_bytes": 169972,
     "wav": "audio/piper/de-greeting-1.wav"
   },
   {
@@ -13,8 +13,8 @@
     "lang": "de",
     "id": "order-1",
     "text": "Ihre Bestellung sollte innerhalb von drei bis fünf Werktagen eintreffen.",
-    "first_byte_ms": 1437,
-    "audio_bytes": 196162,
+    "first_byte_ms": 1356,
+    "audio_bytes": 193934,
     "wav": "audio/elevenlabs-multilingual/de-order-1.wav"
   },
   {
@@ -22,8 +22,8 @@
     "lang": "fr",
     "id": "order-1",
     "text": "Votre commande devrait arriver dans un délai de trois à cinq jours ouvrables.",
-    "first_byte_ms": 194,
-    "audio_bytes": 193934,
+    "first_byte_ms": 204,
+    "audio_bytes": 205078,
     "wav": "audio/elevenlabs-flash/fr-order-1.wav"
   },
   {
@@ -31,8 +31,8 @@
     "lang": "en",
     "id": "multiclause-2",
     "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
-    "first_byte_ms": 1555,
-    "audio_bytes": 314306,
+    "first_byte_ms": 1529,
+    "audio_bytes": 334368,
     "wav": "audio/elevenlabs-multilingual/en-multiclause-2.wav"
   },
   {
@@ -40,8 +40,8 @@
     "lang": "es",
     "id": "deescalate-1",
     "text": "Entiendo su frustración, permítame ver qué puedo hacer para solucionarlo.",
-    "first_byte_ms": 1085,
-    "audio_bytes": 229598,
+    "first_byte_ms": 1089,
+    "audio_bytes": 222912,
     "wav": "audio/elevenlabs-multilingual/es-deescalate-1.wav"
   },
   {
@@ -49,8 +49,8 @@
     "lang": "en",
     "id": "order-3",
     "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
-    "first_byte_ms": 1298,
-    "audio_bytes": 231828,
+    "first_byte_ms": 1323,
+    "audio_bytes": 222912,
     "wav": "audio/elevenlabs-multilingual/en-order-3.wav"
   },
   {
@@ -58,8 +58,8 @@
     "lang": "en",
     "id": "question-1",
     "text": "Is there anything else I can help you with today?",
-    "first_byte_ms": 200,
-    "audio_bytes": 111456,
+    "first_byte_ms": 222,
+    "audio_bytes": 113684,
     "wav": "audio/elevenlabs-flash/en-question-1.wav"
   },
   {
@@ -67,7 +67,7 @@
     "lang": "en",
     "id": "greeting-2",
     "text": "Good afternoon, you've reached customer support.",
-    "first_byte_ms": 564,
+    "first_byte_ms": 1055,
     "audio_bytes": 188400,
     "wav": "audio/kokoro/en-greeting-2.wav"
   },
@@ -76,8 +76,8 @@
     "lang": "en",
     "id": "order-1",
     "text": "Your order should arrive within three to five business days.",
-    "first_byte_ms": 1180,
-    "audio_bytes": 156038,
+    "first_byte_ms": 1231,
+    "audio_bytes": 158268,
     "wav": "audio/elevenlabs-multilingual/en-order-1.wav"
   },
   {
@@ -85,7 +85,7 @@
     "lang": "en",
     "id": "greeting-1",
     "text": "Thanks for calling, how can I help you today?",
-    "first_byte_ms": 423,
+    "first_byte_ms": 461,
     "audio_bytes": 168000,
     "wav": "audio/kokoro/en-greeting-1.wav"
   },
@@ -94,8 +94,8 @@
     "lang": "en",
     "id": "question-2",
     "text": "Could you please confirm the billing address on the account?",
-    "first_byte_ms": 373,
-    "audio_bytes": 166126,
+    "first_byte_ms": 436,
+    "audio_bytes": 166400,
     "wav": "audio/kokoro/en-question-2.wav"
   },
   {
@@ -103,8 +103,8 @@
     "lang": "de",
     "id": "deescalate-1",
     "text": "Ich verstehe Ihren Ärger, lassen Sie mich sehen, was ich tun kann.",
-    "first_byte_ms": 1188,
-    "audio_bytes": 185016,
+    "first_byte_ms": 1049,
+    "audio_bytes": 176100,
     "wav": "audio/elevenlabs-multilingual/de-deescalate-1.wav"
   },
   {
@@ -112,7 +112,7 @@
     "lang": "en",
     "id": "question-1",
     "text": "Is there anything else I can help you with today?",
-    "first_byte_ms": 1224,
+    "first_byte_ms": 1060,
     "audio_bytes": 144000,
     "wav": "audio/kokoro/en-question-1.wav"
   },
@@ -121,8 +121,8 @@
     "lang": "fr",
     "id": "deescalate-1",
     "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
-    "first_byte_ms": 294,
-    "audio_bytes": 229042,
+    "first_byte_ms": 324,
+    "audio_bytes": 255792,
     "wav": "audio/piper/fr-deescalate-1.wav"
   },
   {
@@ -130,8 +130,8 @@
     "lang": "en",
     "id": "question-2",
     "text": "Could you please confirm the billing address on the account?",
-    "first_byte_ms": 193,
-    "audio_bytes": 158268,
+    "first_byte_ms": 225,
+    "audio_bytes": 158826,
     "wav": "audio/piper/en-question-2.wav"
   },
   {
@@ -139,8 +139,8 @@
     "lang": "en",
     "id": "multiclause-2",
     "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
-    "first_byte_ms": 200,
-    "audio_bytes": 323222,
+    "first_byte_ms": 300,
+    "audio_bytes": 320992,
     "wav": "audio/elevenlabs-flash/en-multiclause-2.wav"
   },
   {
@@ -148,7 +148,7 @@
     "lang": "en",
     "id": "order-2",
     "text": "Your extension is six six three five.",
-    "first_byte_ms": 1072,
+    "first_byte_ms": 637,
     "audio_bytes": 136800,
     "wav": "audio/kokoro/en-order-2.wav"
   },
@@ -157,8 +157,8 @@
     "lang": "en",
     "id": "question-2",
     "text": "Could you please confirm the billing address on the account?",
-    "first_byte_ms": 204,
-    "audio_bytes": 140434,
+    "first_byte_ms": 193,
+    "audio_bytes": 142664,
     "wav": "audio/elevenlabs-flash/en-question-2.wav"
   },
   {
@@ -166,8 +166,8 @@
     "lang": "fr",
     "id": "greeting-1",
     "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
-    "first_byte_ms": 499,
-    "audio_bytes": 225698,
+    "first_byte_ms": 235,
+    "audio_bytes": 205636,
     "wav": "audio/piper/fr-greeting-1.wav"
   },
   {
@@ -175,7 +175,7 @@
     "lang": "en",
     "id": "question-2",
     "text": "Could you please confirm the billing address on the account?",
-    "first_byte_ms": 1063,
+    "first_byte_ms": 1058,
     "audio_bytes": 144892,
     "wav": "audio/elevenlabs-multilingual/en-question-2.wav"
   },
@@ -184,7 +184,7 @@
     "lang": "en",
     "id": "order-2",
     "text": "Your extension is six six three five.",
-    "first_byte_ms": 944,
+    "first_byte_ms": 1057,
     "audio_bytes": 122602,
     "wav": "audio/elevenlabs-multilingual/en-order-2.wav"
   },
@@ -193,7 +193,7 @@
     "lang": "en",
     "id": "deescalate-1",
     "text": "I understand your frustration, let me see what I can do to make this right.",
-    "first_byte_ms": 405,
+    "first_byte_ms": 551,
     "audio_bytes": 234000,
     "wav": "audio/kokoro/en-deescalate-1.wav"
   },
@@ -202,8 +202,8 @@
     "lang": "es",
     "id": "order-1",
     "text": "Su pedido debería llegar en un plazo de tres a cinco días hábiles.",
-    "first_byte_ms": 1327,
-    "audio_bytes": 181116,
+    "first_byte_ms": 212,
+    "audio_bytes": 174430,
     "wav": "audio/piper/es-order-1.wav"
   },
   {
@@ -211,8 +211,8 @@
     "lang": "fr",
     "id": "greeting-1",
     "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
-    "first_byte_ms": 212,
-    "audio_bytes": 164954,
+    "first_byte_ms": 194,
+    "audio_bytes": 162726,
     "wav": "audio/elevenlabs-flash/fr-greeting-1.wav"
   },
   {
@@ -220,8 +220,8 @@
     "lang": "es",
     "id": "order-1",
     "text": "Su pedido debería llegar en un plazo de tres a cinco días hábiles.",
-    "first_byte_ms": 239,
-    "audio_bytes": 193934,
+    "first_byte_ms": 182,
+    "audio_bytes": 189474,
     "wav": "audio/elevenlabs-flash/es-order-1.wav"
   },
   {
@@ -229,8 +229,8 @@
     "lang": "en",
     "id": "deescalate-1",
     "text": "I understand your frustration, let me see what I can do to make this right.",
-    "first_byte_ms": 1334,
-    "audio_bytes": 220682,
+    "first_byte_ms": 1224,
+    "audio_bytes": 211766,
     "wav": "audio/elevenlabs-multilingual/en-deescalate-1.wav"
   },
   {
@@ -238,8 +238,8 @@
     "lang": "fr",
     "id": "order-1",
     "text": "Votre commande devrait arriver dans un délai de trois à cinq jours ouvrables.",
-    "first_byte_ms": 286,
-    "audio_bytes": 204522,
+    "first_byte_ms": 304,
+    "audio_bytes": 245204,
     "wav": "audio/piper/fr-order-1.wav"
   },
   {
@@ -247,8 +247,8 @@
     "lang": "en",
     "id": "question-1",
     "text": "Is there anything else I can help you with today?",
-    "first_byte_ms": 1254,
-    "audio_bytes": 129288,
+    "first_byte_ms": 1071,
+    "audio_bytes": 120372,
     "wav": "audio/elevenlabs-multilingual/en-question-1.wav"
   },
   {
@@ -256,8 +256,8 @@
     "lang": "es",
     "id": "greeting-1",
     "text": "Gracias por llamar, ¿en qué puedo ayudarle hoy?",
-    "first_byte_ms": 311,
-    "audio_bytes": 106998,
+    "first_byte_ms": 141,
+    "audio_bytes": 110900,
     "wav": "audio/piper/es-greeting-1.wav"
   },
   {
@@ -265,7 +265,7 @@
     "lang": "en",
     "id": "deescalate-2",
     "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
-    "first_byte_ms": 589,
+    "first_byte_ms": 544,
     "audio_bytes": 263506,
     "wav": "audio/kokoro/en-deescalate-2.wav"
   },
@@ -274,8 +274,8 @@
     "lang": "es",
     "id": "deescalate-1",
     "text": "Entiendo su frustración, permítame ver qué puedo hacer para solucionarlo.",
-    "first_byte_ms": 282,
-    "audio_bytes": 220682,
+    "first_byte_ms": 210,
+    "audio_bytes": 225140,
     "wav": "audio/elevenlabs-flash/es-deescalate-1.wav"
   },
   {
@@ -283,7 +283,7 @@
     "lang": "de",
     "id": "order-1",
     "text": "Ihre Bestellung sollte innerhalb von drei bis fünf Werktagen eintreffen.",
-    "first_byte_ms": 206,
+    "first_byte_ms": 207,
     "audio_bytes": 196162,
     "wav": "audio/elevenlabs-flash/de-order-1.wav"
   },
@@ -292,8 +292,8 @@
     "lang": "en",
     "id": "multiclause-1",
     "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
-    "first_byte_ms": 705,
-    "audio_bytes": 357216,
+    "first_byte_ms": 409,
+    "audio_bytes": 323780,
     "wav": "audio/piper/en-multiclause-1.wav"
   },
   {
@@ -301,8 +301,8 @@
     "lang": "de",
     "id": "greeting-1",
     "text": "Vielen Dank für Ihren Anruf, wie kann ich Ihnen helfen?",
-    "first_byte_ms": 558,
-    "audio_bytes": 149350,
+    "first_byte_ms": 193,
+    "audio_bytes": 153808,
     "wav": "audio/elevenlabs-flash/de-greeting-1.wav"
   },
   {
@@ -310,8 +310,8 @@
     "lang": "en",
     "id": "greeting-1",
     "text": "Thanks for calling, how can I help you today?",
-    "first_byte_ms": 283,
-    "audio_bytes": 186132,
+    "first_byte_ms": 251,
+    "audio_bytes": 170528,
     "wav": "audio/piper/en-greeting-1.wav"
   },
   {
@@ -319,8 +319,8 @@
     "lang": "en",
     "id": "order-1",
     "text": "Your order should arrive within three to five business days.",
-    "first_byte_ms": 424,
-    "audio_bytes": 175448,
+    "first_byte_ms": 599,
+    "audio_bytes": 175364,
     "wav": "audio/kokoro/en-order-1.wav"
   },
   {
@@ -328,8 +328,8 @@
     "lang": "es",
     "id": "greeting-1",
     "text": "Gracias por llamar, ¿en qué puedo ayudarle hoy?",
-    "first_byte_ms": 1172,
-    "audio_bytes": 149350,
+    "first_byte_ms": 968,
+    "audio_bytes": 144892,
     "wav": "audio/elevenlabs-multilingual/es-greeting-1.wav"
   },
   {
@@ -337,8 +337,8 @@
     "lang": "es",
     "id": "question-1",
     "text": "¿Hay algo más en lo que pueda ayudarle hoy?",
-    "first_byte_ms": 196,
-    "audio_bytes": 91394,
+    "first_byte_ms": 161,
+    "audio_bytes": 91952,
     "wav": "audio/piper/es-question-1.wav"
   },
   {
@@ -346,8 +346,8 @@
     "lang": "fr",
     "id": "order-1",
     "text": "Votre commande devrait arriver dans un délai de trois à cinq jours ouvrables.",
-    "first_byte_ms": 1294,
-    "audio_bytes": 196162,
+    "first_byte_ms": 1317,
+    "audio_bytes": 216224,
     "wav": "audio/elevenlabs-multilingual/fr-order-1.wav"
   },
   {
@@ -355,8 +355,8 @@
     "lang": "en",
     "id": "order-1",
     "text": "Your order should arrive within three to five business days.",
-    "first_byte_ms": 227,
-    "audio_bytes": 187246,
+    "first_byte_ms": 240,
+    "audio_bytes": 186690,
     "wav": "audio/piper/en-order-1.wav"
   },
   {
@@ -364,8 +364,8 @@
     "lang": "en",
     "id": "order-3",
     "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
-    "first_byte_ms": 275,
-    "audio_bytes": 222912,
+    "first_byte_ms": 198,
+    "audio_bytes": 202850,
     "wav": "audio/elevenlabs-flash/en-order-3.wav"
   },
   {
@@ -373,8 +373,8 @@
     "lang": "es",
     "id": "greeting-1",
     "text": "Gracias por llamar, ¿en qué puedo ayudarle hoy?",
-    "first_byte_ms": 182,
-    "audio_bytes": 142664,
+    "first_byte_ms": 204,
+    "audio_bytes": 140434,
     "wav": "audio/elevenlabs-flash/es-greeting-1.wav"
   },
   {
@@ -382,8 +382,8 @@
     "lang": "en",
     "id": "multiclause-1",
     "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
-    "first_byte_ms": 1195,
-    "audio_bytes": 318764,
+    "first_byte_ms": 1187,
+    "audio_bytes": 303160,
     "wav": "audio/elevenlabs-multilingual/en-multiclause-1.wav"
   },
   {
@@ -391,8 +391,8 @@
     "lang": "en",
     "id": "greeting-2",
     "text": "Good afternoon, you've reached customer support.",
-    "first_byte_ms": 328,
-    "audio_bytes": 122602,
+    "first_byte_ms": 188,
+    "audio_bytes": 120372,
     "wav": "audio/elevenlabs-flash/en-greeting-2.wav"
   },
   {
@@ -400,8 +400,8 @@
     "lang": "fr",
     "id": "deescalate-1",
     "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
-    "first_byte_ms": 1063,
-    "audio_bytes": 178330,
+    "first_byte_ms": 1230,
+    "audio_bytes": 185016,
     "wav": "audio/elevenlabs-multilingual/fr-deescalate-1.wav"
   },
   {
@@ -409,8 +409,8 @@
     "lang": "es",
     "id": "order-1",
     "text": "Su pedido debería llegar en un plazo de tres a cinco días hábiles.",
-    "first_byte_ms": 1162,
-    "audio_bytes": 180558,
+    "first_byte_ms": 1195,
+    "audio_bytes": 196162,
     "wav": "audio/elevenlabs-multilingual/es-order-1.wav"
   },
   {
@@ -418,8 +418,8 @@
     "lang": "es",
     "id": "deescalate-1",
     "text": "Entiendo su frustración, permítame ver qué puedo hacer para solucionarlo.",
-    "first_byte_ms": 196,
-    "audio_bytes": 166070,
+    "first_byte_ms": 207,
+    "audio_bytes": 162170,
     "wav": "audio/piper/es-deescalate-1.wav"
   },
   {
@@ -427,8 +427,8 @@
     "lang": "en",
     "id": "greeting-2",
     "text": "Good afternoon, you've reached customer support.",
-    "first_byte_ms": 233,
-    "audio_bytes": 169972,
+    "first_byte_ms": 205,
+    "audio_bytes": 168856,
     "wav": "audio/piper/en-greeting-2.wav"
   },
   {
@@ -436,8 +436,8 @@
     "lang": "en",
     "id": "order-3",
     "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
-    "first_byte_ms": 258,
-    "audio_bytes": 265266,
+    "first_byte_ms": 285,
+    "audio_bytes": 248548,
     "wav": "audio/piper/en-order-3.wav"
   },
   {
@@ -445,8 +445,8 @@
     "lang": "en",
     "id": "question-1",
     "text": "Is there anything else I can help you with today?",
-    "first_byte_ms": 164,
-    "audio_bytes": 148794,
+    "first_byte_ms": 211,
+    "audio_bytes": 148238,
     "wav": "audio/piper/en-question-1.wav"
   },
   {
@@ -454,8 +454,8 @@
     "lang": "de",
     "id": "greeting-1",
     "text": "Vielen Dank für Ihren Anruf, wie kann ich Ihnen helfen?",
-    "first_byte_ms": 1087,
-    "audio_bytes": 153808,
+    "first_byte_ms": 1001,
+    "audio_bytes": 151580,
     "wav": "audio/elevenlabs-multilingual/de-greeting-1.wav"
   },
   {
@@ -463,8 +463,8 @@
     "lang": "en",
     "id": "greeting-1",
     "text": "Thanks for calling, how can I help you today?",
-    "first_byte_ms": 188,
-    "audio_bytes": 115914,
+    "first_byte_ms": 180,
+    "audio_bytes": 118144,
     "wav": "audio/elevenlabs-flash/en-greeting-1.wav"
   },
   {
@@ -472,8 +472,8 @@
     "lang": "en",
     "id": "order-2",
     "text": "Your extension is six six three five.",
-    "first_byte_ms": 202,
-    "audio_bytes": 122602,
+    "first_byte_ms": 178,
+    "audio_bytes": 124830,
     "wav": "audio/elevenlabs-flash/en-order-2.wav"
   },
   {
@@ -481,8 +481,8 @@
     "lang": "en",
     "id": "deescalate-2",
     "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
-    "first_byte_ms": 1139,
-    "audio_bytes": 209536,
+    "first_byte_ms": 1039,
+    "audio_bytes": 211766,
     "wav": "audio/elevenlabs-multilingual/en-deescalate-2.wav"
   },
   {
@@ -490,8 +490,8 @@
     "lang": "en",
     "id": "multiclause-2",
     "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
-    "first_byte_ms": 407,
-    "audio_bytes": 363340,
+    "first_byte_ms": 994,
+    "audio_bytes": 363350,
     "wav": "audio/kokoro/en-multiclause-2.wav"
   },
   {
@@ -499,8 +499,8 @@
     "lang": "de",
     "id": "order-1",
     "text": "Ihre Bestellung sollte innerhalb von drei bis fünf Werktagen eintreffen.",
-    "first_byte_ms": 455,
-    "audio_bytes": 222356,
+    "first_byte_ms": 263,
+    "audio_bytes": 229600,
     "wav": "audio/piper/de-order-1.wav"
   },
   {
@@ -508,8 +508,8 @@
     "lang": "en",
     "id": "order-2",
     "text": "Your extension is six six three five.",
-    "first_byte_ms": 137,
-    "audio_bytes": 120930,
+    "first_byte_ms": 158,
+    "audio_bytes": 115358,
     "wav": "audio/piper/en-order-2.wav"
   },
   {
@@ -517,8 +517,8 @@
     "lang": "en",
     "id": "deescalate-2",
     "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
-    "first_byte_ms": 271,
-    "audio_bytes": 205078,
+    "first_byte_ms": 268,
+    "audio_bytes": 209536,
     "wav": "audio/elevenlabs-flash/en-deescalate-2.wav"
   },
   {
@@ -526,8 +526,8 @@
     "lang": "de",
     "id": "deescalate-1",
     "text": "Ich verstehe Ihren Ärger, lassen Sie mich sehen, was ich tun kann.",
-    "first_byte_ms": 205,
-    "audio_bytes": 196164,
+    "first_byte_ms": 265,
+    "audio_bytes": 208424,
     "wav": "audio/piper/de-deescalate-1.wav"
   },
   {
@@ -535,8 +535,8 @@
     "lang": "de",
     "id": "deescalate-1",
     "text": "Ich verstehe Ihren Ärger, lassen Sie mich sehen, was ich tun kann.",
-    "first_byte_ms": 303,
-    "audio_bytes": 169412,
+    "first_byte_ms": 179,
+    "audio_bytes": 173872,
     "wav": "audio/elevenlabs-flash/de-deescalate-1.wav"
   },
   {
@@ -544,8 +544,8 @@
     "lang": "en",
     "id": "order-1",
     "text": "Your order should arrive within three to five business days.",
-    "first_byte_ms": 183,
-    "audio_bytes": 158268,
+    "first_byte_ms": 185,
+    "audio_bytes": 151580,
     "wav": "audio/elevenlabs-flash/en-order-1.wav"
   },
   {
@@ -553,8 +553,8 @@
     "lang": "en",
     "id": "deescalate-2",
     "text": "I'm very sorry for the inconvenience, we'll fix this as quickly as possible.",
-    "first_byte_ms": 301,
-    "audio_bytes": 275854,
+    "first_byte_ms": 393,
+    "audio_bytes": 261922,
     "wav": "audio/piper/en-deescalate-2.wav"
   },
   {
@@ -562,8 +562,8 @@
     "lang": "en",
     "id": "multiclause-2",
     "text": "I've added a note to your account so the carrier calls before delivery, and if anything changes I will text you right away.",
-    "first_byte_ms": 370,
-    "audio_bytes": 358332,
+    "first_byte_ms": 383,
+    "audio_bytes": 347186,
     "wav": "audio/piper/en-multiclause-2.wav"
   },
   {
@@ -571,8 +571,8 @@
     "lang": "fr",
     "id": "greeting-1",
     "text": "Merci de votre appel, comment puis-je vous aider aujourd'hui ?",
-    "first_byte_ms": 1289,
-    "audio_bytes": 147122,
+    "first_byte_ms": 1149,
+    "audio_bytes": 151580,
     "wav": "audio/elevenlabs-multilingual/fr-greeting-1.wav"
   },
   {
@@ -580,8 +580,8 @@
     "lang": "en",
     "id": "greeting-2",
     "text": "Good afternoon, you've reached customer support.",
-    "first_byte_ms": 1059,
-    "audio_bytes": 131518,
+    "first_byte_ms": 1098,
+    "audio_bytes": 138206,
     "wav": "audio/elevenlabs-multilingual/en-greeting-2.wav"
   },
   {
@@ -589,8 +589,8 @@
     "lang": "en",
     "id": "deescalate-1",
     "text": "I understand your frustration, let me see what I can do to make this right.",
-    "first_byte_ms": 196,
-    "audio_bytes": 196162,
+    "first_byte_ms": 211,
+    "audio_bytes": 193934,
     "wav": "audio/elevenlabs-flash/en-deescalate-1.wav"
   },
   {
@@ -598,7 +598,7 @@
     "lang": "en",
     "id": "multiclause-1",
     "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
-    "first_byte_ms": 200,
+    "first_byte_ms": 213,
     "audio_bytes": 300930,
     "wav": "audio/elevenlabs-flash/en-multiclause-1.wav"
   },
@@ -607,8 +607,8 @@
     "lang": "es",
     "id": "question-1",
     "text": "¿Hay algo más en lo que pueda ayudarle hoy?",
-    "first_byte_ms": 1061,
-    "audio_bytes": 113684,
+    "first_byte_ms": 1078,
+    "audio_bytes": 122602,
     "wav": "audio/elevenlabs-multilingual/es-question-1.wav"
   },
   {
@@ -616,8 +616,8 @@
     "lang": "en",
     "id": "greeting-1",
     "text": "Thanks for calling, how can I help you today?",
-    "first_byte_ms": 1062,
-    "audio_bytes": 118144,
+    "first_byte_ms": 1082,
+    "audio_bytes": 113684,
     "wav": "audio/elevenlabs-multilingual/en-greeting-1.wav"
   },
   {
@@ -625,8 +625,8 @@
     "lang": "en",
     "id": "deescalate-1",
     "text": "I understand your frustration, let me see what I can do to make this right.",
-    "first_byte_ms": 341,
-    "audio_bytes": 245760,
+    "first_byte_ms": 314,
+    "audio_bytes": 239630,
     "wav": "audio/piper/en-deescalate-1.wav"
   },
   {
@@ -634,7 +634,7 @@
     "lang": "en",
     "id": "multiclause-1",
     "text": "Unfortunately the item you ordered is currently out of stock, but we expect a new shipment by next Friday.",
-    "first_byte_ms": 1160,
+    "first_byte_ms": 1084,
     "audio_bytes": 330882,
     "wav": "audio/kokoro/en-multiclause-1.wav"
   },
@@ -643,7 +643,7 @@
     "lang": "es",
     "id": "question-1",
     "text": "¿Hay algo más en lo que pueda ayudarle hoy?",
-    "first_byte_ms": 287,
+    "first_byte_ms": 279,
     "audio_bytes": 115914,
     "wav": "audio/elevenlabs-flash/es-question-1.wav"
   },
@@ -652,8 +652,8 @@
     "lang": "fr",
     "id": "deescalate-1",
     "text": "Je comprends votre frustration, laissez-moi voir ce que je peux faire.",
-    "first_byte_ms": 209,
-    "audio_bytes": 189474,
+    "first_byte_ms": 223,
+    "audio_bytes": 176100,
     "wav": "audio/elevenlabs-flash/fr-deescalate-1.wav"
   },
   {
@@ -661,8 +661,8 @@
     "lang": "en",
     "id": "order-3",
     "text": "I can see your account and the recent order you mentioned, and it shipped on Tuesday.",
-    "first_byte_ms": 1025,
-    "audio_bytes": 264984,
+    "first_byte_ms": 894,
+    "audio_bytes": 264990,
     "wav": "audio/kokoro/en-order-3.wav"
   }
 ]
