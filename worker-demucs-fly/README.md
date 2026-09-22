@@ -243,6 +243,89 @@ Full machine-readable results: `verification/coverage_results.json`. Rerun
 `expand_coverage.py` to regenerate (deterministic given fixed RNG seeds and the same input
 files).
 
+## Investigated: does a purpose-built speech-enhancement model fix the real-speech gap? (this pass)
+
+The `real_speech_drone` result above (+0.2dB on real speech vs. +9.4dB on synthetic TTS speech,
+same noise/SNR) is suspected to happen because htdemucs is a **music** source-separation model
+(vocals-vs-instruments) repurposed for noise suppression, not a model trained for speech
+enhancement — it may be treating real speech's natural sibilants/breath/room-tone as "not vocals"
+and stripping them along with the actual noise. This pass investigated whether swapping in a
+model actually trained for speech enhancement would close that gap.
+
+**Candidates considered:**
+
+| candidate | license | commercial use | CPU feasibility | 2026 status |
+|---|---|---|---|---|
+| **DeepFilterNet3** (`Rikorose/DeepFilterNet`) | dual MIT / Apache-2.0 | OK | Yes — designed for real-time CPU use (RTF well under 1 on a single CPU thread); ran fine CPU-only here | Actively used, latest PyPI release `deepfilternet==0.5.6` |
+| **Meta/Facebook `denoiser`** (`facebookresearch/denoiser`) | **CC-BY-NC 4.0** | **Blocked — non-commercial only**, same bar this product already applies to Piper's licensing | Yes, CPU-real-time by design | Not actively developed post-2020 paper, but license alone rules it out |
+| **RNNoise** (Xiph) | BSD-3-Clause | OK | Yes, extremely lightweight (designed for embedded/VoIP) | Mature, essentially unchanged in years; older/simpler DSP+small-RNN approach, narrower design target (stationary VoIP-style noise) than DeepFilterNet or htdemucs |
+
+Meta's `denoiser` was eliminated immediately on licensing (CC-BY-NC 4.0 is non-commercial-only,
+the same category of blocker already flagged for research-only licenses elsewhere in this
+product). RNNoise was not installed/run in this pass: it's judged unlikely to beat a model
+(DeepFilterNet) that, as measured below, itself did not fix the real-speech gap, and given that,
+spending more effort validating an even narrower, older DSP-era model wasn't a good use of time
+in this pass — this is a gap in this investigation, not a claim that RNNoise was tested and
+failed. **DeepFilterNet was picked as the strongest, most credible candidate** (purpose-built for
+exactly this problem, permissively licensed, CPU-real-time) and was actually installed and run.
+
+**Install note**: DeepFilterNet 0.5.6 could **not** be installed into this project's own
+`.venv` without conflict — it requires `numpy<2.0` (this project pins `numpy==2.4.6` for
+htdemucs/scipy) and its `df.io` module imports `torchaudio.backend.common.AudioMetaData`, which
+is gone in this project's pinned `torch==2.14.0`/`torchaudio==2.11.0`. It only ran successfully in
+a **separate venv** with `torch==2.1.2`/`torchaudio==2.1.2`. This is itself a real integration
+cost of DeepFilterNet as evaluated (a torch major-version conflict with the existing htdemucs
+pipeline), on top of whatever the quality numbers show below.
+
+**Measured results** (same fixed mix files `expand_coverage.py`/`make_and_verify.py` already
+produced — no new audio, no new SNR levels, same `band_energy_fraction`/`estimate_output_snr`
+metric code, reused via `verification/eval_deepfilternet.py`):
+
+| case | engine | input SNR | output SNR | improvement | non-speech energy reduction |
+|---|---|---|---|---|---|
+| original_drone_0db (make_and_verify.py's clip) | htdemucs | 1.6 dB | 11.0 dB | **+9.4 dB** | 81.8% |
+| original_drone_0db (same clip) | DeepFilterNet3 | 1.6 dB | 10.46 dB | **+8.86 dB** | 80.6% |
+| white_noise_0db | htdemucs | 1.49 dB | 11.47 dB | **+9.98 dB** | 98.9% |
+| white_noise_0db (same mix) | DeepFilterNet3 | 1.49 dB | 12.47 dB | **+10.98 dB** | 96.6% |
+| **real_speech_drone** | htdemucs | 1.63 dB | 1.84 dB | **+0.21 dB** | 98.1% |
+| **real_speech_drone** (same mix) | **DeepFilterNet3** | 1.63 dB | 1.58 dB | **-0.05 dB (worse)** | 99.7% |
+
+Full machine-readable results: `verification/coverage_results_deepfilternet.json`.
+
+**Conclusion: DeepFilterNet does not fix the real-speech gap, and by this metric is marginally
+worse than htdemucs on the real-speech case (-0.05dB vs. +0.21dB — both are, practically, "no
+real improvement").** On the synthetic cases the two models are roughly comparable (DeepFilterNet
+slightly behind on the drone case, slightly ahead on pure white noise) — consistent with both
+being competent noise-suppression models on clean/uniform TTS input. But on the one case this
+whole investigation was about, DeepFilterNet does not show the "close the gap toward +9dB" result
+that would justify a switch. The non-speech-band-energy proxy metric is misleading in the exact
+same way for DeepFilterNet as it was for htdemucs (99.7% reduction, best of any engine on this
+case, while the oracle SNR metric shows no real gain) — this reinforces the original finding that
+this proxy metric is not trustworthy evidence of speech-preserving quality on real speech, for
+either engine.
+
+Two important caveats on this specific result, not resolved here: (a) this is one real-speech
+clip, one noise profile, one very hard 0dB SNR, run through DeepFilterNet's default config with no
+tuning — a different config, or DeepFilterNet2/plain "DeepFilterNet" (not the 3rd-gen model used
+here), might behave differently, untested; (b) the same SNR-estimator caveat from the htdemucs
+result applies here too — the cross-correlation-based oracle SNR metric may be a poor proxy on a
+recording that already has its own room coloration baked in, for any model, so a low or negative
+number here doesn't fully separate "the model does badly" from "the metric is unreliable on this
+kind of input" — a proper resolution needs PESQ/STOI or human listening, which is still not
+attempted in this pass either.
+
+**Decision: no code change.** Per this pass's own bar (a candidate must clearly outperform
+htdemucs on `real_speech_drone` without regressing the synthetic cases before it's worth
+switching or adding as a mode), DeepFilterNet does not clear it — it does not outperform htdemucs
+on the case that matters, and additionally introduces a torch/torchaudio version conflict with
+this project's existing pinned dependencies. **htdemucs remains the current approach.** The
+real-speech quality gap identified in the previous hardening pass is still open and still needs
+either a better quality metric (PESQ/STOI, human listening) or a documented acceptance that this
+feature underperforms on real-world audio relative to its synthetic-TTS-measured numbers — trying
+one more model did not resolve it, and RNNoise was not tried in this pass (see above), so it's
+not yet possible to say no CPU-feasible, commercially-licensed model would help; only that the
+single strongest a priori candidate (DeepFilterNet) measurably didn't.
+
 ## Local run
 
     cd worker-demucs-fly
@@ -312,7 +395,11 @@ Still open:
   above (+0.2dB vs. the synthetic case's +9.4dB under the same noise/SNR) is a genuine open
   question, not resolved here - needs either a better quality metric (PESQ/STOI or human
   listening) or acceptance that this feature is weaker on real-world audio than the original
-  verification suggested, before it's marketed as broadly as the current copy might imply.
+  verification suggested, before it's marketed as broadly as the current copy might imply. A
+  follow-up pass tried swapping in DeepFilterNet (see "Investigated: does a purpose-built
+  speech-enhancement model fix the real-speech gap?" above) - it did not help (-0.05dB vs.
+  htdemucs' +0.21dB on the same real-speech case) and htdemucs was kept. RNNoise was not tried.
+  This remains open.
 - **Streaming/chunking**: Demucs here processes the whole clip in memory; very long inputs
   (near `MAX_DURATION_S`) will have higher latency and memory than a chunked/streaming
   implementation would - untested, and not covered by this pass's load testing (only the ~10.4s
