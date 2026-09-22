@@ -350,6 +350,184 @@ const LANGS = {
     phoneAskRe: /\bномер\b[^.?!]{0,40}\b(телефону|мобільний|зв'язатися)\b|\b(телефон|мобільний)\b[^.?!]{0,40}\bномер\b/i,
     closingRe: /\b(до побачення|гарного дня|на все добре|бувайте)\b/i,
   },
+  // The 13 entries below (hu..he) use Cartesia's sonic-3.6 model instead of the single global
+  // ElevenLabs voice above — sonic-3.6 covers 44 languages, past eleven_multilingual_v2's 29, and
+  // these 13 are exactly the ones Cartesia covers that ElevenLabs doesn't (real Deepgram Nova-3
+  // codes confirmed for each; no entry added here without one — e.g. Malayalam/Odia were skipped,
+  // Cartesia supports them but Deepgram's documented language list doesn't). voiceId per entry was
+  // picked from Cartesia's real, live public voice library (GET /voices/?language=<code>), each a
+  // clear/professional customer-support-toned voice, same bar as the existing CARTESIA_VOICE_ID.
+  // say phrases are kept simple and correct rather than idiomatic — not independently reviewed by a
+  // native speaker, unlike the hand-tuned es/fr/pt-BR entries above; flag for review if this matters.
+  hu: {
+    name: 'Hungarian', dg: { kind: 'nova3', code: 'hu' },
+    tts: { backend: 'cartesia', voiceId: 'e97c3b37-1aa5-46af-afb7-9545086aaa92' }, // Eszter - Customer Companion
+    say: {
+      backchannel: ['Aha.', 'Értem.', 'Egy pillanat.', 'Persze.'],
+      warmup: 'Egy pillanat, mindjárt jövök.',
+      calendar: 'Egy pillanat, megnézem a naptárat.',
+      goodbye: 'Köszönöm szépen a hívást! Szép napot kívánok!',
+      transfer: 'Most továbbkapcsolom, egy pillanat, kérem.',
+    },
+    phoneAskRe: /\b(telefonszám(ot|a)?|mobilszám)\b/i,
+    closingRe: /\b(viszontlátásra|szép napot|köszönöm|minden jót)\b/i,
+  },
+  no: {
+    name: 'Norwegian', dg: { kind: 'nova3', code: 'no' },
+    tts: { backend: 'cartesia', voiceId: '4f7b1820-6263-4615-87a7-b105768d8f64' }, // Kari - Crisp Coordinator
+    say: {
+      backchannel: ['Mm.', 'Jeg forstår.', 'Et øyeblikk.', 'Selvfølgelig.'],
+      warmup: 'Et øyeblikk, jeg gjør meg klar.',
+      calendar: 'Et øyeblikk, jeg sjekker kalenderen.',
+      goodbye: 'Tusen takk for at du ringte! Ha en fin dag!',
+      transfer: 'Jeg kobler deg videre nå, et øyeblikk.',
+    },
+    phoneAskRe: /\btelefonnummer(et)?\b|\bmobilnummer\b/i,
+    closingRe: /\b(ha det|ha en fin dag|takk for samtalen|vi snakkes)\b/i,
+  },
+  vi: {
+    name: 'Vietnamese', dg: { kind: 'nova3', code: 'vi' },
+    tts: { backend: 'cartesia', voiceId: '8e8f222d-c817-4cc5-822b-8bf76ca7e98d' }, // Lien - Gentle Coordinator
+    say: {
+      backchannel: ['Dạ.', 'Em hiểu rồi.', 'Chờ chút ạ.', 'Vâng ạ.'],
+      warmup: 'Chờ một chút, em chuẩn bị nhé.',
+      calendar: 'Chờ một chút, em kiểm tra lịch nhé.',
+      goodbye: 'Cảm ơn anh/chị đã gọi! Chúc một ngày tốt lành!',
+      transfer: 'Em chuyển máy cho anh/chị ngay bây giờ, chờ một chút ạ.',
+    },
+    phoneAskRe: /\bsố điện thoại\b/i,
+    closingRe: /\b(tạm biệt|chào tạm biệt|cảm ơn|một ngày tốt lành)\b/i,
+  },
+  bn: {
+    name: 'Bengali', dg: { kind: 'nova3', code: 'bn' },
+    tts: { backend: 'cartesia', voiceId: '48b9e1de-e2fa-4914-8b32-31c437813548' }, // Ananya - Paced Helper
+    say: {
+      backchannel: ['হ্যাঁ।', 'বুঝেছি।', 'একটু অপেক্ষা করুন।', 'অবশ্যই।'],
+      warmup: 'একটু অপেক্ষা করুন, আমি প্রস্তুত হচ্ছি।',
+      calendar: 'একটু অপেক্ষা করুন, আমি ক্যালেন্ডার দেখছি।',
+      goodbye: 'কল করার জন্য অনেক ধন্যবাদ! আপনার দিনটি ভালো কাটুক!',
+      transfer: 'আমি এখন আপনাকে সংযুক্ত করছি, একটু অপেক্ষা করুন।',
+    },
+    phoneAskRe: /ফোন\s*নম্বর|মোবাইল\s*নম্বর/i,
+    closingRe: /(ধন্যবাদ|শুভ দিন|বিদায়)/i,
+  },
+  th: {
+    name: 'Thai', dg: { kind: 'nova3', code: 'th' },
+    tts: { backend: 'cartesia', voiceId: '4ff0f045-c140-4aa3-9210-529083f86fca' }, // Supannee - Support Concierge
+    say: {
+      backchannel: ['ค่ะ.', 'เข้าใจแล้วค่ะ.', 'รอสักครู่นะคะ.', 'ได้ค่ะ.'],
+      warmup: 'รอสักครู่นะคะ กำลังเตรียมข้อมูล.',
+      calendar: 'รอสักครู่นะคะ กำลังตรวจสอบปฏิทิน.',
+      goodbye: 'ขอบคุณมากที่โทรมานะคะ ขอให้มีความสุขตลอดวันค่ะ!',
+      transfer: 'ดิฉันจะโอนสายให้ตอนนี้นะคะ รอสักครู่ค่ะ.',
+    },
+    phoneAskRe: /เบอร์โทร(ศัพท์)?/i,
+    closingRe: /(ขอบคุณ|สวัสดีค่ะ|ลาก่อน)/i,
+  },
+  ka: {
+    name: 'Georgian', dg: { kind: 'nova3', code: 'ka' },
+    tts: { backend: 'cartesia', voiceId: '0bfbea6c-2f8f-4f86-b411-aa2316561e36' }, // Tamara - Support Specialist
+    say: {
+      backchannel: ['დიახ.', 'გასაგებია.', 'ერთი წუთი.', 'რა თქმა უნდა.'],
+      warmup: 'ერთი წუთი, ვემზადები.',
+      calendar: 'ერთი წუთი, კალენდარს ვამოწმებ.',
+      goodbye: 'დიდი მადლობა დარეკვისთვის! კარგი დღე გისურვებთ!',
+      transfer: 'ახლა შეგაერთებთ, ერთი წუთით მოითმინეთ.',
+    },
+    phoneAskRe: /ტელეფონის ნომ(ერი|რის)/i,
+    closingRe: /(მადლობა|ნახვამდის|კარგი დღე)/i,
+  },
+  te: {
+    name: 'Telugu', dg: { kind: 'nova3', code: 'te' },
+    tts: { backend: 'cartesia', voiceId: '82c2afc8-ebbc-4802-8ccf-036dc0fa1e3b' }, // Charan - Clear Concierge
+    say: {
+      backchannel: ['అలాగే.', 'అర్థమైంది.', 'ఒక్క నిమిషం.', 'తప్పకుండా.'],
+      warmup: 'ఒక్క నిమిషం, సిద్ధమవుతున్నాను.',
+      calendar: 'ఒక్క నిమిషం, క్యాలెండర్ చూస్తున్నాను.',
+      goodbye: 'కాల్ చేసినందుకు చాలా ధన్యవాదాలు! మంచి రోజు గడపండి!',
+      transfer: 'ఇప్పుడు మిమ్మల్ని కనెక్ట్ చేస్తున్నాను, ఒక్క నిమిషం.',
+    },
+    phoneAskRe: /ఫోన్\s*నంబర్/i,
+    closingRe: /(ధన్యవాదాలు|వీడ్కోలు|మంచి రోజు)/i,
+  },
+  gu: {
+    name: 'Gujarati', dg: { kind: 'nova3', code: 'gu' },
+    tts: { backend: 'cartesia', voiceId: '4590a461-bc68-4a50-8d14-ac04f5923d22' }, // Isha - Learner
+    say: {
+      backchannel: ['હા.', 'સમજાઈ ગયું.', 'એક મિનિટ.', 'ચોક્કસ.'],
+      warmup: 'એક મિનિટ, હું તૈયાર થાઉં છું.',
+      calendar: 'એક મિનિટ, હું કેલેન્ડર ચેક કરું છું.',
+      goodbye: 'કૉલ કરવા બદલ ખૂબ ખૂબ આભાર! તમારો દિવસ સારો રહે!',
+      transfer: 'હું હમણાં તમને જોડું છું, એક મિનિટ રાહ જુઓ.',
+    },
+    phoneAskRe: /ફોન\s*નંબર/i,
+    closingRe: /(આભાર|આવજો|સારો દિવસ)/i,
+  },
+  kn: {
+    name: 'Kannada', dg: { kind: 'nova3', code: 'kn' },
+    tts: { backend: 'cartesia', voiceId: '6baae46d-1226-45b5-a976-c7f9b797aae2' }, // Prakash - Instructor
+    say: {
+      backchannel: ['ಹೌದು.', 'ಅರ್ಥವಾಯಿತು.', 'ಒಂದು ನಿಮಿಷ.', 'ಖಂಡಿತ.'],
+      warmup: 'ಒಂದು ನಿಮಿಷ, ನಾನು ಸಿದ್ಧವಾಗುತ್ತಿದ್ದೇನೆ.',
+      calendar: 'ಒಂದು ನಿಮಿಷ, ನಾನು ಕ್ಯಾಲೆಂಡರ್ ಪರಿಶೀಲಿಸುತ್ತಿದ್ದೇನೆ.',
+      goodbye: 'ಕರೆ ಮಾಡಿದ್ದಕ್ಕಾಗಿ ತುಂಬಾ ಧನ್ಯವಾದಗಳು! ಶುಭ ದಿನ!',
+      transfer: 'ನಾನು ಈಗ ನಿಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸುತ್ತಿದ್ದೇನೆ, ಒಂದು ನಿಮಿಷ.',
+    },
+    phoneAskRe: /ಫೋನ್\s*ನಂಬರ್/i,
+    closingRe: /(ಧನ್ಯವಾದ|ಶುಭ ದಿನ|ವಿದಾಯ)/i,
+  },
+  mr: {
+    name: 'Marathi', dg: { kind: 'nova3', code: 'mr' },
+    tts: { backend: 'cartesia', voiceId: 'f227bc18-3704-47fe-b759-8c78a450fdfa' }, // Suresh - Instruction Voice
+    say: {
+      backchannel: ['हो.', 'समजलं.', 'एक क्षण.', 'नक्कीच.'],
+      warmup: 'एक क्षण, मी तयार होत आहे.',
+      calendar: 'एक क्षण, मी कॅलेंडर तपासत आहे.',
+      goodbye: 'कॉल केल्याबद्दल खूप धन्यवाद! तुमचा दिवस चांगला जावो!',
+      transfer: 'मी आता तुम्हाला जोडत आहे, एक क्षण थांबा.',
+    },
+    phoneAskRe: /फोन\s*नंबर/i,
+    closingRe: /(धन्यवाद|निरोप|चांगला दिवस)/i,
+  },
+  pa: {
+    name: 'Punjabi', dg: { kind: 'nova3', code: 'pa' },
+    tts: { backend: 'cartesia', voiceId: '9bf2ddcd-bb35-4e90-81b3-21c8183b24f4' }, // Navjot - Data Relayer
+    say: {
+      backchannel: ['ਹਾਂ ਜੀ.', 'ਸਮਝ ਗਿਆ.', 'ਇੱਕ ਮਿੰਟ.', 'ਬਿਲਕੁਲ.'],
+      warmup: 'ਇੱਕ ਮਿੰਟ, ਮੈਂ ਤਿਆਰ ਹੋ ਰਿਹਾ ਹਾਂ.',
+      calendar: 'ਇੱਕ ਮਿੰਟ, ਮੈਂ ਕੈਲੰਡਰ ਚੈੱਕ ਕਰ ਰਿਹਾ ਹਾਂ.',
+      goodbye: 'ਕਾਲ ਕਰਨ ਲਈ ਬਹੁਤ ਧੰਨਵਾਦ! ਤੁਹਾਡਾ ਦਿਨ ਵਧੀਆ ਰਹੇ!',
+      transfer: 'ਮੈਂ ਹੁਣ ਤੁਹਾਨੂੰ ਜੋੜ ਰਿਹਾ ਹਾਂ, ਇੱਕ ਮਿੰਟ ਰੁਕੋ.',
+    },
+    phoneAskRe: /ਫੋਨ\s*ਨੰਬਰ/i,
+    closingRe: /(ਧੰਨਵਾਦ|ਅਲਵਿਦਾ|ਵਧੀਆ ਦਿਨ)/i,
+  },
+  ur: {
+    name: 'Urdu', dg: { kind: 'nova3', code: 'ur' },
+    tts: { backend: 'cartesia', voiceId: '01fc5e31-71e9-40dc-a220-06dbd4b4ed7e' }, // Zara - Customer Guide
+    say: {
+      backchannel: ['جی ہاں۔', 'سمجھ گیا۔', 'ایک لمحہ۔', 'بالکل۔'],
+      warmup: 'ایک لمحہ، میں تیار ہو رہا ہوں۔',
+      calendar: 'ایک لمحہ، میں کیلنڈر چیک کر رہا ہوں۔',
+      goodbye: 'کال کرنے کا بہت شکریہ! آپ کا دن اچھا گزرے!',
+      transfer: 'میں ابھی آپ کو منسلک کر رہا ہوں، ایک لمحہ انتظار کریں۔',
+    },
+    phoneAskRe: /فون\s*نمبر/i,
+    closingRe: /(شکریہ|خدا حافظ|اچھا دن)/i,
+  },
+  he: {
+    name: 'Hebrew', dg: { kind: 'nova3', code: 'he' },
+    tts: { backend: 'cartesia', voiceId: 'ff857c8e-e7f9-4afd-af42-dce9f3c5ab02' }, // Yarden - Trusted Advisor
+    say: {
+      backchannel: ['כן.', 'הבנתי.', 'רגע אחד.', 'בטח.'],
+      warmup: 'רגע אחד, אני מתארגן.',
+      calendar: 'רגע אחד, אני בודק את היומן.',
+      goodbye: 'תודה רבה שהתקשרת! שיהיה לך יום נהדר!',
+      transfer: 'אני מעביר אותך עכשיו, רגע אחד בבקשה.',
+    },
+    phoneAskRe: /מספר\s*טלפון/i,
+    closingRe: /(תודה|להתראות|יום נהדר)/i,
+  },
 };
 
 // Codes an operator or API user might type -> canonical key. 'pt' is treated as Brazilian since
@@ -367,7 +545,11 @@ export function resolveLanguage(code) {
   const c = code.trim();
   const key = LANGS[c] ? c : ALIASES[c.toLowerCase()] || (LANGS[c.split(/[-_]/)[0].toLowerCase()] ? c.split(/[-_]/)[0].toLowerCase() : null);
   if (!key || !LANGS[key]) return null;
-  return { code: key, ...LANGS[key], tts: { backend: 'elevenlabs', elevenVoiceId: EL_VOICE } };
+  // Default every language to the single global ElevenLabs voice, same as always — a LANGS entry
+  // may set its own `tts` (e.g. { backend: 'cartesia', voiceId: '...' }) to override this, for
+  // languages ElevenLabs' eleven_multilingual_v2 doesn't cover but Cartesia's sonic-3.6 does.
+  const tts = LANGS[key].tts || { backend: 'elevenlabs', elevenVoiceId: EL_VOICE };
+  return { code: key, ...LANGS[key], tts };
 }
 
 // --- Mid-call language switching (additive only; nothing above this point is touched) ---

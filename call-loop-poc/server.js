@@ -1497,6 +1497,7 @@ class CallSession {
     this.voice = TTS_VOICE;
     this.lang = null; // resolved language record for non-English agents (languages.js); null = English path
     this.elevenVoiceId = ELEVENLABS_VOICE_ID;
+    this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
     this.ttsModel = null; // per-call override via context `ttsModel` — see onClientMessage
@@ -1517,6 +1518,7 @@ class CallSession {
     this._preLangState = {
       ttsBackend: this.ttsBackend,
       elevenVoiceId: this.elevenVoiceId,
+      cartesiaVoiceId: this.cartesiaVoiceId,
       ttsModel: this.ttsModel,
       backchannelWords: this.backchannelWords,
     };
@@ -1745,12 +1747,28 @@ class CallSession {
       } else {
         console.warn(`[call-loop] language ${lang.code} needs ElevenLabs but ELEVENLABS_API_KEY is unset — staying on ${this.ttsBackend} (English voice)`);
       }
+    } else if (this.ttsBackend === 'elevenlabs' && lang.tts.backend === 'cartesia') {
+      // Past ElevenLabs' ~29-language ceiling: this language only has real voice coverage on
+      // Cartesia (sonic-3.6 covers more languages). Redirects unconditionally, same as the
+      // kokoro/minimax branch above — staying on elevenlabs for a language it can't actually
+      // speak would just mispronounce or 404, so there's no real "tenant wants broken elevenlabs"
+      // case worth preserving here (unlike the kokoro/minimax case, which is a real voice choice).
+      if (CARTESIA_API_KEY && CARTESIA_VOICE_ID) {
+        this.ttsBackend = 'cartesia';
+        this.cost.ttsBackend = 'cartesia';
+      } else {
+        console.warn(`[call-loop] language ${lang.code} needs Cartesia but CARTESIA_API_KEY/CARTESIA_VOICE_ID is unset — staying on elevenlabs (may mispronounce)`);
+      }
     }
     if (this.ttsBackend === 'elevenlabs') {
       this.elevenVoiceId = lang.tts.elevenVoiceId;
       // eleven_multilingual_v2 measured ~1.3s to first byte vs ~0.3s for flash v2.5 (same 32-language
       // coverage incl. all of ours); an explicit ttsModel from the context message still wins.
       if (!this.ttsModel) this.ttsModel = LANG_ELEVEN_MODEL;
+    } else if (this.ttsBackend === 'cartesia' && lang.tts.voiceId) {
+      // Languages past ElevenLabs' 29-language ceiling: a real per-language Cartesia voice id
+      // (sonic-3.6 covers more languages than eleven_multilingual_v2) — see languages.js.
+      this.cartesiaVoiceId = lang.tts.voiceId;
     }
     this.backchannelWords = lang.say.backchannel;
     prewarmLangFillers(lang, this.elevenVoiceId);
@@ -1776,6 +1794,7 @@ class CallSession {
       this.lang = null;
       this.ttsBackend = this._preLangState.ttsBackend;
       this.elevenVoiceId = this._preLangState.elevenVoiceId;
+      this.cartesiaVoiceId = this._preLangState.cartesiaVoiceId;
       this.ttsModel = this._preLangState.ttsModel;
       this.backchannelWords = this._preLangState.backchannelWords;
       if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
@@ -2871,7 +2890,7 @@ class CallSession {
   _fillerCacheKey(text) {
     const voice =
       this.ttsBackend === 'elevenlabs' ? this.elevenVoiceId :
-      this.ttsBackend === 'cartesia' ? CARTESIA_VOICE_ID :
+      this.ttsBackend === 'cartesia' ? this.cartesiaVoiceId :
       this.ttsBackend === 'minimax' ? MINIMAX_VOICE_ID :
       this.voice;
     return `${this.ttsBackend}::${voice}::${text}`;
@@ -4731,7 +4750,7 @@ class CallSession {
         body: JSON.stringify({
           model_id: this.ttsModel || CARTESIA_MODEL,
           transcript: text,
-          voice: { id: CARTESIA_VOICE_ID },
+          voice: { id: this.cartesiaVoiceId || CARTESIA_VOICE_ID },
           output_format: outputFormat,
           ...(emotion ? { generation_config: { emotion } } : {}),
         }),
