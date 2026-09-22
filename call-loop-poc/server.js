@@ -789,6 +789,28 @@ app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded f
 // opens the stream (e.g. caller hangs up mid-ring) doesn't leak forever.
 const pendingCallContext = new Map();
 
+// Real bug found today: /twilio/voice's real (non-shopper, non-demo) branch does 2 sequential +
+// 4 parallel Supabase HTTP round trips (resolveInboundCall) with no timeout guard and no
+// idempotency protection. If Twilio ever retries this webhook for the same CallSid — a slow
+// response near its timeout, a transient network blip, a Fly cold start — each invocation used to
+// run its OWN resolveInboundCall() and its OWN pendingCallContext.set(callSid, ...) independently.
+// The first Media Stream connection to open consumes+deletes that entry and greets normally; if
+// the SECOND /twilio/voice invocation's resolveInboundCall() finishes and overwrites the entry
+// AFTER the first stream already consumed the original one, a second stream connection (Twilio can
+// open more than one for retried TwiML) finds a fresh entry waiting and greets again — two
+// greetings back to back on the same call, exactly the symptom seen on real calls today. Fix:
+// coalesce concurrent same-CallSid requests onto one shared resolveInboundCall() promise instead
+// of letting each retry race its own independent lookup + context write.
+const inFlightInboundResolves = new Map();
+// Belt-and-suspenders for the same bug: inFlightInboundResolves only coalesces requests that
+// overlap in time. A retry that arrives AFTER the first /twilio/voice invocation already fully
+// resolved and wrote pendingCallContext (its own in-flight entry already cleared) would otherwise
+// still write a SECOND, fresh pendingCallContext entry — which a second Media Stream connection
+// could then consume, greeting again. This tracks "already wrote context for this CallSid" across
+// that whole window, not just the in-flight one, so a late retry is a no-op instead of a second
+// greeting. Self-expires — a callSid is never legitimately reused, this is just cleanup.
+const contextWrittenCallSids = new Set();
+
 // Session-resume state, keyed by CallSid — the infrastructure piece a
 // mid-call TwiML detour needs (e.g. redirecting out to Twilio's <Pay> verb
 // for PCI-compliant payment capture, then reconnecting our own
@@ -895,10 +917,27 @@ app.post('/twilio/voice', async (req, res) => {
     // called.
     const direction = req.query.direction === 'outbound' ? 'outbound' : 'inbound';
     if (callSid) {
-      const resolved = await resolveInboundCall(toNumber, direction).catch((err) => {
-        console.error('[call-loop] tenant lookup failed', err);
-        return null;
-      });
+      // Coalesce a retried /twilio/voice hit for the same CallSid onto the ONE in-flight lookup
+      // (see inFlightInboundResolves' comment above) instead of racing a second independent
+      // resolveInboundCall() + pendingCallContext write — that race is the real cause of the
+      // "two greetings back to back" bug found today.
+      let resolvePromise = inFlightInboundResolves.get(callSid);
+      if (!resolvePromise) {
+        resolvePromise = resolveInboundCall(toNumber, direction).catch((err) => {
+          console.error('[call-loop] tenant lookup failed', err);
+          return null;
+        });
+        inFlightInboundResolves.set(callSid, resolvePromise);
+        resolvePromise.finally(() => {
+          // Only this invocation's own entry — a check clears the risk of a later, unrelated
+          // call that happens to reuse the exact same CallSid (won't happen in practice, but
+          // matching the map by reference rather than just key is the safe way to write this).
+          if (inFlightInboundResolves.get(callSid) === resolvePromise) inFlightInboundResolves.delete(callSid);
+        });
+      } else {
+        console.warn(`[call-loop] /twilio/voice hit again for callSid ${callSid} while still resolving — reusing the in-flight lookup instead of racing a second one`);
+      }
+      const resolved = await resolvePromise;
       if (resolved && (resolved.ttsBackend || TTS_BACKEND) === 'kokoro') warmTtsGateway('answer');
       // Caller's number (From), carried through for the live-call registry's
       // display — the dialed tenant number (To) is the same for every call, the
@@ -920,19 +959,25 @@ app.post('/twilio/voice', async (req, res) => {
             variables: { ...(resolved.flow.globalSettings?.variables || {}), ...(perCallVariables || {}) },
           },
         };
-        pendingCallContext.set(callSid, {
-          ...resolved,
-          ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
-          fromNumber: req.body.From || null,
-          // The tenant's OWN number (what was dialed), as distinct from the
-          // caller's (fromNumber) — needed as the "From" on an in-call SMS
-          // (see 'sms' node type / _executeSmsNode), since texting the
-          // caller has to come from a number that's actually theirs, not
-          // whoever called in.
-          tenantNumber: toNumber || null,
-          direction,
-          createdAt: Date.now(),
-        });
+        if (contextWrittenCallSids.has(callSid)) {
+          console.warn(`[call-loop] /twilio/voice hit again for callSid ${callSid} after context was already written — skipping to avoid a duplicate greeting`);
+        } else {
+          contextWrittenCallSids.add(callSid);
+          setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
+          pendingCallContext.set(callSid, {
+            ...resolved,
+            ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
+            fromNumber: req.body.From || null,
+            // The tenant's OWN number (what was dialed), as distinct from the
+            // caller's (fromNumber) — needed as the "From" on an in-call SMS
+            // (see 'sms' node type / _executeSmsNode), since texting the
+            // caller has to come from a number that's actually theirs, not
+            // whoever called in.
+            tenantNumber: toNumber || null,
+            direction,
+            createdAt: Date.now(),
+          });
+        }
       }
     }
   }
