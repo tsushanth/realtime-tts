@@ -60,6 +60,34 @@ def write_report(
     failed = [r for r in results if r.status == "failed"]
     skipped = [r for r in results if r.status == "skipped_over_budget"]
     lines.append(f"{len(trained)} trained, {len(failed)} failed, {len(skipped)} skipped (over budget).")
+
+    if trained:
+        cheapest = min(trained, key=lambda r: r.cost_usd)
+        lines.append("")
+        lines.append(f"Cheapest trained candidate: **{cheapest.candidate.id}** at ${cheapest.cost_usd:.2f}.")
+
+    # Min and max per metric, NOT a "winner": the harness core is domain-free
+    # and cannot know whether higher or lower is better for an arbitrary metric
+    # name (lower WER is better, higher MOS is better). The reader decides.
+    scored = [r for r in trained if r.metrics]
+    if scored and metric_names:
+        lines.append("")
+        lines.append("Metric range across trained candidates (min/max - the harness does not know which direction is better):")
+        for m in metric_names:
+            having = [r for r in scored if m in r.metrics]
+            if not having:
+                continue
+            lo = min(having, key=lambda r: r.metrics[m])
+            hi = max(having, key=lambda r: r.metrics[m])
+            lines.append(f"- **{m}**: min {lo.metrics[m]} ({lo.candidate.id}), max {hi.metrics[m]} ({hi.candidate.id})")
+
+    eval_failed = [r for r in trained if r.error]
+    if eval_failed:
+        lines.append("")
+        lines.append("Trained but not evaluated (training spend was still incurred):")
+        for r in eval_failed:
+            lines.append(f"- **{r.candidate.id}**: {r.error}")
+
     if failed:
         lines.append("")
         lines.append("Failures:")
