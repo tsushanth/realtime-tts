@@ -1,0 +1,21 @@
+name: call-loop-poc tests
+on:
+  push:
+    paths: ['call-loop-poc/**', '.github/workflows/call-loop-poc.yml']
+  pull_request:
+    paths: ['call-loop-poc/**', '.github/workflows/call-loop-poc.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm install
+        working-directory: call-loop-poc
+      - run: node --check server.js && node --check languages.js
+        working-directory: call-loop-poc
+      - run: npm test
+        working-directory: call-loop-poc

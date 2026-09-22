@@ -1490,7 +1490,7 @@ twilioWss.on('connection', (twilioWs) => {
   });
 });
 
-class CallSession {
+export class CallSession {
   constructor(clientWs) {
     this.clientWs = clientWs;
     this.history = [];
@@ -5249,7 +5249,10 @@ CallSession.prototype._runPostCallAnalysis = async function (transcript) {
   return analysis;
 };
 
-server.listen(PORT, () => {
+// Guarded so importing this module from tests (Vitest sets NODE_ENV=test) never binds a real
+// port or kicks off the retention/keepalive intervals below — everything above this point (routes,
+// CallSession, etc.) is still defined and importable for unit testing.
+if (process.env.NODE_ENV !== 'test') server.listen(PORT, () => {
   console.log(`[call-loop] listening on http://localhost:${PORT}`);
   console.log(`[call-loop] TTS gateway: ${TTS_GATEWAY_WS_URL}`);
   // Always prewarm regardless of the process-wide default — a per-session
