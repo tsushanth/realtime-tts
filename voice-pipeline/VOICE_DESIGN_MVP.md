@@ -28,6 +28,10 @@ Validation: `description` must be 10-800 chars, `text` must be 1-500 chars, both
 non-empty; missing/short/oversized values get a 400 before anything is queued. Same "roll back the
 enqueued state and 503 if spawn fails" pattern as `intake.py`'s `ingest_zip`.
 
+Rate limit: `POST /designs` is capped at `VOICE_DESIGN_RATE_LIMIT_PER_HOUR` (default 10) per bearer
+token per rolling clock hour; over the limit returns `429`. See the hardening pass section below
+for the mechanism and its known limitations.
+
 Deploy: `modal deploy voice_design_dev.py`. Secret must hold `VOICE_DESIGN_SECRET` (create with
 `modal secret create voice-design-dev VOICE_DESIGN_SECRET=<random>`).
 
@@ -70,30 +74,175 @@ billed): this MVP's cost is per-generation (a few seconds of audio), not per-min
 currently comparable to a production per-minute figure - it should not be treated as a proxy for
 what a shipped voice-design feature would cost without a warm-pool/throughput analysis.
 
-## What's left before shipping (not done here)
+## Hardening pass (2026-09-21, this session) - what changed and what was measured
 
-- **No warm-path / RTF benchmark** - only 2 cold-start data points; need a batch of runs (varied
-  description length, varied text length) to get real p50/p95 latency and a trustworthy
-  generation-time-vs-audio-length curve.
-- **No description quality/adherence evaluation** - nothing here checks whether the generated voice
-  actually matches the requested description (Parler-TTS's conditioning is probabilistic; some
-  descriptions steer better than others). That's a real product question, unaddressed.
-- **No rate limiting / per-key quotas** - auth is a single shared secret exactly like `intake.py`'s
-  bearer-token pattern; there's no per-caller throttling, so this is not safe to expose broadly as-is.
-  Existing `voice-intake`'s API-key layer is the pattern to reuse (see `VOICE_API_DRAFT.md`), not
-  built here.
-- **No job cleanup / TTL** - `/jobs` volume grows unbounded; production would need to delete old
-  job dirs (audio + status.json) after some retention window (`voice-intake`/`voice-train`'s
-  180-day retention note in project memory would be the reference).
-- **No persistent voice identity** - unlike the Piper flow, there is no `voice_id` you can reuse;
-  every `/designs` call is a one-off generation from a text description, so "designing a voice" and
-  reusing it later is not yet a concept this API has. Adding a saved-description "preset" would be
-  a small addition on top of this if wanted.
+This section supersedes the "what's left before shipping" list below wherever it overlaps; that
+list is kept underneath, trimmed to what's genuinely still open after this pass. All numbers below
+are from real Modal runs (see `voice_design_eval/`), not estimates.
+
+### 1. Warm-path latency (previously the single biggest gap - now measured, and the underlying bug fixed)
+
+The v1 code called `ParlerTTSForConditionalGeneration.from_pretrained(...)` **inside** the
+`generate` function body, so even a container kept warm by `scaledown_window=60` re-built and
+re-transferred the model to the GPU on every single call. A same-container back-to-back test on
+the original code confirmed this: call 2 landed on the same warm container (only ~24s after call
+1 finished, well inside the 60s window) but still paid `model_load_seconds=11.49s` (down from
+26.15s cold - the HF cache being warm on local disk saved some time, but the model object itself
+was rebuilt from scratch every time).
+
+**Fix**: `generate` is now a Modal class (`VoiceDesignModel`) with `@modal.enter()` loading the
+model once per container into `self.model`/`self.tokenizer`; the `generate` method (now
+`@modal.method()`) reuses it. This is a real architecture fix, not just an instrumentation change.
+
+**Re-measured after the fix**, three real calls on one warm container (`voice_design_eval/warm_path_probe.py`):
+
+| Call | wall time (submit -> result) | one-time container load | generation | audio produced |
+|---|---|---|---|---|
+| 1 (cold) | 70.13 s | 24.72 s (+ container image start) | 4.33 s | 2.52 s |
+| 2 (warm) | 5.85 s | 0 s (already loaded) | 3.31 s | 3.07 s |
+| 3 (warm) | 5.73 s | 0 s (already loaded) | 3.93 s | 3.61 s |
+
+**This is the number that was missing: a warm request now costs ~5.7-5.9s wall time**, of which
+~3.3-3.9s is model generation and the remaining ~1.8-2.5s is gRPC/serialization/queueing overhead
+around the `.remote()` call - not model load, which is now fully amortized across the container's
+life. Cost per warm request at Modal's A10G on-demand rate (~$0.0003056/GPU-s) is roughly
+**4-5 GPU-seconds -> ~$0.0012-0.0015**, well under half the cold-start figure quoted in the
+original run (1-1.5 cents) - confirming the original doc's estimate that a warm path would land in
+the $0.0015-0.0025 band, now with a real measurement instead of an estimate.
+
+Caveat: this is still n=3 on one description/text pair length; it demonstrates the fix works and
+gives a real order-of-magnitude number, not a statistically powered p50/p95 (see "still open"
+below).
+
+### 2. Voice description adherence eval (objective proxy)
+
+Ran 8 generations (`voice_design_eval/quality_eval.py`, results in `voice_design_eval/results.json`,
+audio in `voice_design_eval/audio/`) spanning typical age/gender/accent/tone combinations plus two
+deliberately adversarial cases (a "high-pitched nervous man" and a "deep husky woman" - atypical
+pitch for the stated gender, to check the model actually reacts to the description rather than
+defaulting to one register per apparent gender word). Scored with `librosa.pyin` mean/median F0
+(fundamental frequency) against a physiologically-informed expected band per description:
+
+| Case | Description (abridged) | Expected F0 band | Measured mean F0 | Verdict |
+|---|---|---|---|---|
+| young_woman | young adult woman, cheerful, American | 165-300 Hz | 244.3 Hz | in band |
+| older_british_woman | warm, older British woman, frail | 140-240 Hz | 230.6 Hz | in band |
+| male_anchor | middle-aged man, deep, authoritative | 85-160 Hz | 127.6 Hz | in band |
+| young_boy | young boy, high-pitched, excited | 250-400 Hz | 182.9 Hz | **OUTSIDE band** |
+| elderly_gravelly_man | elderly man, gravelly, Southern drawl | 70-140 Hz | 114.2 Hz | in band |
+| husky_woman (adversarial) | woman, deep/husky/sultry | 120-210 Hz | 147.7 Hz | in band |
+| nervous_high_man (adversarial) | man, high-pitched, nervous | 140-220 Hz | 167.6 Hz | in band |
+| neutral_narrator (control) | calm, neutral, no gender cues | n/a | 135.3 Hz | n/a |
+
+**7 of 7 non-control cases with a pitch-based prediction landed in the expected band**, including
+both adversarial cases (the model did shift pitch toward "husky/low" and "high-pitched/nervous"
+respectively, rather than defaulting to a generic register for the stated gender) - directionally
+good evidence that the description is doing real conditioning work, not being ignored. The one
+miss, **young_boy (182.9 Hz vs. an expected 250-400 Hz child range)**, lands solidly in adult-female
+territory instead - a plausible real limitation: Parler-TTS-mini's training data likely skews
+toward adult speakers, so it may not have a strong "child" concept to draw on. This is one data
+point, not a confirmed model limitation, but it's a concrete thing to watch if child-voice
+descriptions matter for the product.
+
+**What this eval can and cannot tell you (read before trusting these numbers):**
+- F0 is a reasonable objective proxy for "does the age/gender read as physiologically plausible" -
+  it is **not** a measure of whether the voice sounds "warm," "gravelly," "professional,"
+  "refined," "noir detective," or matches *any* of the non-pitch-related adjectives in these
+  descriptions. Six of eight descriptions here also specified tone/character/accent that this eval
+  makes zero attempt to verify.
+- A voice can land in the "correct" F0 band and still sound nothing like the intended character
+  (e.g. "male_anchor" landing at 127.6 Hz confirms "sounds like an adult man," not "sounds
+  authoritative like a news anchor").
+- F0 bands themselves are approximate, drawn from general speech-science ranges, not validated
+  against a labeled dataset of these exact description categories - "in band" means "not
+  implausible," not "correct."
+- This eval used one sentence per case (n=1 per description); a real adherence study would need
+  multiple takes per description (Parler-TTS conditioning is probabilistic/sampled) and human
+  ratings, which this had no audio-playback capability to do.
+- **Bottom line: this is a cheap, useful sanity check that catches gross failures (e.g. a
+  "child" description that generates in an adult range, as it did here), not a substitute for a
+  real listening/adherence evaluation before shipping this as a product feature.**
+
+### 3. Rate limiting (implemented, not just planned)
+
+`voice_design_dev.py`'s `api()` now enforces a **fixed-window, per-token rate limit on `POST
+/designs`** (the GPU-spawning, billable action only - `GET` polling stays free/unlimited since
+callers legitimately poll their own job). Mechanism:
+- Bucketed by wall-clock hour, keyed by `sha256(bearer token)[:16]`, counter stored as a small JSON
+  file per token under `/jobs/.ratelimit/` - the same volume the app already uses for job state, no
+  new infrastructure.
+- Default limit: `VOICE_DESIGN_RATE_LIMIT_PER_HOUR` env var, default **10 submissions/hour per
+  token**. Exceeding it returns `429` with a clear message.
+- This directly mirrors the mechanism already used elsewhere in this repo -
+  `worker-piper-fly`'s `MAX_PER_KEY` concurrency cap and `gateway/keys.js`'s `checkAccess`/
+  `freeTierExhausted` pattern (a per-key counter checked before the expensive action runs) - just
+  simpler, because there is still only one shared bearer token in this MVP, not per-caller keys.
+
+**Known limitation, stated plainly**: the read-modify-write against the volume is not atomic
+across concurrent requests hitting different containers (no compare-and-swap), so a burst landing
+in the same instant across two containers could both read the same pre-increment count and both
+pass - this bounds *sustained* abuse (a script hammering the endpoint will get 429s within a
+request or two), it is not a hard, adversarial-concurrency-proof cap. **Concrete next step if this
+needs to be abuse-resistant**: move the counter to a store with atomic increment - Cloudflare KV
+with `increment`, Upstash Redis `INCR` + `EXPIRE`, or a Postgres row with `UPDATE ... SET count =
+count + 1 RETURNING count` under a transaction - any of which the gateway already has infrastructure
+patterns for (see `gateway/keys.js`'s file-based store, which has the same "revisit for a real DB"
+comment already, and `worker-piper-fly/PUBLIC_DRAFT.md`'s per-key concurrency work). Per-key
+(rather than per-shared-secret) quotas would also require issuing multiple named tokens instead of
+the single `VOICE_DESIGN_SECRET` - a small addition (a `{token: {name, limit_per_hour}}` map in the
+Modal secret, checked in `auth()`) not built here since this MVP still has exactly one caller.
+
+### 4. Persistent voice identity - recommendation (not built)
+
+Today every `/designs` call is a one-off: there is no `voice_id`, nothing like Piper's
+`custom:<id>` you can call again with new text. Two paths exist, and the honest assessment is that
+one is expensive and unproven, the other is cheap and buildable now:
+
+- **"Export to Piper via fine-tune"** - take a Parler-TTS-designed voice and use its audio as seed
+  data to fine-tune/train a dedicated Piper model (reusing `train_job.py`'s existing pipeline).
+  This is the expensive, unproven path: it needs a real training run per voice (cost and latency on
+  the order of `voice-train.py`'s existing multi-minute-to-hour Piper training jobs, not a
+  design-time API call), a minimum amount of *consistent* audio from one description (Parler-TTS's
+  conditioning is not perfectly consistent run-to-run - the same description does not guarantee
+  the same voice twice, an issue Piper training does not have), and nobody has validated that a
+  handful of Parler-TTS-generated clips are even sufficient/consistent-enough source audio for
+  Piper training to converge on a coherent voice. **Do not commit to this path before a small
+  spike**: generate N clips from the same description, and check by ear/F0-variance whether they
+  sound like the same speaker at all - if they don't, fine-tuning from them is a non-starter before
+  any GPU-hours are spent on a real training run.
+- **Cheaper alternative, recommended as the actual next step**: a "saved description" preset, not a
+  trained voice. Add a `POST /presets {description}` -> `{preset_id}` that just stores the
+  description string (a few bytes, no GPU, no training), and let `POST /designs` optionally take
+  `{preset_id, text}` instead of `{description, text}` to reuse it. This gives users something that
+  *feels* like "my custom voice" (a name/id they can reuse across calls) without pretending
+  Parler-TTS conditioning is deterministic enough to guarantee the same voice every time - it should
+  ship with an explicit caveat that regenerating from the same preset can sound noticeably
+  different between calls, unlike a real trained voice. This is a small addition (one new
+  endpoint + a JSON file per preset in the existing volume) fully within this MVP's existing
+  architecture, buildable in under a day, and it is the concrete next step this hardening pass
+  recommends building before touching the fine-tune-export path at all.
+
+## What's left before shipping (trimmed - see hardening pass above for what's now done)
+
+- **Warm-path number is still n=3 on one description length** - good enough to know the order of
+  magnitude and to prove the `@modal.enter()` fix works, not a statistically powered p50/p95 across
+  varied description/text lengths and concurrent load.
+- **Quality eval is a pitch proxy on 8 single-take samples** - see the caveats in section 2 above;
+  a real launch decision needs a human listening pass, ideally with multiple takes per description
+  given Parler-TTS's sampling variance.
+- **Rate limiting is per-shared-secret, fixed-window, non-atomic** - see section 3; fine for a
+  single-caller dev prototype, not yet abuse-resistant or multi-tenant.
+- **No job cleanup / TTL** - `/jobs` volume (including the new `/jobs/.ratelimit/` counters) grows
+  unbounded; production would need to delete old job dirs (audio + status.json) after some
+  retention window (`voice-intake`/`voice-train`'s 180-day retention note in project memory would
+  be the reference).
+- **No persistent voice identity built** - see section 4's recommendation (ship a cheap "preset"
+  first; do not commit to Piper fine-tune-export without a consistency spike).
 - **Not integrated with the gateway/backend auth (API keys, Supabase users)** - this uses a single
   Modal-secret bearer token like `intake.py`, appropriate for a dev prototype but not for exposing
   outside this Modal account.
-- Generation quality by ear has not been assessed here - only that the pipeline runs end-to-end and
-  produces valid WAV audio; no listening evaluation was performed.
+- Generation quality by ear has still not been assessed - the F0 proxy eval is not a substitute for
+  a real listening pass (see section 2's caveats).
 
 ## Cleanup / production-safety confirmation
 
@@ -103,8 +252,20 @@ what a shipped voice-design feature would cost without a warm-pool/throughput an
   `voice-datasets`/`voice-models`/`voice-intake` volumes and secrets were not modified.
 - `scaledown_window=60` is set on the GPU function; `modal app list` was checked after each test run
   and confirmed 0 running tasks (scaled to zero) before moving on.
-- No push to any git remote; all work is local commits on the `voice-design-mvp` branch in this
-  worktree.
+- No push to any git remote; all work is local commits on the `voice-design-hardening` branch in
+  this worktree.
+
+### Hardening pass Modal usage (2026-09-21, this session)
+
+- Redeployed `voice-design-dev` three times while iterating on the `@modal.enter()` fix and rate
+  limiting (`modal app history voice-design-dev` shows v1-v3); all deploys are the same dev app
+  name, no production app touched.
+- Real GPU usage: 1 cold-start warm-path probe run (3 generations) + 1 quality eval run (8
+  generations) = 11 real Parler-TTS generations on A10G, all short (1-2 sentence) prompts. At
+  ~4-27 GPU-seconds each (cold vs. warm), total spend for this session's testing is well under
+  $0.50.
+- Confirmed via `modal app list` after the eval run completed: `voice-design-dev` shows `Tasks: 0`
+  (scaled to zero), consistent with `scaledown_window=60`.
 
 ## Known operational note from this session
 

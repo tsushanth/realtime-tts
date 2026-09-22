@@ -54,60 +54,97 @@ JOB_ID_RE = r"^d-[0-9a-f]{10}$"
 
 MODEL_ID = "parler-tts/parler-tts-mini-v1"
 
+# Rate limiting: fixed-window, per-token, applied only to POST /designs (the GPU-spawning,
+# billable action) - GET polling is free and unlimited since callers legitimately poll their own
+# job repeatedly. Default is deliberately low: this is a dev/preview GPU path, not a production
+# throughput target. Override per-deployment with VOICE_DESIGN_RATE_LIMIT_PER_HOUR.
+RATE_LIMIT_PER_HOUR = int(_os.environ.get("VOICE_DESIGN_RATE_LIMIT_PER_HOUR", "10"))
 
-@app.function(
+
+@app.cls(
     image=gpu_image, gpu="A10G", timeout=600, volumes={"/jobs": jobs},
     scaledown_window=60,  # scale to zero quickly after the last request - this is a dev/preview path, not a hot service
 )
-def generate(job_id: str, description: str, text: str):
-    """Runs on GPU. Writes status.json + (on success) audio.wav into the job's volume dir."""
-    import json
-    import soundfile as sf
-    import torch
-    from parler_tts import ParlerTTSForConditionalGeneration
-    from transformers import AutoTokenizer
+class VoiceDesignModel:
+    """Class-based (not @app.function) specifically so @modal.enter() can load Parler-TTS ONCE per
+    container and keep it resident in GPU memory for the container's life. The original v1
+    function-based `generate` called `from_pretrained()` inside the function body on every single
+    invocation - so even a warm container (same process, same scaledown_window) still paid a
+    ~10-12s reload every call (confirmed by measurement: a back-to-back warm call showed
+    model_load_seconds=11.49s, vs 26.15s cold - faster because the weights were already on local
+    disk, but still not truly warm because the model object itself was rebuilt and re-transferred
+    to the GPU each time). Moving load into @modal.enter() is the actual fix, not just a
+    measurement exercise: it makes warm requests skip loading entirely."""
 
-    d = f"/jobs/{job_id}"
+    @modal.enter()
+    def load(self):
+        import torch
+        from parler_tts import ParlerTTSForConditionalGeneration
+        from transformers import AutoTokenizer
 
-    def write_status(**kw):
-        json.dump({"job_id": job_id, **kw}, open(f"{d}/status.json", "w"))
-        jobs.commit()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        t0 = time.time()
+        self.model = ParlerTTSForConditionalGeneration.from_pretrained(MODEL_ID).to(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.container_load_seconds = round(time.time() - t0, 2)
 
-    write_status(status="running", started_at=int(time.time()))
-    t0 = time.time()
-    try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = ParlerTTSForConditionalGeneration.from_pretrained(MODEL_ID).to(device)
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-        load_s = time.time() - t0
+    @modal.method()
+    def generate(self, job_id: str, description: str, text: str):
+        """Writes status.json + (on success) audio.wav into the job's volume dir. model_load_seconds
+        in the result is now ~0 for every call after the first on a given container (the container's
+        own one-time load cost is reported separately as container_load_seconds, not billed to any
+        one job) - this is the number that answers "what does a warm request actually cost"."""
+        import json
+        import os
+        import soundfile as sf
 
-        t1 = time.time()
-        desc_ids = tokenizer(description, return_tensors="pt").input_ids.to(device)
-        prompt_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
-        generation = model.generate(input_ids=desc_ids, prompt_input_ids=prompt_ids)
-        audio = generation.cpu().numpy().squeeze()
-        gen_s = time.time() - t1
+        d = f"/jobs/{job_id}"
+        os.makedirs(d, exist_ok=True)  # defensive: api() also creates this before spawning, but a
+        # direct caller (e.g. a latency probe invoking this function without going through
+        # /designs) should not crash on a missing directory.
 
-        sf.write(f"{d}/audio.wav", audio, model.config.sampling_rate)
-        write_status(
-            status="ready", finished_at=int(time.time()),
-            model_load_seconds=round(load_s, 2), generation_seconds=round(gen_s, 2),
-            audio_seconds=round(len(audio) / model.config.sampling_rate, 2),
-            sampling_rate=model.config.sampling_rate,
-        )
-    except Exception as e:
-        write_status(status="failed", finished_at=int(time.time()), error=str(e)[:500])
-        raise
+        def write_status(**kw):
+            json.dump({"job_id": job_id, **kw}, open(f"{d}/status.json", "w"))
+            jobs.commit()
+
+        write_status(status="running", started_at=int(time.time()))
+        try:
+            t1 = time.time()
+            desc_ids = self.tokenizer(description, return_tensors="pt").input_ids.to(self.device)
+            prompt_ids = self.tokenizer(text, return_tensors="pt").input_ids.to(self.device)
+            generation = self.model.generate(input_ids=desc_ids, prompt_input_ids=prompt_ids)
+            audio = generation.cpu().numpy().squeeze()
+            gen_s = time.time() - t1
+
+            sf.write(f"{d}/audio.wav", audio, self.model.config.sampling_rate)
+            result = dict(
+                status="ready", finished_at=int(time.time()),
+                container_load_seconds=self.container_load_seconds,  # one-time per container, not per job
+                generation_seconds=round(gen_s, 2),
+                audio_seconds=round(len(audio) / self.model.config.sampling_rate, 2),
+                sampling_rate=self.model.config.sampling_rate,
+            )
+            write_status(**result)
+            # Returned in addition to the volume write so a caller invoking this function directly
+            # (e.g. a warm-path latency probe via `modal.Cls.from_name(...)().generate.remote()`,
+            # not through the /designs HTTP API) can read timings without a second round trip
+            # through the volume. api() below still only reads status.json/audio.wav, unaffected.
+            return {"job_id": job_id, **result}
+        except Exception as e:
+            write_status(status="failed", finished_at=int(time.time()), error=str(e)[:500])
+            raise
 
 
 @app.function(image=web_image, secrets=[secret], volumes={"/jobs": jobs}, timeout=60)
 @modal.asgi_app()
 def api():
+    import hashlib
     import hmac
     import json
     import os
     import re
     import secrets as pysecrets
+    import time as _time
 
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import Response
@@ -115,18 +152,52 @@ def api():
     web = FastAPI()
     ID_RE = re.compile(JOB_ID_RE)
 
-    def auth(request: Request):
+    def auth(request: Request) -> str:
         tok = request.headers.get("authorization", "").removeprefix("Bearer ")
         if not tok or not hmac.compare_digest(tok.encode(), os.environ["VOICE_DESIGN_SECRET"].encode()):
             raise HTTPException(401, "unauthorized")
+        return tok
 
     def jid_ok(jid: str):
         if not ID_RE.match(jid):
             raise HTTPException(400, "bad job id")
 
+    # Fixed-window per-token rate limit, backed by the same volume /jobs already uses for job
+    # state (no new infra). Bucketed by wall-clock hour so the window resets cleanly, tracked per
+    # sha256(token) so the shared secret today - or any per-caller token added later, see
+    # VOICE_DESIGN_MVP.md's rate-limiting section - each gets an independent counter. This is a
+    # basic MVP-grade limiter, not a production one: the read-modify-write against the volume is
+    # NOT atomic across concurrent requests hitting different containers, so a burst landing across
+    # two containers in the same instant could both read the same pre-increment count and both
+    # pass ("undercounting" under concurrency), i.e. this bounds sustained abuse, not a hard cap
+    # under adversarial concurrent load. A real per-key quota (Cloudflare KV / Redis / Postgres
+    # counter with atomic INCR, as sketched in VOICE_DESIGN_MVP.md) is the fix if this ever needs
+    # to be abuse-resistant rather than just "not unlimited."
+    def check_rate_limit(token: str):
+        os.makedirs("/jobs/.ratelimit", exist_ok=True)
+        th = hashlib.sha256(token.encode()).hexdigest()[:16]
+        path = f"/jobs/.ratelimit/{th}.json"
+        hour = int(_time.time() // 3600)
+        jobs.reload()
+        try:
+            rec = json.load(open(path))
+        except Exception:
+            rec = {}
+        if rec.get("hour") != hour:
+            rec = {"hour": hour, "count": 0}
+        rec["count"] += 1
+        if rec["count"] > RATE_LIMIT_PER_HOUR:
+            raise HTTPException(
+                429,
+                f"rate limit exceeded: {RATE_LIMIT_PER_HOUR} design submissions/hour per key; retry next hour",
+            )
+        json.dump(rec, open(path, "w"))
+        jobs.commit()
+
     @web.post("/designs")
     async def create(request: Request):
-        auth(request)
+        tok = auth(request)
+        check_rate_limit(tok)
         body = await request.json()
         description = body.get("description")
         text = body.get("text")
@@ -139,7 +210,8 @@ def api():
         json.dump({"job_id": jid, "status": "queued", "submitted_at": int(__import__("time").time())}, open(f"/jobs/{jid}/status.json", "w"))
         jobs.commit()
         try:
-            modal.Function.from_name("voice-design-dev" + APP_SUFFIX, "generate").spawn(jid, description.strip(), text.strip())
+            model_cls = modal.Cls.from_name("voice-design-dev" + APP_SUFFIX, "VoiceDesignModel")
+            model_cls().generate.spawn(jid, description.strip(), text.strip())
         except Exception as e:
             import shutil
             shutil.rmtree(f"/jobs/{jid}", ignore_errors=True)
