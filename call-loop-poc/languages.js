@@ -528,6 +528,53 @@ const LANGS = {
     phoneAskRe: /מספר\s*טלפון/i,
     closingRe: /(תודה|להתראות|יום נהדר)/i,
   },
+  // The 3 entries below (ca, lt, hy) use Fish Audio — languages neither ElevenLabs nor Cartesia
+  // cover with a real voice. Fish's public catalog is a largely-unmoderated community marketplace
+  // (many entries are unlicensed character clones or multi-tagged with languages the sample audio
+  // isn't actually in), so unlike the Cartesia batch above, each referenceId here was individually
+  // vetted by reading its actual sample text against the target language/script before picking it —
+  // most candidate languages checked (Estonian, Latvian, Slovenian, Serbian, Persian, Swahili) had
+  // no real match in their top results and were left out rather than guessed. These 3 voices are
+  // real matches but low-usage/unproven (0-1 likes) — flag for review before high-volume use.
+  ca: {
+    name: 'Catalan', dg: { kind: 'nova3', code: 'ca' },
+    tts: { backend: 'fish', referenceId: '25073f4318ef4137bf4cdf6daf7adeb9' }, // "Adif" — real Catalan transit-announcer sample
+    say: {
+      backchannel: ['Sí.', 'Entesos.', 'Un moment.', 'És clar.'],
+      warmup: 'Un moment, m\'estic preparant.',
+      calendar: 'Un moment, estic comprovant el calendari.',
+      goodbye: 'Moltes gràcies per trucar! Que tingui un bon dia!',
+      transfer: 'Ara el connecto, un moment si us plau.',
+    },
+    phoneAskRe: /número\s*de\s*telèfon/i,
+    closingRe: /(gràcies|adéu|bon dia)/i,
+  },
+  lt: {
+    name: 'Lithuanian', dg: { kind: 'nova3', code: 'lt' },
+    tts: { backend: 'fish', referenceId: '9b26eaea17e04f48af794405588281da' }, // "Merge Fellas" — single-tagged, real Lithuanian sample
+    say: {
+      backchannel: ['Taip.', 'Supratau.', 'Vienas momentas.', 'Žinoma.'],
+      warmup: 'Vienas momentas, ruošiuosi.',
+      calendar: 'Vienas momentas, tikrinu kalendorių.',
+      goodbye: 'Ačiū, kad paskambinote! Geros dienos!',
+      transfer: 'Dabar jus sujungsiu, vienas momentas.',
+    },
+    phoneAskRe: /telefono\s*numer(is|į)/i,
+    closingRe: /(ačiū|viso gero|geros dienos)/i,
+  },
+  hy: {
+    name: 'Armenian', dg: { kind: 'nova3', code: 'hy' },
+    tts: { backend: 'fish', referenceId: 'a5851dea4f2647d7948b3c0026eb64e8' }, // "Փորձառու հայ տղամարդ" — real Armenian-script sample
+    say: {
+      backchannel: ['Այո.', 'Հասկացա.', 'Մի պահ.', 'Իհարկե.'],
+      warmup: 'Մի պահ, պատրաստվում եմ.',
+      calendar: 'Մի պահ, ստուգում եմ օրացույցը.',
+      goodbye: 'Շնորհակալություն զանգի համար! Հաջող օր!',
+      transfer: 'Հիմա կապում եմ ձեզ, մի պահ սպասեք.',
+    },
+    phoneAskRe: /հեռախոսահամար/i,
+    closingRe: /(շնորհակալություն|ցտեսություն|հաջող օր)/i,
+  },
 };
 
 // Codes an operator or API user might type -> canonical key. 'pt' is treated as Brazilian since

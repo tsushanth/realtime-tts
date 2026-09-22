@@ -49,7 +49,7 @@ const TTS_VOICE = process.env.TTS_VOICE || 'af_heart';
 // field overrides it per call (see CallSession.onClientMessage), so a
 // multi-tenant caller can pick a different backend per tenant without a
 // restart.
-const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax'];
+const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax', 'fish'];
 const TTS_BACKEND = VALID_TTS_BACKENDS.includes(process.env.TTS_BACKEND) ? process.env.TTS_BACKEND : 'kokoro';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
@@ -97,6 +97,16 @@ const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'speech-2.8-hd';
 if (TTS_BACKEND === 'minimax' && (!MINIMAX_API_KEY || !MINIMAX_GROUP_ID)) {
   console.warn('[call-loop] TTS_BACKEND=minimax but MINIMAX_API_KEY/MINIMAX_GROUP_ID not set — TTS will fail');
 }
+// Fish Audio's TTS endpoint (see docs.fish.audio/api-reference/endpoint/
+// openapi-v1/text-to-speech) — POST with a `model` header (voice model id
+// from their /model catalog, not a memorable name) and JSON body
+// {text, reference_id}. Used only per-language today (languages.js's
+// `tts: { backend: 'fish', referenceId }`), never as the global default —
+// their catalog is a largely-unmoderated community marketplace (see the
+// real IP-infringing character clones found during selection), so only a
+// small, individually-vetted set of language voices from it are used.
+const FISH_AUDIO_API_KEY = process.env.FISH_AUDIO_API_KEY;
+const FISH_AUDIO_MODEL = process.env.FISH_AUDIO_MODEL || 's2.1-pro';
 // Shared readiness check — used both at process startup (above) and when a
 // per-session context message requests a backend (CallSession.onClientMessage),
 // so a tenant can't silently end up with dead TTS just because a key was
@@ -105,6 +115,7 @@ function ttsBackendMissingKey(backend) {
   if (backend === 'elevenlabs') return !ELEVENLABS_API_KEY;
   if (backend === 'cartesia') return !CARTESIA_API_KEY || !CARTESIA_VOICE_ID;
   if (backend === 'minimax') return !MINIMAX_API_KEY || !MINIMAX_GROUP_ID;
+  if (backend === 'fish') return !FISH_AUDIO_API_KEY;
   return false; // kokoro needs no key
 }
 
@@ -1498,6 +1509,7 @@ class CallSession {
     this.lang = null; // resolved language record for non-English agents (languages.js); null = English path
     this.elevenVoiceId = ELEVENLABS_VOICE_ID;
     this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
+    this.fishReferenceId = null; // set via lang.tts.referenceId — no global default, fish is language-only today
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
     this.ttsModel = null; // per-call override via context `ttsModel` — see onClientMessage
@@ -1519,6 +1531,7 @@ class CallSession {
       ttsBackend: this.ttsBackend,
       elevenVoiceId: this.elevenVoiceId,
       cartesiaVoiceId: this.cartesiaVoiceId,
+      fishReferenceId: this.fishReferenceId,
       ttsModel: this.ttsModel,
       backchannelWords: this.backchannelWords,
     };
@@ -1747,17 +1760,20 @@ class CallSession {
       } else {
         console.warn(`[call-loop] language ${lang.code} needs ElevenLabs but ELEVENLABS_API_KEY is unset — staying on ${this.ttsBackend} (English voice)`);
       }
-    } else if (this.ttsBackend === 'elevenlabs' && lang.tts.backend === 'cartesia') {
-      // Past ElevenLabs' ~29-language ceiling: this language only has real voice coverage on
-      // Cartesia (sonic-3.6 covers more languages). Redirects unconditionally, same as the
-      // kokoro/minimax branch above — staying on elevenlabs for a language it can't actually
-      // speak would just mispronounce or 404, so there's no real "tenant wants broken elevenlabs"
-      // case worth preserving here (unlike the kokoro/minimax case, which is a real voice choice).
-      if (CARTESIA_API_KEY && CARTESIA_VOICE_ID) {
-        this.ttsBackend = 'cartesia';
-        this.cost.ttsBackend = 'cartesia';
+    } else if (this.ttsBackend === 'elevenlabs' && (lang.tts.backend === 'cartesia' || lang.tts.backend === 'fish')) {
+      // Past ElevenLabs' ~29-language ceiling: this language only has real voice coverage on a
+      // second/third backend (Cartesia: sonic-3.6, 44 languages; Fish Audio: a small, individually
+      // vetted set of community voices for languages neither ElevenLabs nor Cartesia cover).
+      // Redirects unconditionally, same as the kokoro/minimax branch above — staying on elevenlabs
+      // for a language it can't actually speak would just mispronounce or 404, so there's no real
+      // "tenant wants broken elevenlabs" case worth preserving here.
+      const target = lang.tts.backend;
+      const ready = target === 'cartesia' ? (CARTESIA_API_KEY && CARTESIA_VOICE_ID) : FISH_AUDIO_API_KEY;
+      if (ready) {
+        this.ttsBackend = target;
+        this.cost.ttsBackend = target;
       } else {
-        console.warn(`[call-loop] language ${lang.code} needs Cartesia but CARTESIA_API_KEY/CARTESIA_VOICE_ID is unset — staying on elevenlabs (may mispronounce)`);
+        console.warn(`[call-loop] language ${lang.code} needs ${target} but its key/config is unset — staying on elevenlabs (may mispronounce)`);
       }
     }
     if (this.ttsBackend === 'elevenlabs') {
@@ -1769,6 +1785,8 @@ class CallSession {
       // Languages past ElevenLabs' 29-language ceiling: a real per-language Cartesia voice id
       // (sonic-3.6 covers more languages than eleven_multilingual_v2) — see languages.js.
       this.cartesiaVoiceId = lang.tts.voiceId;
+    } else if (this.ttsBackend === 'fish' && lang.tts.referenceId) {
+      this.fishReferenceId = lang.tts.referenceId;
     }
     this.backchannelWords = lang.say.backchannel;
     prewarmLangFillers(lang, this.elevenVoiceId);
@@ -1795,6 +1813,7 @@ class CallSession {
       this.ttsBackend = this._preLangState.ttsBackend;
       this.elevenVoiceId = this._preLangState.elevenVoiceId;
       this.cartesiaVoiceId = this._preLangState.cartesiaVoiceId;
+      this.fishReferenceId = this._preLangState.fishReferenceId;
       this.ttsModel = this._preLangState.ttsModel;
       this.backchannelWords = this._preLangState.backchannelWords;
       if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
@@ -2892,6 +2911,7 @@ class CallSession {
       this.ttsBackend === 'elevenlabs' ? this.elevenVoiceId :
       this.ttsBackend === 'cartesia' ? this.cartesiaVoiceId :
       this.ttsBackend === 'minimax' ? MINIMAX_VOICE_ID :
+      this.ttsBackend === 'fish' ? this.fishReferenceId :
       this.voice;
     return `${this.ttsBackend}::${voice}::${text}`;
   }
@@ -4500,6 +4520,10 @@ class CallSession {
       this._speakMinimax(text, turnId, turnStartedAt, tone);
       return;
     }
+    if (this.ttsBackend === 'fish') {
+      this._speakFish(text, turnId, turnStartedAt, tone);
+      return;
+    }
 
     const ws = this._ensureTtsSocket();
     // Cold-start mask — see KOKORO_WARMUP_PHRASE's comment above. Only
@@ -4768,6 +4792,48 @@ class CallSession {
         onChunk(Buffer.from(chunk));
       }
     }, text, turnId, turnStartedAt, format);
+  }
+
+  // Fish Audio's /v1/tts endpoint (docs.fish.audio/api-reference/endpoint/
+  // openapi-v1/text-to-speech) — streamed-PCM-bytes shape like Cartesia
+  // above, but with one real difference: unlike ElevenLabs/Cartesia, Fish's
+  // documented format list (wav/pcm/mp3/opus) has no native mu-law option,
+  // so it can't be asked to synthesize directly in Twilio's wire format.
+  // Always requests 24kHz PCM16 (both Twilio and browser paths) and lets
+  // twilioAdapter.js's existing naive-resample fallback (see its send(),
+  // the same path already used for the Kokoro gateway) downsample to 8kHz
+  // mu-law — a real, already-accepted quality tradeoff (documented there as
+  // introducing audible aliasing vs. a provider's own filtered resampler),
+  // not a new untested hack. `reference_id` is a voice model id from Fish's
+  // /model catalog; per-session override via lang.tts.referenceId, same
+  // pattern as cartesiaVoiceId (see _applyLanguage). No expressive-delivery
+  // mapping — not researched for this backend, `tone` accepted but unused.
+  _speakFish(text, turnId, turnStartedAt, _tone = null) {
+    this._speakHttpTts('fish', async (text, signal, turnId, onChunk) => {
+      const res = await fetch('https://api.fish.audio/v1/tts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${FISH_AUDIO_API_KEY}`,
+          'Content-Type': 'application/json',
+          model: this.ttsModel || FISH_AUDIO_MODEL,
+        },
+        body: JSON.stringify({
+          text,
+          reference_id: this.fishReferenceId,
+          format: 'pcm',
+          sample_rate: 24000,
+        }),
+        signal,
+      });
+      if (!res.ok || !res.body) {
+        console.error(`[call-loop] Fish Audio request failed: ${res.status}`);
+        return;
+      }
+      for await (const chunk of res.body) {
+        if (this.activeTurn !== turnId) break; // barge-in mid-stream
+        onChunk(Buffer.from(chunk));
+      }
+    }, text, turnId, turnStartedAt, 'pcm16');
   }
 
   // MiniMax's T2A v2 endpoint — non-streaming (stream: false): it returns
