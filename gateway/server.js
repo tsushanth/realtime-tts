@@ -291,6 +291,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Same key-validity + billing gate as /audio/authorize and /tts/authorize, but for
+  // dubbing/job_server.py (Python, stdlib HTTP, no shared process with this gateway) to call
+  // synchronously before it queues a job - see dubbing/gateway_auth.py and dubbing/README.md
+  // "Consent / ownership gating". Unlike /tts/authorize and /audio/authorize this returns no
+  // token/url: dubbing's actual TTS/STT calls happen from Python, not from a client the gateway
+  // hands a URL to - this endpoint only answers "is this a real, billing-enabled key".
+  if (url.pathname === "/dubbing/authorize" && req.method === "POST") {
+    const body = await readBody(req);
+    const { key } = body ? JSON.parse(body) : {};
+    if (!keys.isValidKey(key)) {
+      auditLog("auth_failure", { surface: "dubbing_authorize", reason: "invalid_key", ip: clientIp(req) });
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
+      auditLog("auth_failure", { surface: "dubbing_authorize", reason: "free_tier_exhausted", id: keys.getIdForKey(key), ip: clientIp(req) });
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+      }));
+      return;
+    }
+    const dubbingId = keys.getIdForKey(key);
+    auditLog("auth_success", { surface: "dubbing_authorize", id: dubbingId, engine: "dubbing", ip: clientIp(req) });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ authorized: true, id: dubbingId }));
+    return;
+  }
+
   // Called by worker-modal-readaloud/app.py after a synthesize call completes —
   // fire-and-forget from Modal's side, doesn't block the client's response.
   // This is the authoritative usage number (what Modal actually generated),

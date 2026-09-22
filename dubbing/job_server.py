@@ -34,7 +34,7 @@ import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from . import catalog, jobs
+from . import audit, catalog, gateway_auth, jobs
 
 JOB_ID_RE = re.compile(r"^/dubbing/jobs/([A-Za-z0-9_-]+)(/result)?$")
 
@@ -45,6 +45,8 @@ def _secret() -> str | None:
 
 class DubbingJobHandler(BaseHTTPRequestHandler):
     store: jobs.JobStore = jobs.default_store()  # overridden per-instance by make_server() / tests
+    # Overridden per-instance by make_server()/tests to a fake so tests don't need a live gateway.
+    authorize_fn = staticmethod(gateway_auth.authorize)
 
     # --- helpers ---
     def _send_json(self, code: int, payload: dict) -> None:
@@ -96,6 +98,7 @@ class DubbingJobHandler(BaseHTTPRequestHandler):
         text = body.get("text")
         audio_path = body.get("audio_path")  # server-local path; see README for the upload-path caveat
         duration_s = body.get("duration_s")
+        api_key = body.get("api_key")
 
         if not source_lang or not target_lang:
             self._send_json(400, {"error": "source_lang and target_lang are required"})
@@ -109,12 +112,29 @@ class DubbingJobHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(e)})
             return
 
+        # Consent/ownership gating: the DUBBING_JOB_SECRET bearer above only proves "this is the
+        # trusted backend calling" (server-to-server, like intake.py's INTAKE_SECRET) - it says
+        # nothing about whether there's a real, billing-enabled customer behind this specific job.
+        # Match voice-api's /tts/authorize and /audio/authorize: require a valid, billing-enabled
+        # gateway API key per job, not an open endpoint once the shared secret is known.
+        try:
+            result = self.authorize_fn(api_key)
+        except gateway_auth.AuthorizeError as e:
+            audit.audit_log("job_submit_denied", reason=e.message, status=e.status,
+                             target_lang=target_lang, ip=self.client_address[0])
+            self._send_json(e.status, {"error": e.message})
+            return
+        key_id = result.get("id")
+        audit.audit_log("job_submit_authorized", id=key_id, target_lang=target_lang,
+                         mode="audio_path" if audio_path else "text", ip=self.client_address[0])
+
         job = self.store.submit({
             "text": text,
             "audio_path": audio_path,
             "source_lang": source_lang,
             "target_lang": target_lang,
             "duration_s": duration_s,
+            "key_id": key_id,
         })
         self._send_json(202, job.to_public_dict())
 
