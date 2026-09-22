@@ -13,22 +13,42 @@ primary_region = "sjc"
 # Public endpoint (wss://piper-tts-sjc.fly.dev/tts) for the ReadAloud API: clients get a
 # short-lived session token from api.readaloudai.org/tts/authorize {engine:"piper"} and
 # connect directly. Also still reachable privately via piper-tts-sjc.internal:8080 with the
-# static AUTH_TOKEN. Never auto-stop: a stopped machine would reintroduce cold starts.
+# static AUTH_TOKEN. min_machines_running = 1 keeps one machine always warm (no cold starts);
+# auto_stop_machines/auto_start_machines let Fly scale extra machines up under load and back
+# down again once idle (voice storage now lives in Tigris, so every machine is stateless and
+# safe to stop/start).
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
-  auto_start_machines = false
+  auto_stop_machines = "stop"
+  auto_start_machines = true
   min_machines_running = 1
+  max_machines_running = 4  # start conservative; raise once a load test confirms headroom
+                             # NOTE (2026-09-22): the flyctl installed in this environment
+                             # (v0.4.95) does not actually parse this key - `fly config show`
+                             # / the live machine config omit it entirely, confirmed by
+                             # `strings` on the flyctl binary finding no MaxMachinesRunning
+                             # field at all. Provisioning extra machine slots for the Fly
+                             # Proxy to start/stop currently has to go through
+                             # `fly scale count <n> -a piper-tts-sjc`, and even that failed
+                             # here with "organization has reached its machine limit" - see
+                             # LOAD_TEST.md and the Task 4 report for the real numbers.
   [http_service.concurrency]
+    # "connections", not "requests": /tts sessions are long-lived WebSocket connections, and
+    # a "requests" counter only tracks the HTTP upgrade (which completes instantly), so it
+    # never reflects how many sessions are actually open and never triggers a scale-up.
     type = "connections"
-    soft_limit = 4
-    hard_limit = 6
+    soft_limit = 3   # below MAX_CONNECTIONS=4 (per-machine app-level cap) so Fly starts a new
+                      # machine before the app-level "at capacity" rejection ever fires
+    hard_limit = 4
 
-# Customer voices (voice-pipeline pushes them via PUT /admin/voices/<id>); survives deploys.
-[mounts]
-  source = "voices"
-  destination = "/voices"
+# NOTE: no [mounts]/volume here on purpose. Customer voices are the source of truth in Tigris
+# (see voice_storage.py) since the Task 1-3 migration; VOICES_DIR is now just a local, disposable
+# LRU disk cache that is safe to lose on machine stop/restart. A [mounts] volume can only attach
+# to one machine at a time, which silently blocks Fly from creating the extra machines
+# max_machines_running asks for - discovered the hard way: a stale leftover [mounts] block here
+# kept machine count pinned at 1 under load even with autoscaling config in place, because new
+# machines had nowhere to attach a volume.
 
 [[vm]]
   size = "shared-cpu-4x"
