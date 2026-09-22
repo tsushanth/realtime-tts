@@ -575,6 +575,15 @@ const EXPRESSIVE_DELIVERY_INSTRUCTION =
 const shopperPersonas = new Map();
 const shopperSpeakFirst = new Set();
 const shopperLanguages = new Map(); // place-test-call {language}: language the shopper speaks (STT + voice + prompt)
+// place-test-call {ttsBackend, ttsModel, expressiveDelivery} for shopper mode — the shopper's OWN
+// CallSession used to be hardcoded to ttsBackend: 'elevenlabs' with no expressiveDelivery support at
+// all (a real bug: testTtsOverrides' own comment says it exists for "the mystery-shopper latency
+// harness" to force a backend, but the shopper codepath never read it, and there was no way to opt a
+// shopper call into expressive delivery, so Cartesia/MiniMax expressive delivery could never be
+// real-call-verified via shopper mode). Keyed by the shopper's own CallSid, same lifecycle as the maps
+// above.
+const shopperTtsOverrides = new Map();
+const shopperExpressiveDelivery = new Set();
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
 // Batch Call personalization (calldesktech's Batch Call feature): per-call dynamic
@@ -864,7 +873,19 @@ app.post('/twilio/voice', async (req, res) => {
       });
     }
   } else if (req.query.mode === 'shopper' && callSid) {
-    pendingCallContext.set(callSid, { isShopper: true, persona: shopperPersonas.get(callSid), speakFirst: shopperSpeakFirst.has(callSid), language: shopperLanguages.get(callSid), createdAt: Date.now() });
+    const shopperOverride = shopperTtsOverrides.get(callSid);
+    pendingCallContext.set(callSid, {
+      isShopper: true,
+      persona: shopperPersonas.get(callSid),
+      speakFirst: shopperSpeakFirst.has(callSid),
+      language: shopperLanguages.get(callSid),
+      ttsBackend: shopperOverride?.ttsBackend,
+      ttsModel: shopperOverride?.ttsModel,
+      expressiveDelivery: shopperExpressiveDelivery.has(callSid),
+      createdAt: Date.now(),
+    });
+    shopperTtsOverrides.delete(callSid);
+    shopperExpressiveDelivery.delete(callSid);
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1112,7 +1133,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables, ttsBackend: shopperTtsBackend, ttsModel: shopperTtsModel, expressiveDelivery: shopperExpressive } = req.body || {};
   const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
@@ -1210,6 +1231,15 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
     if (shopper && typeof shopperLanguage === 'string') shopperLanguages.set(callBody.sid, shopperLanguage);
+    // Test-only knobs for the shopper's OWN voice (see shopperTtsOverrides above) — same validation
+    // as /test-tts-override so a typo can't reach the provider's API as an arbitrary string.
+    if (shopper && VALID_TTS_BACKENDS.includes(shopperTtsBackend)) {
+      shopperTtsOverrides.set(callBody.sid, {
+        ttsBackend: shopperTtsBackend,
+        ttsModel: shopperTtsModel && VALID_TTS_MODELS[shopperTtsBackend]?.has(shopperTtsModel) ? shopperTtsModel : null,
+      });
+    }
+    if (shopper && shopperExpressive === true) shopperExpressiveDelivery.add(callBody.sid);
     if (!shopper && callVariables && typeof callVariables === 'object') {
       outboundVariables.set(callBody.sid, callVariables);
       setTimeout(() => outboundVariables.delete(callBody.sid), 120_000).unref?.();
@@ -1423,7 +1453,14 @@ twilioWss.on('connection', (twilioWs) => {
       session.onClientMessage(JSON.stringify({
         type: 'context',
         systemPrompt: resolved.persona ? resolved.persona + (resolved.speakFirst ? SHOPPER_PERSONA_RULES.replace('Wait for the business to speak first and answer', 'You speak first when the call connects, then answer') : SHOPPER_PERSONA_RULES) : SHOPPER_SYSTEM_PROMPT,
-        ttsBackend: 'elevenlabs',
+        // Real bug fixed alongside this: ttsBackend used to be hardcoded to 'elevenlabs' here with no
+        // way to opt in to expressiveDelivery, even though testTtsOverrides/shopperTtsOverrides exist
+        // specifically to let a shopper test call exercise a different backend (see shopperTtsOverrides
+        // above) — meaning expressive delivery could never be real-call-verified for Cartesia/MiniMax
+        // via shopper mode. 'elevenlabs' stays the default when no override was requested.
+        ttsBackend: resolved.ttsBackend || 'elevenlabs',
+        ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
+        ...(resolved.expressiveDelivery ? { expressiveDelivery: true } : {}),
         ...(resolved.language ? { language: resolved.language } : {}),
       }), false);
       // A caller who opens the conversation (e.g. the person who answers an outbound call): nudge a first turn.
@@ -1910,6 +1947,12 @@ export class CallSession {
           this.ttsBackend = msg.ttsBackend;
           this.cost.ttsBackend = msg.ttsBackend;
         }
+      }
+      // Expressive delivery without a flow (the mystery-shopper caller has none; flows carry this in
+      // globalSettings.expressiveDelivery instead — see the `bcs` block below). Same opt-in knob, just
+      // reachable for a flow-less shopper session too (see shopperExpressiveDelivery above).
+      if (typeof msg.expressiveDelivery === 'boolean') {
+        this.expressiveDelivery = msg.expressiveDelivery;
       }
       // Language without a flow (the mystery-shopper caller speaks one; flows carry it in globalSettings.language).
       if (typeof msg.language === 'string' && !this.lang) {
