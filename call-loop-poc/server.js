@@ -777,7 +777,7 @@ if (!ANTHROPIC_API_KEY) console.warn('[call-loop] ANTHROPIC_API_KEY not set — 
 
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
-const app = express();
+export const app = express();
 app.use(express.static('public'));
 
 app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded fields (To, From, CallSid)
@@ -787,7 +787,7 @@ app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded f
 // the only identifier both this webhook and the later 'start' event share.
 // Swept on a timer so a call that gets a TwiML response but never actually
 // opens the stream (e.g. caller hangs up mid-ring) doesn't leak forever.
-const pendingCallContext = new Map();
+export const pendingCallContext = new Map();
 
 // Real bug found today: /twilio/voice's real (non-shopper, non-demo) branch does 2 sequential +
 // 4 parallel Supabase HTTP round trips (resolveInboundCall) with no timeout guard and no
@@ -809,7 +809,7 @@ const inFlightInboundResolves = new Map();
 // could then consume, greeting again. This tracks "already wrote context for this CallSid" across
 // that whole window, not just the in-flight one, so a late retry is a no-op instead of a second
 // greeting. Self-expires — a callSid is never legitimately reused, this is just cleanup.
-const contextWrittenCallSids = new Set();
+export const contextWrittenCallSids = new Set();
 
 // Session-resume state, keyed by CallSid — the infrastructure piece a
 // mid-call TwiML detour needs (e.g. redirecting out to Twilio's <Pay> verb
