@@ -81,3 +81,21 @@ class TTSCoreRecipe:
             # "no candidates tried yet" and degrade gracefully instead of
             # crashing. This can happen if a write is interrupted mid-flight.
             return {}
+
+    def train(self, candidate: Candidate, workdir: str) -> TrainedModel:
+        import time
+
+        from harness.recipes.tts_core_train_job import run_piper_finetune
+
+        cfg = candidate.train_config
+        t0 = time.time()
+        call = run_piper_finetune.spawn(
+            warmstart_url=cfg["warmstart_url"],
+            max_steps=cfg["max_steps"],
+            size_label=cfg["size_label"],
+        )
+        artifact_path = call.get(timeout=8 * 3600)  # blocks the harness process for this candidate's whole run - fine for an on-demand CLI tool, not a long-lived service
+        elapsed_hours = (time.time() - t0) / 3600
+        actual_cost = round(elapsed_hours * _T4_HOURLY_USD, 2)
+
+        return TrainedModel(candidate=candidate, artifact_path=artifact_path, actual_cost_usd=actual_cost)
