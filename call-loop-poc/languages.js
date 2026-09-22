@@ -593,6 +593,52 @@ const LANGS = {
     phoneAskRe: /電話號碼/i,
     closingRe: /(多謝|拜拜|愉快)/i,
   },
+  // The 3 entries below (af, bs, ne) close more real gaps against Retell's documented 55-language
+  // list, via Fish Audio — same per-voice vetting discipline as the ca/lt/hy batch above (real
+  // sample text checked against the target language, not just the catalog's own language tag).
+  // Azerbaijani had a real Fish voice too but was excluded: Deepgram has no Azerbaijani STT code
+  // at all (checked against their real docs), so there'd be no way to transcribe the caller back —
+  // a real vendor-coverage gap, not a vetting failure. Galician, Icelandic, Kazakh, Macedonian, and
+  // Welsh were checked and rejected — no trustworthy real voice found despite the right tag.
+  af: {
+    name: 'Afrikaans', dg: { kind: 'nova3', code: 'af' },
+    tts: { backend: 'fish', referenceId: '134875b579ad493ea54eef9e83dee26b' }, // real Afrikaans sample ("Hallo! Ek is bly...")
+    say: {
+      backchannel: ['Ja.', 'Verstaan.', 'Een oomblik.', 'Natuurlik.'],
+      warmup: 'Een oomblik, ek maak gereed.',
+      calendar: 'Een oomblik, ek kyk na die kalender.',
+      goodbye: 'Baie dankie vir jou oproep! Geniet jou dag!',
+      transfer: 'Ek verbind jou nou, wag asseblief \'n oomblik.',
+    },
+    phoneAskRe: /telefoonnommer/i,
+    closingRe: /(dankie|totsiens|geniet jou dag)/i,
+  },
+  bs: {
+    name: 'Bosnian', dg: { kind: 'nova3', code: 'bs' },
+    tts: { backend: 'fish', referenceId: 'e3295ebdfd1b4bf3a7603a0f92c72749' }, // real Bosnian/South-Slavic-Latin sample
+    say: {
+      backchannel: ['Da.', 'Razumijem.', 'Trenutak.', 'Naravno.'],
+      warmup: 'Trenutak, pripremam se.',
+      calendar: 'Trenutak, provjeravam kalendar.',
+      goodbye: 'Hvala vam na pozivu! Lijep dan želim!',
+      transfer: 'Sada vas spajam, samo trenutak.',
+    },
+    phoneAskRe: /broj\s*telefona/i,
+    closingRe: /(hvala|doviđenja|lijep dan)/i,
+  },
+  ne: {
+    name: 'Nepali', dg: { kind: 'nova3', code: 'ne' },
+    tts: { backend: 'fish', referenceId: '19aae6b741de493c8949e708c2cba758' }, // real Nepali/Devanagari sample
+    say: {
+      backchannel: ['हुन्छ.', 'बुझें.', 'एक छिन.', 'पक्कै.'],
+      warmup: 'एक छिन, म तयार हुँदैछु.',
+      calendar: 'एक छिन, म पात्रो जाँच्दैछु.',
+      goodbye: 'कल गर्नुभएकोमा धन्यवाद! शुभ दिन!',
+      transfer: 'म अहिले तपाईंलाई जोड्दैछु, एक छिन पर्खनुहोस्.',
+    },
+    phoneAskRe: /फोन\s*नम्बर/i,
+    closingRe: /(धन्यवाद|बिदाइ|शुभ दिन)/i,
+  },
 };
 
 // Codes an operator or API user might type -> canonical key. 'pt' is treated as Brazilian since
