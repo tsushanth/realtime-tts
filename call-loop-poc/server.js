@@ -1605,6 +1605,10 @@ class CallSession {
     this.tenantId = null;
     this.phoneNumber = null;
     this.tenantNumber = null; // the tenant's OWN dialed number, see 'sms' node / _executeSmsNode
+    // Live sentiment (Retell-style Live Call Monitoring parity) — null until
+    // the first real user turn has been classified, see _classifySentiment.
+    this.sentiment = null;
+    this.sentimentUpdatedAt = null;
     this._pendingResponseTimer = null; // see _scheduleUserTurn (Response Wait Time)
     this._reminderTimer = null; // see _scheduleReminderIfConfigured (Reminder Message Frequency)
     this._reminderAttempts = 0;
@@ -1632,7 +1636,9 @@ class CallSession {
 
   // Read-only snapshot for the /active-calls endpoint. Deliberately excludes
   // conversation content — this is presence + current flow position, not a
-  // transcript or audio feed.
+  // transcript or audio feed. `sentiment`/`sentimentUpdatedAt` are a coarse
+  // 3-value live signal (see _classifySentiment), not a transcript either —
+  // null until the first real user turn has been scored.
   activeCallSnapshot() {
     return {
       id: this.id,
@@ -1641,6 +1647,8 @@ class CallSession {
       startedAt: this._callStartedAt,
       currentNodeId: this.currentNodeId,
       nodeType: this.currentNodeId ? this.flowNodesById?.get(this.currentNodeId)?.type ?? null : null,
+      sentiment: this.sentiment ?? null,
+      sentimentUpdatedAt: this.sentimentUpdatedAt ?? null,
     };
   }
 
@@ -2196,6 +2204,13 @@ class CallSession {
 
     this.history.push({ role: 'user', content: userText });
     this.send({ type: 'user_turn', turnId, text: userText });
+
+    // Fire-and-forget live sentiment classification — never awaited, must
+    // never delay the conversation flow. Synthetic "[System note: ...]" /
+    // "[The call just connected...]" turns aren't real caller speech, so
+    // skip them (see the `[System note:` convention used throughout this
+    // file for injected history entries).
+    if (!/^\[/.test(userText.trim())) this._classifySentiment(userText);
 
     // An opening step whose only exit is "always" has nothing left to do once the caller
     // responds; move on deterministically instead of hoping the model calls transition_flow.
@@ -5038,6 +5053,46 @@ class CallSession {
   }
 }
 
+
+// Live sentiment classification (Retell-style Live Call Monitoring parity —
+// see /active-calls and calldesktech's live-monitoring page). Classifies a
+// single finished user turn's transcript text as positive/neutral/negative,
+// as cheaply and fast as possible: small max_tokens, no chain-of-thought,
+// forced single-tool call so parsing is trivial. Always called fire-and-
+// forget from _onUserTurnComplete — NEVER await this, it must not delay the
+// live call. A failure (API error, timeout) must never throw uncaught or
+// crash the session; on failure this just leaves sentiment at its last
+// known value.
+const SENTIMENT_VALUES = ['positive', 'neutral', 'negative'];
+CallSession.prototype._classifySentiment = async function (userText) {
+  if (!anthropic) return;
+  const sessionId = this.id;
+  try {
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 64, // small but enough room for the forced tool_use JSON — 16 truncated it (stop_reason: max_tokens, empty input) in testing
+      system: 'Classify the sentiment of a single phone caller utterance. Reply with nothing but the classification.',
+      tools: [{
+        name: 'record_sentiment',
+        description: 'Record the caller sentiment for this utterance',
+        input_schema: { type: 'object', properties: { sentiment: { type: 'string', enum: SENTIMENT_VALUES } }, required: ['sentiment'] },
+      }],
+      tool_choice: { type: 'tool', name: 'record_sentiment' },
+      messages: [{ role: 'user', content: userText }],
+    });
+    const block = res.content.find((b) => b.type === 'tool_use');
+    const value = block?.input?.sentiment;
+    if (!SENTIMENT_VALUES.includes(value)) return;
+    // The call may have ended (or a new session for the same call may have
+    // replaced this one) by the time this resolves — don't write into a
+    // stale/removed session.
+    if (!activeSessions.has(sessionId) || activeSessions.get(sessionId) !== this) return;
+    this.sentiment = value;
+    this.sentimentUpdatedAt = new Date().toISOString();
+  } catch (err) {
+    console.warn('[call-loop] sentiment classification failed (non-fatal):', err.message);
+  }
+};
 
 // Post-call analysis: extract the flow's globalSettings.postCallAnalysis.fields
 // from the transcript into call_logs.analysis. Off unless fields are configured.
