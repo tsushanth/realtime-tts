@@ -1,9 +1,11 @@
-# NOT deployed (do not `fly deploy` this). Dev/staging app name, deliberately not one of the
-# production apps (piper-tts-sjc, realtime-tts-gateway, realtime-stt-worker). AUTH_TOKEN and
-# SESSION_SECRET must be provisioned as Fly secrets (`fly secrets set`), never plaintext env here -
-# SESSION_SECRET in particular MUST match the gateway's MODAL_SESSION_SECRET, since the gateway
-# signs the session tokens this worker verifies (see gateway/server.js /audio/authorize and
-# worker-demucs-fly/server.py verify_session_claims).
+# DEPLOYED and live at demucs-isolation-dev.fly.dev (deliberately still a dev/staging app name,
+# not one of the production apps: piper-tts-sjc, realtime-tts-gateway, realtime-stt-worker - this
+# comment previously said "NOT deployed", which is now stale; do not `fly deploy` config changes
+# from a feature branch without going through the same review the original deploy got).
+# AUTH_TOKEN and SESSION_SECRET are provisioned as Fly secrets (`fly secrets set`), never
+# plaintext env here - SESSION_SECRET in particular MUST match the gateway's MODAL_SESSION_SECRET,
+# since the gateway signs the session tokens this worker verifies (see gateway/server.js
+# /audio/authorize and worker-demucs-fly/server.py verify_session_claims).
 app = "demucs-isolation-dev"
 primary_region = "sjc"
 

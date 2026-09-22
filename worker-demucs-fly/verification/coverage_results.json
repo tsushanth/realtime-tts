@@ -1,0 +1,50 @@
+[
+  {
+    "case": "white_noise_0db",
+    "note": "pure white noise (no music/drone component), target 0.0dB SNR",
+    "non_speech_band_energy_fraction_before": 0.2418,
+    "non_speech_band_energy_fraction_after": 0.0027,
+    "non_speech_band_energy_reduction_pct": 98.9,
+    "estimated_output_snr_db": 11.47,
+    "measured_input_snr_db": 1.49,
+    "snr_improvement_db": 9.98
+  },
+  {
+    "case": "white_noise_10db",
+    "note": "pure white noise (no music/drone component), target 10.0dB SNR",
+    "non_speech_band_energy_fraction_before": 0.0623,
+    "non_speech_band_energy_fraction_after": 0.0207,
+    "non_speech_band_energy_reduction_pct": 66.7,
+    "estimated_output_snr_db": 17.45,
+    "measured_input_snr_db": 10.0,
+    "snr_improvement_db": 7.45
+  },
+  {
+    "case": "echo_reverb",
+    "note": "speech convolved with a synthetic RT60=0.4s room impulse response - tests convolutional distortion, not additive noise. SNR metric here compares isolated output to the DRY (non-reverberant) reference, so it also reflects how much reverb tail Demucs removes vs. treats as signal.",
+    "non_speech_band_energy_fraction_before": 0.0312,
+    "non_speech_band_energy_fraction_after": 0.0313,
+    "non_speech_band_energy_reduction_pct": -0.2,
+    "estimated_output_snr_db": -5.95
+  },
+  {
+    "case": "second_voice",
+    "note": "a second TTS speaker (different voice) mixed in at 0dB as competing speech, not non-speech noise - tests whether htdemucs' 'vocals' stem isolates the TARGET voice or just 'any speech vs non-speech', which it is not designed to distinguish (htdemucs has no speaker-conditioning input). Expect this case to perform worse than noise-based cases.",
+    "non_speech_band_energy_fraction_before": 0.0181,
+    "non_speech_band_energy_fraction_after": 0.0181,
+    "non_speech_band_energy_reduction_pct": 0.1,
+    "estimated_output_snr_db": 0.08,
+    "measured_input_snr_db": 3.01,
+    "snr_improvement_db": -2.93
+  },
+  {
+    "case": "real_speech_drone",
+    "note": "REAL (non-TTS) public-domain speech recording (archive.org 'Gettysburg Address' reading, trimmed to 12s, resampled to match) mixed with the same synthetic drone+pink-noise profile as the original verified clip, at 0dB SNR. The SNR estimate here uses the real recording itself as the 'clean' reference (it was clean before we added synthetic noise to it), so it IS a valid oracle SNR measurement, unlike a case with no clean reference at all. This is the first test of this pipeline on audio that isn't macOS `say`-synthesized.",
+    "non_speech_band_energy_fraction_before": 0.164,
+    "non_speech_band_energy_fraction_after": 0.0031,
+    "non_speech_band_energy_reduction_pct": 98.1,
+    "estimated_output_snr_db": 1.84,
+    "measured_input_snr_db": 1.63,
+    "snr_improvement_db": 0.21
+  }
+]

@@ -1,0 +1,35 @@
+[
+  {
+    "case": "original_drone_0db",
+    "engine": "deepfilternet3",
+    "note": "Same clip as make_and_verify.py's original verified case (speech + pink-noise/drone at ~0dB), run through DeepFilterNet instead of htdemucs.",
+    "non_speech_band_energy_fraction_before": 0.1309,
+    "non_speech_band_energy_fraction_after": 0.0254,
+    "non_speech_band_energy_reduction_pct": 80.6,
+    "estimated_output_snr_db": 10.46,
+    "measured_input_snr_db": 1.6,
+    "snr_improvement_db": 8.86
+  },
+  {
+    "case": "white_noise_0db",
+    "engine": "deepfilternet3",
+    "note": "Same mix file expand_coverage.py generated for white_noise_0db, run through DeepFilterNet instead of htdemucs.",
+    "non_speech_band_energy_fraction_before": 0.2418,
+    "non_speech_band_energy_fraction_after": 0.0081,
+    "non_speech_band_energy_reduction_pct": 96.6,
+    "estimated_output_snr_db": 12.47,
+    "measured_input_snr_db": 1.49,
+    "snr_improvement_db": 10.98
+  },
+  {
+    "case": "real_speech_drone",
+    "engine": "deepfilternet3",
+    "note": "Same real (non-TTS) speech + drone/pink-noise mix expand_coverage.py generated for real_speech_drone, run through DeepFilterNet instead of htdemucs. This is the key comparison this script exists for.",
+    "non_speech_band_energy_fraction_before": 0.164,
+    "non_speech_band_energy_fraction_after": 0.0005,
+    "non_speech_band_energy_reduction_pct": 99.7,
+    "estimated_output_snr_db": 1.58,
+    "measured_input_snr_db": 1.63,
+    "snr_improvement_db": -0.05
+  }
+]
