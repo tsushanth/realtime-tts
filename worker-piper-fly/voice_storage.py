@@ -7,8 +7,9 @@ re-fetch from Tigris on every request; a machine that's never seen a voice fetch
 first use."""
 import os
 import shutil
+import tempfile
 from collections import OrderedDict
-from threading import Lock
+from threading import Lock, Condition
 
 import boto3
 
@@ -23,48 +24,89 @@ class VoiceStorage:
         self._client = boto3.client("s3", endpoint_url=endpoint_url)
         self._lru: "OrderedDict[str, str]" = OrderedDict()  # vid -> local dir path
         self._lock = Lock()
+        self._fetch_cv = Condition(self._lock)  # condition variable for single-flighting fetches
+        self._fetching: dict[str, bool] = {}  # vid -> whether a fetch is in progress
         os.makedirs(cache_dir, exist_ok=True)
 
     def get(self, vid: str) -> str | None:
-        with self._lock:
+        with self._fetch_cv:
+            # Check if already cached
             cached = self._lru.get(vid)
             if cached is not None and os.path.isdir(cached):
                 self._lru.move_to_end(vid)
                 return cached
 
+            # Wait for any in-flight fetch for this vid to complete (single-flighting)
+            while self._fetching.get(vid, False):
+                self._fetch_cv.wait()
+                # After fetch completes, check cache again
+                cached = self._lru.get(vid)
+                if cached is not None and os.path.isdir(cached):
+                    self._lru.move_to_end(vid)
+                    return cached
+
+            # Mark this vid as being fetched
+            self._fetching[vid] = True
+
+        # Fetch outside the lock to avoid blocking other operations
         local_dir = os.path.join(self.cache_dir, vid)
-        tmp_dir = local_dir + ".tmp"
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        os.makedirs(tmp_dir, exist_ok=True)
-        fetched_any = False
-        for fname in VOICE_FILES:
-            key = f"{vid}/{fname}"
-            dest = os.path.join(tmp_dir, fname)
-            try:
-                self._client.download_file(self.bucket, key, dest)
-                fetched_any = True
-            except self._client.exceptions.ClientError as e:
-                if fname == "model.onnx":
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    return None  # the model itself is required; missing = voice doesn't exist
-                # model.onnx.json/owner.json are expected to always exist alongside model.onnx
-                # for any voice this class wrote via put(); a missing one here is a real error,
-                # not a "voice doesn't exist" case, so re-raise.
-                raise RuntimeError(f"voice {vid!r} missing required file {fname!r} in storage") from e
-        if not fetched_any:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return None
+        tmp_dir = None
+        voice_not_found = False
+        try:
+            # Use a unique temp directory per fetch attempt to avoid races
+            tmp_dir = tempfile.mkdtemp(dir=self.cache_dir, prefix=f"{vid}.")
 
-        shutil.rmtree(local_dir, ignore_errors=True)
-        os.rename(tmp_dir, local_dir)
+            for fname in VOICE_FILES:
+                key = f"{vid}/{fname}"
+                dest = os.path.join(tmp_dir, fname)
+                try:
+                    self._client.download_file(self.bucket, key, dest)
+                except self._client.exceptions.ClientError as e:
+                    error_code = e.response.get("Error", {}).get("Code", "")
+                    # Check both "NoSuchKey" and "404" (moto uses 404 as the error code)
+                    is_not_found = error_code in ("NoSuchKey", "404")
+                    if fname == "model.onnx" and is_not_found:
+                        # Voice doesn't exist in storage
+                        voice_not_found = True
+                        break
+                    elif fname == "model.onnx":
+                        # model.onnx fetch failed for reasons other than not found (403, throttle, etc)
+                        raise RuntimeError(
+                            f"failed to fetch voice {vid!r} from storage (error {error_code}): {e}"
+                        ) from e
+                    else:
+                        # metadata files are expected to exist if model.onnx exists
+                        raise RuntimeError(
+                            f"voice {vid!r} missing required file {fname!r} in storage (error {error_code}): {e}"
+                        ) from e
 
-        with self._lock:
-            self._lru[vid] = local_dir
-            self._lru.move_to_end(vid)
-            while len(self._lru) > self.max_cache_entries:
-                _, evicted_dir = self._lru.popitem(last=False)
-                shutil.rmtree(evicted_dir, ignore_errors=True)
-        return local_dir
+            if voice_not_found:
+                return None
+
+            # Atomic rename: move temp to final location
+            shutil.rmtree(local_dir, ignore_errors=True)
+            os.rename(tmp_dir, local_dir)
+            tmp_dir = None  # mark as successfully moved
+
+        finally:
+            # Clean up temp directory if fetch failed
+            if tmp_dir is not None:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+            # Update LRU and signal waiting threads
+            with self._fetch_cv:
+                self._fetching.pop(vid, None)
+
+                if not voice_not_found and os.path.isdir(local_dir):
+                    self._lru[vid] = local_dir
+                    self._lru.move_to_end(vid)
+                    while len(self._lru) > self.max_cache_entries:
+                        _, evicted_dir = self._lru.popitem(last=False)
+                        shutil.rmtree(evicted_dir, ignore_errors=True)
+
+                self._fetch_cv.notify_all()
+
+        return self._lru.get(vid) if self._lru.get(vid) and os.path.isdir(self._lru[vid]) else None
 
     def put(self, vid: str, files: dict[str, bytes]) -> None:
         for fname, data in files.items():
