@@ -41,6 +41,13 @@ KNOWN_SIZE_VARIANTS = [
 _T4_HOURLY_USD = 0.59
 _MEASURED_STEPS_PER_SECOND = 1.2
 
+# The `engine` label the harness candidate's rows carry in eval/'s results
+# files. eval/results/{latency,quality}.json are FLAT lists holding EVERY
+# engine's rows in one file (74 rows across piper/kokoro/elevenlabs-flash/
+# elevenlabs-multilingual in the committed run), so aggregation MUST filter
+# by engine or it silently mixes ElevenLabs' numbers into the candidate's.
+CANDIDATE_ENGINE_NAME = "harness-candidate"
+
 
 class TTSCoreRecipe:
     name = "tts-core"
@@ -99,3 +106,96 @@ class TTSCoreRecipe:
         actual_cost = round(elapsed_hours * _T4_HOURLY_USD, 2)
 
         return TrainedModel(candidate=candidate, artifact_path=artifact_path, actual_cost_usd=actual_cost)
+
+    def evaluate(self, model: TrainedModel) -> dict[str, float]:
+        """Aggregate this candidate's rows from eval/'s two result files into
+        summary metrics. Only rows whose `engine` is CANDIDATE_ENGINE_NAME are
+        counted - see that constant's comment.
+
+        Missing measurements (score.py writes wer/naturalness_mos as null on a
+        scoring failure or for the reference clip itself; synth.mjs writes a
+        row with `error` and no first_byte_ms when synthesis failed) are
+        skipped rather than coerced to 0.0, which would read as a perfect WER.
+        With nothing measurable at all the metric is NaN, not 0.0, so a
+        totally failed run can never look like the best candidate."""
+        import json
+        import math
+        import statistics
+
+        latency_path, quality_path = self._run_eval_pipeline(model)
+
+        with open(quality_path) as f:
+            quality_rows = [r for r in json.load(f) if r.get("engine") == CANDIDATE_ENGINE_NAME]
+        with open(latency_path) as f:
+            latency_rows = [r for r in json.load(f) if r.get("engine") == CANDIDATE_ENGINE_NAME]
+
+        wers = [r["wer"] for r in quality_rows if r.get("wer") is not None]
+        mos_scores = [r["naturalness_mos"] for r in quality_rows if r.get("naturalness_mos") is not None]
+        latencies = [r["first_byte_ms"] for r in latency_rows if r.get("first_byte_ms") is not None]
+
+        nan = math.nan
+        return {
+            "wer_mean": round(statistics.mean(wers), 4) if wers else nan,
+            "naturalness_mos_median": round(statistics.median(mos_scores), 3) if mos_scores else nan,
+            "latency_ms_median": round(statistics.median(latencies), 1) if latencies else nan,
+            # Provenance for the report: how much of the test set actually
+            # produced a number, so a 2-of-20-sentence run is not read as
+            # comparable to a full one.
+            "n_scored": float(len(wers)),
+            "n_failed": float(len(quality_rows) - len(wers)),
+        }
+
+    def _run_eval_pipeline(self, model: TrainedModel) -> tuple[str, str]:
+        """NOT IMPLEMENTED - deliberately, see .superpowers/sdd/
+        2026-09-22-voice-research-harness/task-6-report.md for the full
+        write-up. The intended sequence (export the checkpoint to ONNX,
+        publish it as a temporary non-public custom: voice, run
+        eval/synth.mjs + eval/score.py scoped to it, then DELETE it) hits
+        three concrete blockers that need decisions this task cannot make
+        unilaterally:
+
+        1. owner.json: the brief prescribes {"public": false, "key_ids": []},
+           which worker-piper-fly/server.py's PUT /admin/voices/<id> handler
+           rejects with a 400 - it asserts `public is True or non-empty
+           key_ids or non-empty user_ids`. Publishing a research candidate
+           non-publicly therefore requires the gateway KEY ID that
+           TTS_GATEWAY_API_KEY resolves to (the value verify_session_claims
+           returns and get_engine matches against owner.json's key_ids). That
+           id is minted by gateway/keys.js and is not derivable from the API
+           key locally. Publishing with {"public": true} instead would expose
+           an unvetted research candidate to every caller of production - the
+           exact outcome the brief forbids.
+
+        2. Scoping the run to one voice: eval/synth.mjs hardcodes its engine
+           list and its PIPER_VOICE map, and always synthesizes the full
+           multi-language testset through Piper, Kokoro AND both ElevenLabs
+           models (real per-candidate spend, ~20-30 min wall clock). There is
+           no env var or CLI flag to scope it to a single voice. Scoping needs
+           either a change to eval/synth.mjs (which this task's interface
+           contract says to leave unmodified) or a harness-owned copy of it -
+           a structural decision, not an implementation detail.
+
+        3. score.py's MOS is reference-based: it scores every clip against a
+           per-language elevenlabs-multilingual reference clip taken FROM THE
+           SAME RUN. A single-voice run therefore has no reference and would
+           emit naturalness_mos=None for every row, making
+           naturalness_mos_median NaN. Any single-voice scoping must still
+           synthesize the ElevenLabs reference clips (so it is not free), or
+           reuse a pinned reference set - another decision to make explicitly.
+
+        The export step itself (1) is NOT a blocker and is well precedented in
+        this repo: training-data/synthesize_piper_full.py already exports a
+        raw training checkpoint from the tts-checkpoints Volume via
+        `piper.train.export_onnx --checkpoint <ckpt> --output-file model.onnx`
+        plus copying the training root's config.json to model.onnx.json, and
+        Task 5's job writes both (config at
+        /checkpoints/harness_tts_core_<label>/config.json, checkpoints under
+        lightning_logs/version_*/checkpoints/). Implementing export alone
+        without resolving 1-3 would produce a pipeline that cannot run, so it
+        is not stubbed in half here."""
+        raise NotImplementedError(
+            "_run_eval_pipeline is unimplemented by design - see this method's docstring "
+            "and .superpowers/sdd/2026-09-22-voice-research-harness/task-6-report.md for "
+            "the three blockers (owner.json visibility, single-voice scoping of "
+            "eval/synth.mjs, score.py's reference-based MOS)."
+        )
