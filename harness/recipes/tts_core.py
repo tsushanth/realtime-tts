@@ -73,5 +73,11 @@ class TTSCoreRecipe:
     def _load_tried(self) -> dict:
         if not os.path.exists(TRIED_PATH):
             return {}
-        with open(TRIED_PATH) as f:
-            return json.load(f)
+        try:
+            with open(TRIED_PATH) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            # File exists but is corrupted/truncated/invalid JSON. Treat as
+            # "no candidates tried yet" and degrade gracefully instead of
+            # crashing. This can happen if a write is interrupted mid-flight.
+            return {}

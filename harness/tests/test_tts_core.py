@@ -50,3 +50,21 @@ def test_estimate_cost_scales_with_max_steps():
     # exact number for a real budget decision), giving 20000 steps ~= 4.6h ~= $2.50-3,
     # matching the docstring in training-data/piper_full_finetune.py.
     assert 2.0 <= large_cost <= 4.0
+
+
+def test_discover_candidates_handles_corrupted_tried_json(tmp_path, monkeypatch):
+    """Verify that corrupted/truncated JSON in tried-file is handled gracefully
+    without crashing, falling back to empty dict (all variants untried)."""
+    tried_path = tmp_path / "tried.json"
+    # Write malformed JSON (incomplete, truncated mid-flight)
+    tried_path.write_text('{"low": {"date": "2026-01-01"')
+    monkeypatch.setattr("harness.recipes.tts_core.TRIED_PATH", str(tried_path))
+
+    recipe = TTSCoreRecipe()
+    # Should not raise; instead, should degrade gracefully to treating file as empty
+    candidates = recipe.discover_candidates()
+
+    # All variants should be returned since corrupted file is treated as "none tried yet"
+    assert len(candidates) == len(KNOWN_SIZE_VARIANTS)
+    ids = {c.id for c in candidates}
+    assert ids == {v["size_label"] for v in KNOWN_SIZE_VARIANTS}
