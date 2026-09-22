@@ -326,6 +326,122 @@ one more model did not resolve it, and RNNoise was not tried in this pass (see a
 not yet possible to say no CPU-feasible, commercially-licensed model would help; only that the
 single strongest a priori candidate (DeepFilterNet) measurably didn't.
 
+## Investigated: does isolation help on GENUINELY noisy real audio, measured by WER? (this pass)
+
+Every prior round (the original verification, `expand_coverage.py`, and the DeepFilterNet
+comparison) shares one methodology: take relatively clean speech (synthetic TTS, or a real
+speech recording) and **digitally mix in synthetic noise** afterward, then measure SNR recovery.
+Even `real_speech_drone` — the "real speech" case — used real speech with fake noise layered on
+top digitally. No test so far used audio where noise was actually captured live, through a real
+recording/broadcast chain, together with the speech. This pass closes that gap and, since a
+genuinely noisy recording has no clean reference to compute SNR against, switches to a
+transcript-based metric (word error rate) instead.
+
+**Real audio source**: Internet Archive item
+[`FDR_Declares_War_19411208`](https://archive.org/details/FDR_Declares_War_19411208), a
+public-domain 1941 radio recording of President Franklin D. Roosevelt's "Day of Infamy" address
+to Congress (actually fetched via `curl`/`urllib` in this pass, not fabricated — see
+`verification/eval_real_noise_wer.py`'s docstring for the exact download command). Trimmed
+(`ffmpeg -ss 20 -t 60`) to a 60s excerpt covering the famous opening paragraph, resampled to
+22.05kHz mono 16-bit as `verification/real_noisy_fdr_infamy.wav` (committed; the full downloaded
+mp3 is not, to keep the repo small — it's re-fetchable from the archive.org URL above). This
+recording carries **genuine, non-digitally-added noise**: broadcast/disc surface hiss and
+crackle, 1941 PA-system/microphone coloration, and generational analog-transfer loss — captured
+live, not synthesized or mixed in after the fact.
+
+**Ground-truth transcript**: the opening paragraph of the "Day of Infamy" speech is one of the
+most widely quoted, independently verified passages in US political history. The text used here
+is the officially published version (National Archives / Records of the US Senate, also
+reproduced on Wikipedia's "Day of Infamy speech" article) — an independent historical record,
+**not** derived from transcribing this audio file (which would be circular).
+
+**Method** (`verification/eval_real_noise_wer.py`): transcribe the noisy original with Whisper
+(`small` model via the `whisper` CLI — no `openai-whisper`/`faster-whisper`/`jiwer` pip packages
+were pre-installed in this environment, but the `whisper` CLI was already on `PATH` and worked
+directly); separately run the same clip through `Separator.separate` (the exact code path
+`/v1/isolate` uses) to get the htdemucs-isolated vocals stem; transcribe that too; score both
+transcripts against the ground truth with word-level Levenshtein-distance WER (implemented
+directly in the script — no extra dependency needed since `jiwer` wasn't readily available).
+
+**Result**:
+
+| | transcript | WER vs. ground truth |
+|---|---|---|
+| noisy original (before isolation) | "Mr. Vice President, Mr. Speaker, members of the Senate **of** the House of Representatives, yesterday, December 7, 1941..." | **1.67%** (1/60 words) |
+| htdemucs-isolated (after isolation) | "Mr. Vice President, Mr. Speaker, members of the Senate, **of** the House of Representatives, yesterday, December 7, 1941..." | **1.67%** (1/60 words) |
+
+Full transcripts and machine-readable numbers: `verification/wer_results.json`.
+
+**Honest interpretation**: WER is **identical before and after isolation** (both transcripts
+make the exact same single word-level error — "of the House" instead of "and the House" — which
+Whisper gets wrong regardless of isolation, not something isolation caused or fixed).
+Isolation was a **complete no-op for intelligibility** on this clip: neither helped nor hurt.
+
+This is a different (and more nuanced) finding than a simple confirmation of the earlier +0.2dB
+SNR result, and it's important to be precise about what it does and doesn't show:
+
+- It does **not** show isolation is broken or harmful on real noisy audio (unlike, say, the
+  `second_voice` or `echo_reverb` synthetic cases, which got measurably worse).
+- It also does **not** show isolation delivers value here. Whisper already transcribed the
+  *unprocessed, genuinely noisy* original at 98.3% word accuracy — this specific real-world
+  noise (period broadcast hiss/crackle) is mild enough that a modern STT model already handles
+  it near-ceiling, leaving isolation no headroom to demonstrate a win. The "genuinely noisy"
+  audio available to source in this environment (an archival speech recording) is not equivalent
+  in severity to the noise conditions this product actually needs to handle in production (a
+  live phone call with real line noise/crosstalk, a noisy room with a running dishwasher or
+  traffic, a bad Bluetooth headset codec) — those are plausibly *louder relative to speech* than
+  1940s broadcast hiss, closer to the synthetic 0dB-SNR tests than to this clip's noise floor.
+- So this round doesn't cleanly confirm *or* refute the synthetic-mixing methodology's
+  real-speech gap finding — it demonstrates a **third, independent data point**: on real
+  (non-digitally-mixed) but *mild* noise, isolation is a wash on the metric that actually matters
+  (transcribability), which is at least consistent with the broader pattern across all three
+  rounds now (synthetic-TTS-only tests look great; every test involving real speech and/or real
+  noise conditions — real_speech_drone's SNR, DeepFilterNet's real_speech_drone SNR, and this
+  WER round — shows no measurable benefit, not just a smaller one).
+- The single biggest caveat: **one clip, one (mild) real-noise severity, one STT model.** A
+  genuinely severe real-world noisy recording (phone-call quality, heavy crosstalk) was not
+  obtainable in this sandboxed environment (no live mic/speaker loopback available, and a
+  network search for a public-domain heavily-noisy speech recording with a verifiable transcript
+  was not attempted beyond this one source) — this is a real gap in this round's coverage, not a
+  claim that harsher real noise would behave the same way.
+
+## Final recommendation across all three investigation rounds (htdemucs baseline, DeepFilterNet, real-noise WER)
+
+Putting all three rounds together, direct and non-sycophantic:
+
+- **What the +9-10dB numbers in this repo's headline verification actually measure**: isolation
+  performance on synthetic TTS speech with synthetic noise mixed in digitally at a known SNR.
+  That is a real, reproducible result, but it is **not a proxy for production voice-agent
+  performance** — it was never tested on real speech + real noise together until this pass, and
+  every time real speech OR real (non-mixed) noise entered the picture, the measured benefit
+  collapsed to roughly zero (not negative, not a scaled-down positive — zero, twice, on two
+  different metrics).
+- **What this feature has NOT been shown to do, after three rounds**: reliably improve
+  intelligibility or perceived quality on real customer audio — real phone calls, real noisy
+  rooms, or any recording where the "noise" isn't synthetic pink noise/drone/white noise mixed
+  in after the fact. Swapping models (DeepFilterNet) didn't fix this. Using a completely
+  different metric family (WER instead of SNR) didn't surface a hidden win either — it surfaced
+  a wash, at best.
+- **What this feature likely IS good for, based on what's actually been measured**: content
+  where the noise is genuinely synthetic-like and stationary (hum, hiss, a drone, broadband
+  white noise) mixed with clean, close-mic'd, TTS-quality-or-better speech, at moderate-to-severe
+  SNRs — e.g., cleaning up a screen-recording's fan noise, or removing a constant background tone
+  from a podcast recorded with a good mic. That's a real, demonstrated capability.
+- **What it should NOT be marketed or sold as, on current evidence**: a general "clean up noisy
+  voice-agent audio" or "improve phone-call quality" feature. Phone calls and noisy real
+  environments are exactly the case this repo has now tested three different ways (real speech +
+  synthetic noise, a different model on the same case, and real archival noise + WER) without
+  once finding a clear win. Shipping this as "denoise your call audio" without a disclaimer would
+  be overselling a capability that has not been demonstrated on the audio it would actually be
+  used on.
+- **What would actually resolve this, still not done in any of the three rounds**: a real,
+  moderately-to-severely noisy recording representative of the target use case (a real recorded
+  phone call, or a real noisy-room recording with a verified transcript) run through both WER and
+  human-listening evaluation. This pass got real (non-mixed) noise but it turned out to be mild;
+  the next attempt should specifically target louder, more disruptive real noise conditions
+  (telephone-bandwidth audio, real crosstalk, real HVAC/traffic noise) before this feature's
+  production scope is finalized.
+
 ## Local run
 
     cd worker-demucs-fly
@@ -399,7 +515,12 @@ Still open:
   follow-up pass tried swapping in DeepFilterNet (see "Investigated: does a purpose-built
   speech-enhancement model fix the real-speech gap?" above) - it did not help (-0.05dB vs.
   htdemucs' +0.21dB on the same real-speech case) and htdemucs was kept. RNNoise was not tried.
-  This remains open.
+  This remains open. A third pass tested a genuinely (non-digitally-mixed) noisy real recording
+  with a WER-based metric instead of SNR (see "Investigated: does isolation help on GENUINELY
+  noisy real audio, measured by WER?" above) — result: isolation was a complete wash (identical
+  1.67% WER before/after) on that clip's noise severity, neither confirming nor cleanly refuting
+  the SNR-based finding, and flagging that the real noise available in this sandboxed environment
+  was milder than the phone-call/noisy-room conditions this feature actually needs to handle.
 - **Streaming/chunking**: Demucs here processes the whole clip in memory; very long inputs
   (near `MAX_DURATION_S`) will have higher latency and memory than a chunked/streaming
   implementation would - untested, and not covered by this pass's load testing (only the ~10.4s

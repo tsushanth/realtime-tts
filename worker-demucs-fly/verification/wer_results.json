@@ -1,0 +1,19 @@
+{
+  "audio_source": "https://archive.org/details/FDR_Declares_War_19411208",
+  "excerpt": "0:20-1:20 of source mp3 (60s), resampled 22.05kHz mono 16-bit",
+  "ground_truth": "mr vice president mr speaker members of the senate and the house of representatives yesterday december 7 1941 a date which will live in infamy the united states of america was suddenly and deliberately attacked by naval and air forces of the empire of japan the united states was at peace with that nation and at the solicitation of japan",
+  "transcript_before_isolation": "Mr. Vice President, Mr. Speaker, members of the Senate of the House of Representatives,\nyesterday, December 7, 1941, a date which will live in infamy.\nThe United States of America was suddenly and deliberately attacked by naval and air forces of the Empire of Japan.\nThe United States was at peace with that nation and at the solicitation of Japan.",
+  "transcript_after_isolation": "Mr. Vice President, Mr. Speaker, members of the Senate, of the House of Representatives,\nyesterday, December 7, 1941, a date which will live in infamy.\nThe United States of America was suddenly and deliberately attacked by naval and air forces of the Empire of Japan.\nThe United States was at peace with that nation and at the solicitation of Japan.",
+  "wer_before_isolation": {
+    "reference_words": 60,
+    "hypothesis_words": 60,
+    "edit_distance": 1,
+    "wer": 0.0167
+  },
+  "wer_after_isolation": {
+    "reference_words": 60,
+    "hypothesis_words": 60,
+    "edit_distance": 1,
+    "wer": 0.0167
+  }
+}
