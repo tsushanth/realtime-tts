@@ -102,6 +102,58 @@ included in the request path measured here). Demucs is a full-audio-in-memory mo
 streaming), so its cost and memory scale with clip length - `MAX_DURATION_S=120` is a
 guardrail, not a validated safe ceiling for concurrent requests on any particular VM size.
 
+## Load testing (this pass)
+
+`verification/load_test.py` fires N concurrent requests (using the committed
+`verification/noisy_mix.wav`) at a running instance and reports status codes and latency. Run
+locally (no valid production `AUTH_TOKEN`/`SESSION_SECRET` was available for the live
+`demucs-isolation-dev.fly.dev` worker in this pass, so testing was done against the identical
+code running locally rather than against production - see "Open items" below):
+
+    cd worker-demucs-fly
+    AUTH_TOKEN=devtoken .venv/bin/python server.py &   # local instance
+    .venv/bin/python verification/load_test.py --url http://localhost:8080 --token devtoken -n 4
+
+**Results (M2 Pro dev machine, `MAX_CONNECTIONS=2`):**
+
+| concurrent requests | 200 OK | 503 at-capacity | latencies (successful) |
+|---|---|---|---|
+| 1 | 1 | 0 | 4.62s |
+| 2 (at the limit) | 2 | 0 | 4.67s, 9.05s |
+| 3 (over the limit) | 2 | 1 | 4.49s, 8.78s |
+| 4 (over the limit) | 2 | 2 | 5.22s, 9.86s |
+
+**Key finding: the concurrency limit works as a request-admission gate, but does NOT provide
+real parallel compute.** `Separator.separate()` holds a global lock (documented in its docstring
+as a deliberate choice - the model isn't verified thread-safe for concurrent forward passes), so
+even with 2 requests admitted under `MAX_CONNECTIONS=2`, they run one at a time: the second
+request's latency is roughly double the first's (~9s vs ~4.6s for two admitted requests, matching
+"one request's compute time, then the next's"). Requests beyond `MAX_CONNECTIONS` are correctly
+rejected with `503 {"error": "at capacity, retry shortly"}` immediately (sub-20ms), not queued
+indefinitely, which is the behavior the code intends.
+
+**Implication for capacity planning**: raising `MAX_CONNECTIONS` above 2 would let more requests
+queue before rejecting (trading rejection for worse tail latency) but would NOT increase
+throughput, since compute is serialized regardless of how many requests are admitted. The
+current value of 2 essentially caps end-to-end p99 latency at "2x one clip's processing time"
+before a caller gets a fast, clear rejection instead of an ever-growing queue - a reasonable
+tradeoff, but the original guess's rationale ("Demucs is heavier per-request, so lower
+concurrency than Piper") undersells the real reason: it's not just heavier, the actual compute is
+fully serial, so there's no parallel-throughput benefit to admitting more than a small queue depth
+at all. If real parallel throughput is ever wanted, the lock would need to be replaced with
+per-request model instances (more memory, no lock) or a request queue in front of a fixed worker
+pool - not attempted here.
+
+**Open items on load testing:**
+- Not run against the actual live `demucs-isolation-dev.fly.dev` instance or its real
+  `performance-2x` VM class (no valid session/API token was available in this environment to
+  authenticate against it; the code path exercised locally is identical, so results should
+  transfer, but Fly's CPU class may differ in absolute throughput from the M2 Pro used here).
+- Concurrent *large* clips (near `MAX_DURATION_S=120`) and their memory usage were not tested -
+  only the ~10.4s reference clip was used at each concurrency level.
+- Cold-start (scale-from-zero, or first request after process start including model weight load)
+  under concurrent load was not tested.
+
 ## Verification: before/after measurement
 
 `verification/make_and_verify.py` builds the test clip and runs it through the real pipeline.
@@ -148,6 +200,49 @@ less cleanly. Re-run `verification/make_and_verify.py` to regenerate the numbers
 `noisy_mix.wav`, `isolated.wav`, `metrics.json`); reproduces deterministically given the same
 `speech.wav` (fixed `numpy` RNG seed).
 
+## Expanded verification coverage (this pass)
+
+The original verification above is one clip, one noise profile, one SNR level, one synthetic TTS
+voice. `verification/expand_coverage.py` adds 5 more cases (run after `make_and_verify.py` has
+produced `speech.wav`):
+
+    .venv/bin/python verification/expand_coverage.py
+
+| case | input SNR | output SNR | improvement | non-speech energy reduction | notes |
+|---|---|---|---|---|---|
+| white_noise_0db | 1.5 dB | 11.5 dB | **+10.0 dB** | 98.9% | pure white noise, no music/drone - cleans up well, similar to the original drone case |
+| white_noise_10db | 10.0 dB | 17.5 dB | **+7.5 dB** | 66.7% | easier starting point (less noise to remove); still improves, smaller relative gain since there's less headroom |
+| echo_reverb | n/a | -6.0 dB vs. dry reference | **worse, not better** | -0.2% (no change) | speech convolved with a synthetic RT60=0.4s room impulse response. Demucs does **not** meaningfully dereverberate - htdemucs separates sources, it doesn't do dereverberation, so this is an expected negative result, not a bug, but a real limitation to know about before promising "cleans up any noisy recording" |
+| second_voice | 3.0 dB | 0.1 dB | **-2.9 dB (worse)** | 0.1% (no change) | a second TTS voice mixed in as "noise" at 0dB. htdemucs' `vocals` stem separates speech from non-speech, it has no notion of "target speaker" - it does not suppress a second voice. Confirms this feature is a noise/music suppressor, not a speaker-isolation/diarization tool |
+| **real_speech_drone** | 1.6 dB | 1.8 dB | **+0.2 dB only** | 98.1% | a REAL (non-TTS) public-domain speech recording (see below) mixed with the original drone+noise profile at the same 0dB SNR as the verified synthetic case (which got +9.4 dB). Non-speech-band energy still drops sharply (98.1%, similar to the synthetic case), but the oracle SNR metric barely improves - a real, measured gap between synthetic-TTS and real-speech performance, not a guess |
+
+**The real-speech result is the most important finding of this pass.** On the exact same noise
+profile and SNR that produced a clean +9.4 dB improvement with synthetic `say`-generated speech,
+a real recorded voice only improved by +0.2 dB by this metric. Two explanations, not
+distinguished further here: (a) htdemucs' vocal-isolation quality may genuinely be weaker on real
+speech's more complex spectral/temporal characteristics (natural prosody, breath sounds, room
+tone in the original recording) than on TTS's cleaner, more uniform signal, or (b) the
+cross-correlation-based SNR estimator (built for a synthetic reference with no pre-existing room
+character) is a worse proxy on a recording that already has its own reverb/mic coloration baked
+in, inflating the apparent gap. The non-speech-band-energy metric (98.1% reduction, matching the
+synthetic case) suggests the model IS doing real separation work; the metrics disagree, which
+itself is the point - one proxy metric isn't enough to certify quality on real audio, and this
+needs either a better metric (e.g. PESQ/STOI, not attempted here) or human listening evaluation
+before claiming the same +9dB-class improvement on real customer audio.
+
+**Where the real speech came from**: a public-domain audio recording of a reading of the
+Gettysburg Address, sourced from archive.org (`GettysburgAddressmp3Version` item), trimmed to a
+12s excerpt and resampled to 22.05kHz mono to match the pipeline's other fixtures. This is the
+first non-`say`-synthesized speech this pipeline has been tested against. The clip itself isn't
+checked into this repo's fixtures by this script (only referenced by path in
+`verification/real_speech_gettysburg.wav`, which **is** committed) - if committing third-party
+downloaded audio (even public-domain) needs a licensing sign-off before shipping, that's an open
+item (see below).
+
+Full machine-readable results: `verification/coverage_results.json`. Rerun
+`expand_coverage.py` to regenerate (deterministic given fixed RNG seeds and the same input
+files).
+
 ## Local run
 
     cd worker-demucs-fly
@@ -169,29 +264,60 @@ model - not mocked.
 
 Done as of this pass: gateway routing (`/audio/authorize` in `gateway/server.js`, tested in
 `gateway/audio.test.js`), `DEMUCS_WORKER_URL`/`engine` wiring, audit logging on the new surface,
-and a usage-metering hook (`report_usage` in `server.py`, mirrors `worker-piper-fly`). Still open:
+and a usage-metering hook (`report_usage` in `server.py`, mirrors `worker-piper-fly`). The worker
+is now live at `demucs-isolation-dev.fly.dev` with the gateway route in production.
 
-- **fly.toml is filled in but still NOT deployed** (do not `fly deploy` it from this state):
-  app name is `demucs-isolation-dev` (deliberately not a production app name), VM sizing
-  (`performance-2x`/4GB, `MAX_CONNECTIONS=2`) is a guess based on Piper's CPU-worker `fly.toml`
-  as a reference point and Demucs being heavier per-request, not benchmarked under load.
-- **Auth secrets**: `AUTH_TOKEN`/`SESSION_SECRET` need real values provisioned as Fly secrets
-  (`fly secrets set`), not the dev placeholders used locally - and `SESSION_SECRET` specifically
-  must match the gateway's `MODAL_SESSION_SECRET` value (see "Auth wiring" above).
-- **Usage/billing pricing undecided**: `report_usage` now sends `{id, audio_seconds,
-  engine: "denoise"}` to the gateway's `/admin/usage/report`, which stores it in the generic
-  `usageAudioSecondsSinceLastReport` counter (`gateway/keys.js`) - same as STT does - but no
-  per-second (or per-request/per-MB) *price* for this engine has been set on the billing side yet.
-- **Load testing**: concurrency (`MAX_CONNECTIONS=2` is a guess), memory usage under concurrent
-  120s clips, and cold-start behavior (first request after a scale-from-zero, including model
-  weight load if not baked into the image) are all unmeasured.
+Done in this hardening pass (see the new sections above for detail):
+- **Pricing proposal with real cost math**: `PRICING.md` - measured CPU-seconds/audio-second on
+  the real separation path, derived a break-even price at several utilization assumptions using
+  the same cost-basis method as Piper/Kokoro, and proposed **$0.05/audio-minute**. Still a
+  *proposal*, not wired into billing - and not checked against real competitor pricing (see that
+  doc's "Open items").
+- **Load testing**: `verification/load_test.py` + results table above. Confirmed `MAX_CONNECTIONS`
+  correctly gates admission (503 beyond the limit) and found the more important fact: the global
+  separation lock means compute is serialized, so the limit buys queue depth/latency control, not
+  parallel throughput - the original "2 is heavier than Piper's 4" reasoning was directionally
+  right but missed this mechanism.
+- **Expanded verification coverage**: `verification/expand_coverage.py` - 5 more cases (white
+  noise at 2 SNR levels, synthetic reverb, a second-voice/crosstalk case, and a REAL non-TTS
+  speech recording). Found real limitations that the single original clip couldn't show: htdemucs
+  doesn't dereverberate, doesn't suppress a second voice, and shows a much smaller measured
+  improvement on real speech than on synthetic TTS speech under the same noise/SNR conditions.
+- **Real (non-TTS) audio tested**: a public-domain speech recording (Gettysburg Address reading,
+  from archive.org) was mixed with synthetic noise and run through the real pipeline - see
+  "real_speech_drone" above. This is the first non-synthetic-speech test of this feature, and it
+  surfaced a real gap (see above) rather than confirming everything is fine.
+
+Still open:
+
+- **fly.toml is filled in and the app IS now deployed live** (`demucs-isolation-dev.fly.dev`) -
+  the comment in `fly.toml` predates the actual deploy and should be updated/removed to avoid
+  confusing a future reader into thinking it's still pre-deploy. VM sizing
+  (`performance-2x`/4GB, `MAX_CONNECTIONS=2`) was a guess before this pass; load testing above
+  confirms the concurrency behavior is sane (clean 503s, no crashes/hangs at 2x the limit) but
+  was run locally, not against the real Fly VM class - see "Load testing" open items.
+- **Usage/billing pricing**: a number has been proposed (`PRICING.md`, $0.05/audio-minute) but
+  not decided by whoever owns pricing, nor implemented as an actual meter rate on the billing
+  side (unlike Piper's chars-based rate, there's no equivalent "0.4x weighting" commit yet for
+  denoise).
+- **Concurrency architecture**: the separation lock's serialization (see "Load testing") means
+  `MAX_CONNECTIONS` doesn't buy real throughput scaling - if concurrent throughput ever needs to
+  scale, the model would need per-worker instances (memory cost) or this needs re-architecting;
+  not attempted in this pass.
 - **Model licensing check**: Demucs (`facebookresearch/demucs`) is MIT-licensed code; the
   pretrained `htdemucs` weights are released under the same repo's terms (also permissive) but
   this has not been re-verified against current upstream terms or checked against this
   product's own ToS/licensing obligations before shipping a feature built on them.
-- **Broader verification**: only one synthetic clip/noise profile was tested (see
-  "Verification" caveats above) - real customer audio (phone calls, real background noise/
-  music, multiple speakers) has not been tried.
+- **Real-speech quality gap needs a real fix-or-accept decision**: the "real_speech_drone" result
+  above (+0.2dB vs. the synthetic case's +9.4dB under the same noise/SNR) is a genuine open
+  question, not resolved here - needs either a better quality metric (PESQ/STOI or human
+  listening) or acceptance that this feature is weaker on real-world audio than the original
+  verification suggested, before it's marketed as broadly as the current copy might imply.
 - **Streaming/chunking**: Demucs here processes the whole clip in memory; very long inputs
   (near `MAX_DURATION_S`) will have higher latency and memory than a chunked/streaming
-  implementation would - untested.
+  implementation would - untested, and not covered by this pass's load testing (only the ~10.4s
+  reference clip was used at each concurrency level, not near-`MAX_DURATION_S` clips).
+- **Licensing of the third-party test fixture**: `verification/real_speech_gettysburg.wav` was
+  downloaded from archive.org (public domain speech recording) and is now committed to this
+  repo as a test fixture - hasn't been checked against this product's policy on committing
+  third-party downloaded media, even permissively-licensed.
