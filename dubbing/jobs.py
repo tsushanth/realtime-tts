@@ -26,7 +26,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
-from . import pipeline
+from . import audit, pipeline
 
 JOB_ID_PREFIX = "dub-"
 _TERMINAL = ("done", "error")
@@ -142,11 +142,21 @@ class JobStore:
                 job.status = "done"
                 job.result = result
                 job.updated_at = time.time()
+            key_id = job.params.get("key_id")
+            translated_chars = len(result.get("translated_text") or "")
+            audit.audit_log("job_completed", job_id=job.id, id=key_id,
+                             target_lang=job.params.get("target_lang"), chars=translated_chars,
+                             tts_backend=result.get("tts_backend"))
+            # Usage accounting: same billing ledger every other engine reports into
+            # (gateway/keys.js via /admin/usage/report) - best-effort, never fails the job itself.
+            audit.report_usage(key_id, translated_chars, engine="dubbing")
         except Exception as e:  # noqa: BLE001 - job errors must surface via status, never crash the worker thread
             with self._lock:
                 job.status = "error"
                 job.error = f"{type(e).__name__}: {e}"
                 job.updated_at = time.time()
+            audit.audit_log("job_failed", job_id=job.id, id=job.params.get("key_id"),
+                             target_lang=job.params.get("target_lang"), error=job.error)
         self._write_status(job)
 
 

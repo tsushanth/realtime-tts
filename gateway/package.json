@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test stt.test.js audio.test.js"
+    "test": "node --test stt.test.js audio.test.js dubbing.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

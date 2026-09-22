@@ -57,9 +57,23 @@ Neither `gateway/server.js` nor a newly deployed Modal app. Reasoning:
 
 ### `POST /dubbing/jobs`
 
-Auth: `Authorization: Bearer <DUBBING_JOB_SECRET>` (a single shared secret for whoever is allowed
-to submit dubbing jobs - e.g. the product backend - matching `intake.py`'s `INTAKE_SECRET` model,
-not gateway's per-customer API keys, since dubbing jobs are submitted server-to-server.)
+Auth has two layers now:
+
+1. `Authorization: Bearer <DUBBING_JOB_SECRET>` - a single shared secret for whoever is allowed to
+   *call this API at all* (e.g. the product backend), matching `intake.py`'s `INTAKE_SECRET`
+   model, not gateway's per-customer API keys, since this endpoint is reached server-to-server.
+2. `"api_key"` in the request body - the actual customer's gateway API key. This is the
+   consent/ownership gate added in this hardening pass: the shared secret above only proves "this
+   is the trusted backend calling", not that there's a real, billing-enabled customer behind this
+   specific job. `dubbing/gateway_auth.py` POSTs `{"key": api_key}` to a new
+   `gateway/server.js` endpoint, `POST /dubbing/authorize`, which runs the exact same
+   `keys.isValidKey` / `keys.checkAccess` gate `/tts/authorize` and `/audio/authorize` already run
+   (see `gateway/server.js`), and audit-logs the attempt via `auditLog`. Missing/invalid key -> 400/401,
+   billing exhausted -> 402, `DUBBING_GATEWAY_URL` unset or the gateway unreachable -> 503
+   (fails closed, same posture as the bearer-token check). No token/URL is handed back (unlike
+   `/tts/authorize`/`/audio/authorize`) - dubbing's TTS/STT calls happen from this Python process,
+   not from a client the gateway redirects; `/dubbing/authorize` only answers "is this a real,
+   paying key".
 
 Request body:
 ```json
@@ -67,13 +81,38 @@ Request body:
   "text": "Thanks for calling, how can I help you today?",
   "source_lang": "en",
   "target_lang": "de_DE",
-  "duration_s": 4.5
+  "duration_s": 4.5,
+  "api_key": "<the customer's gateway API key>"
 }
 ```
 `audio_path` (a server-local WAV path) may be sent instead of `text` to exercise the real STT step
 via `stt.SttClient` - see the STT caveat below; `duration_s` is optional for `text` mode (skips
 duration-fit retiming if omitted). `target_lang` is validated against `voices/catalog.json`
 (`catalog.validate_target_language`) before a job is even queued.
+
+### Observability: audit logging + usage reporting
+
+`dubbing/audit.py` adds the two things this pipeline was missing relative to every other engine:
+
+- **Audit log** (`audit_log`): one JSON line per event (`job_submit_authorized`,
+  `job_submit_denied`, `job_completed`, `job_failed`) on stdout, same shape as
+  `gateway/audit.js`'s `auditLog` - never logs a raw key, only the non-secret `id` gateway's
+  `/dubbing/authorize` returns.
+- **Usage reporting** (`report_usage`): on job completion, POSTs to `gateway/server.js`'s existing
+  `/admin/usage/report` (the same callback `worker-modal-readaloud/app.py` fires after a
+  synthesize call) with `engine: "dubbing"` and the translated-text character count, so a dubbing
+  job counts against the same per-key billing ledger (`gateway/keys.js`) as every other engine
+  instead of being invisible to billing. Requires `MODAL_USAGE_REPORT_SECRET` (same secret
+  `requireUsageReportSecret` checks) + `DUBBING_GATEWAY_URL`; best-effort, logged via
+  `usage_report_skipped`/`usage_report_failed` if either is missing or the call fails - a billing
+  hiccup never fails the dubbing job itself.
+
+Run the job server with both gating env vars set, e.g.:
+```
+DUBBING_JOB_SECRET=<shared secret> DUBBING_GATEWAY_URL=http://127.0.0.1:8080 \
+MODAL_USAGE_REPORT_SECRET=<same secret gateway/server.js has> \
+python3 -m dubbing.job_server --host 127.0.0.1 --port 8090
+```
 
 Response: `202 Accepted`
 ```json
@@ -140,7 +179,13 @@ and `/result` returned a real 22.05kHz mono WAV.
   environment - checked directly via `env`, not assumed. `stt.SttClient` (used when a job is
   submitted with `audio_path` instead of `text`) is implemented, matches `worker-stt/test_client.py`'s
   mint scheme, and is wired into `pipeline.run()`/`jobs.py` unchanged, but was not exercised live
-  here for the same reason as the original CLI MVP: no worker-stt credentials available.
+  here for the same reason as the original CLI MVP: no worker-stt credentials available. As a
+  substitute (this hardening pass's item 3), `dubbing/test_gateway_auth.py` exercises a real
+  wire-level HTTP round trip against a loopback stdlib server (request method/path/body, and every
+  status code translation: 200/401/402/503) for the *same style* of gateway-call code path
+  `SttClient`/`PiperGatewayTTS` use, so the request/response handling itself is verified against a
+  real socket, not only against fakes/mocks - `SttClient`'s own wire protocol against a real
+  worker-stt instance remains untested for lack of a deployed one.
 - **To go fully real**: provision `TTS_GATEWAY_API_KEY` (a billing-enabled gateway key - mint via
   `POST /admin/keys` with `ADMIN_SECRET`, which is also not set here) for TTS, and `STT_BASE` +
   `STT_SECRET_FILE` for a real (non-production) `worker-stt` deployment for STT. No code changes
@@ -179,6 +224,12 @@ active afterward.
 - `retime.py` — silence-aware retiming (ffmpeg `silencedetect`/`atrim`/`concat`, touches only
   inter-sentence pauses) + bounded time-stretch (ffmpeg `atempo`, capped at ±15%).
 - `pipeline.py` — orchestrates all of the above; also a CLI (`python3 -m dubbing.pipeline ...`).
+- `gateway_auth.py` — validates a customer's gateway API key against `gateway/server.js`'s new
+  `POST /dubbing/authorize` before a job is queued (consent/ownership gating). Fails closed.
+- `audit.py` — structured audit logging (`audit_log`) + usage reporting (`report_usage`) to
+  `gateway/server.js`'s `/admin/usage/report`, the Python-side counterpart to `gateway/audit.js`.
+- `test_gateway_auth.py` — wire-level test of `gateway_auth.authorize()` against a real loopback
+  HTTP server (not a fake), covering every status code it must translate correctly.
 
 ## What's real vs. stubbed in *this* environment
 
