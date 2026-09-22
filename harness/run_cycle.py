@@ -21,10 +21,17 @@ def run_cycle(recipe: Recipe, budget_usd: float, workdir: str, out_dir: str = "h
         if spent + estimate > budget_usd:
             # Spec: stop the cycle here. Do NOT skip ahead to a cheaper later
             # candidate - discover_candidates() order is the recipe's priority
-            # and the harness respects it. Everything from here on is recorded
-            # as skipped without re-costing it; the cycle has definitively ended.
-            for remaining in candidates[i:]:
-                results.append(CandidateResult(candidate=remaining, status="skipped_over_budget", cost_usd=0.0, metrics=None, error=None))
+            # and the harness respects it. The cycle has definitively ended;
+            # "not re-costing" means never checking a later estimate against
+            # the budget (which could change the stop/go decision), not
+            # withholding the estimate itself - the reader needs the real
+            # number to judge whether a small budget bump would have covered
+            # it. estimate_cost_usd() is a pure, side-effect-free function
+            # (per the Recipe protocol), so calling it here for display is free.
+            results.append(CandidateResult(candidate=candidate, status="skipped_over_budget", cost_usd=estimate, metrics=None, error=None))
+            for remaining in candidates[i + 1:]:
+                remaining_estimate = recipe.estimate_cost_usd(remaining)
+                results.append(CandidateResult(candidate=remaining, status="skipped_over_budget", cost_usd=remaining_estimate, metrics=None, error=None))
             break
 
         try:

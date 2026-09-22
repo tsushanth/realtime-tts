@@ -97,7 +97,7 @@ def write_report(
         lines.append("")
         lines.append("Not attempted this cycle (budget exhausted before reaching these):")
         for r in skipped:
-            lines.append(f"- {r.candidate.id}: {r.candidate.description}")
+            lines.append(f"- {r.candidate.id}: ${r.cost_usd:.2f} (estimate) - {r.candidate.description}")
 
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")

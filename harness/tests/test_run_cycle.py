@@ -41,6 +41,47 @@ def test_budget_enforcement_stops_cycle_before_overspending():
     # cycle (break, per spec) - so exactly one candidate is skipped here.
     assert content.count("skipped_over_budget") == 1
     assert "Spent: $20.00" in content
+    # Skipped candidates show their real estimate, not $0.00 - a skip at
+    # $10 vs $32 tells the reader very different things about whether to
+    # just bump the budget slightly next time.
+    assert "| c3 | third | skipped_over_budget | $10.00 |" in content
+
+
+class VaryingEstimateRecipe:
+    """Each candidate has a distinct estimate, so a skipped candidate's
+    reported cost can be checked against the ONE candidate it belongs to,
+    not just "some nonzero number" - proves per-candidate estimates are
+    used, not a single cached/reused value."""
+
+    name = "varying-estimate-test"
+
+    def discover_candidates(self):
+        return [
+            Candidate(id="cheap", description="cheap one", train_config={}),
+            Candidate(id="pricey", description="the pricey one", train_config={}),
+        ]
+
+    def estimate_cost_usd(self, candidate):
+        return {"cheap": 5.0, "pricey": 32.0}[candidate.id]
+
+    def train(self, candidate, workdir):
+        return TrainedModel(candidate=candidate, artifact_path=f"{workdir}/{candidate.id}.onnx", actual_cost_usd=5.0)
+
+    def evaluate(self, model):
+        return {"score": 1.0}
+
+
+def test_skipped_candidate_reports_its_own_real_estimate():
+    with tempfile.TemporaryDirectory() as workdir, tempfile.TemporaryDirectory() as out_dir:
+        recipe = VaryingEstimateRecipe()
+        # Budget covers "cheap" ($5) but not "pricey" ($32) - "pricey" must
+        # be skipped and show $32.00, not $0.00.
+        report_path = run_cycle(recipe, budget_usd=10.0, workdir=workdir, out_dir=out_dir)
+        content = open(report_path).read()
+
+    assert "| cheap | cheap one | trained | $5.00 |" in content
+    assert "| pricey | the pricey one | skipped_over_budget | $32.00 |" in content
+    assert "pricey: $32.00" in content  # also surfaced in the "Reading this" summary, not just the table
 
 
 class FailingTrainRecipe:
