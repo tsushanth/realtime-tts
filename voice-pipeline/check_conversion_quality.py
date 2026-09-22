@@ -8,42 +8,16 @@ Measures (no playback needed):
   - optional: faster-whisper/whisper transcript of source vs output, word-level similarity (content
     fidelity - did the words survive conversion) if `openai-whisper` or `faster-whisper` is installed
 
+The metric implementations and the automated pass/fail heuristics now live in voice-pipeline/quality.py
+(shared with convert_job.py, which runs the same gate automatically right after each conversion inside
+the Modal container). This script is the human-facing CLI wrapper around that module.
+
 Usage: python3 check_conversion_quality.py --source s.wav --target t.wav --output out.wav
 """
 import argparse
 import sys
 
-import numpy as np
-import soundfile as sf
-
-
-def median_f0(x, sr, max_files=None):
-    n = int(0.04 * sr)
-    lo, hi = int(sr / 400), int(sr / 60)
-    out = []
-    for st in range(0, len(x) - n, n):
-        fr = x[st:st + n] - np.mean(x[st:st + n])
-        if np.sqrt(np.mean(fr ** 2)) < 0.01:
-            continue
-        ac = np.correlate(fr, fr, "full")[n - 1:]
-        k = lo + int(np.argmax(ac[lo:hi]))
-        if ac[k] / (ac[0] + 1e-9) > 0.5:
-            out.append(sr / k)
-    return float(np.median(out)) if out else 0.0
-
-
-def rms_envelope(x, sr, hop_ms=20):
-    n = int(hop_ms / 1000 * sr)
-    m = len(x) // n
-    if m < 2:
-        return np.array([])
-    fr = x[: m * n].reshape(m, n)
-    return np.sqrt(np.mean(fr ** 2, axis=1))
-
-
-def load_mono(path):
-    x, sr = sf.read(path, always_2d=True)
-    return x.mean(axis=1), sr
+from quality import load_mono, median_f0, envelope_correlation, validate_conversion_quality
 
 
 def main():
@@ -71,18 +45,17 @@ def main():
         print(f"  output pitch distance: to source={d_to_src:.1f} Hz, to target={d_to_tgt:.1f} Hz "
               f"-> {'moved toward TARGET (expected for VC)' if d_to_tgt < d_to_src else 'closer to SOURCE (unexpected)'}")
 
-    # resample output envelope onto the source's frame count for a rough rhythm/envelope correlation
-    env_src = rms_envelope(src, sr_s)
-    env_out = rms_envelope(out, sr_o)
-    if len(env_src) > 4 and len(env_out) > 4:
-        n = min(len(env_src), len(env_out))
-        idx_s = np.linspace(0, len(env_src) - 1, n).astype(int)
-        idx_o = np.linspace(0, len(env_out) - 1, n).astype(int)
-        a, b = env_src[idx_s], env_out[idx_o]
-        if a.std() > 0 and b.std() > 0:
-            corr = float(np.corrcoef(a, b)[0, 1])
-            print(f"energy-envelope correlation (source vs output, time-normalized): {corr:.3f} "
-                  f"({'consistent with preserved rhythm/prosody' if corr > 0.4 else 'weak - check output audibly'})")
+    corr = envelope_correlation(src, sr_s, out, sr_o)
+    if corr is not None:
+        print(f"energy-envelope correlation (source vs output, time-normalized): {corr:.3f} "
+              f"({'consistent with preserved rhythm/prosody' if corr > 0.4 else 'weak - check output audibly'})")
+
+    gate = validate_conversion_quality(args.source, args.target, args.output)
+    print(f"\nquality gate: {'PASS' if gate['passed'] else 'FAIL'}")
+    for r in gate["reasons"]:
+        print(f"  FAIL reason: {r}")
+    for w in gate["warnings"]:
+        print(f"  warning: {w}")
 
     if args.transcribe:
         try:
