@@ -45,10 +45,15 @@ Using an AI assistant instead? See the MCP server: https://readaloudai.org/devel
 
 ### Audio isolation (beta, `worker-demucs-fly`)
 
-Given a noisy/mixed clip, isolates the speech track (Demucs `htdemucs`, +9.4dB SNR improvement
-measured on a synthetic 0dB-SNR test clip — see `worker-demucs-fly/README.md`). Not yet wrapped
-by the official SDKs above — authorize, then call the worker directly, same two-step shape as
-the TTS/STT engines:
+Given a noisy/mixed clip, isolates the speech track (Demucs `htdemucs`). **Read this before
+relying on it**: +9.4dB SNR improvement was measured on a synthetic (`say`-generated) 0dB-SNR
+test clip, but a real (non-TTS) speech recording under the identical noise/SNR condition only
+improved +0.2dB — real speech has natural high/low-frequency content (sibilants, breath) that
+this model partly strips out alongside the noise, which synthetic TTS speech doesn't have enough
+of to expose the same way. Treat the +9.4dB figure as a synthetic-audio ceiling, not a
+real-world expectation, until this gap is closed — see `worker-demucs-fly/README.md`'s
+"real_speech_drone" case for the full data. Not yet wrapped by the official SDKs above —
+authorize, then call the worker directly, same two-step shape as the TTS/STT engines:
 
 ```
 curl -s -X POST https://api.readaloudai.org/audio/authorize \
@@ -60,5 +65,5 @@ curl -s -X POST https://<demucs-worker>.fly.dev/v1/isolate \
 ```
 
 `stem` defaults to `vocals` (the speech track); `drums`/`bass`/`other` are also available (htdemucs'
-other separated sources). Clip limits: 25MB / 120s by default. **Undeployed as of this writing** —
-`worker-demucs-fly/fly.toml` is configured (app `demucs-isolation-dev`) but not yet pushed to Fly.
+other separated sources). Clip limits: 25MB / 120s by default. Deployed at `demucs-isolation-dev.fly.dev`,
+routed through the live gateway's `/audio/authorize` — no pricing decided yet (tracked, unbilled).
