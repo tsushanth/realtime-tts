@@ -1,0 +1,175 @@
+[
+  {
+    "id": "young_woman",
+    "job_id": "d-eval00abcd",
+    "description": "a young adult woman, cheerful and energetic, American accent",
+    "text": "I just got back from the most amazing trip, you have to hear about it!",
+    "expected_band_hz": [
+      165,
+      300
+    ],
+    "rationale": "typical adult female speaking F0",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 4.49,
+      "audio_seconds": 3.96
+    },
+    "f0": {
+      "mean_f0_hz": 244.3,
+      "median_f0_hz": 242.0,
+      "voiced_frac": 0.661
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "older_british_woman",
+    "job_id": "d-eval01abcd",
+    "description": "a warm, older British woman, gentle and a little frail, refined accent",
+    "text": "Would you like a cup of tea, dear? I've just put the kettle on.",
+    "expected_band_hz": [
+      140,
+      240
+    ],
+    "rationale": "adult female; older speakers trend toward the lower end of the female band",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 4.09,
+      "audio_seconds": 3.7
+    },
+    "f0": {
+      "mean_f0_hz": 230.6,
+      "median_f0_hz": 225.8,
+      "voiced_frac": 0.525
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "male_anchor",
+    "job_id": "d-eval02abcd",
+    "description": "a middle-aged man, deep and authoritative, American news anchor delivery",
+    "text": "Good evening. Our top story tonight comes from the capital.",
+    "expected_band_hz": [
+      85,
+      160
+    ],
+    "rationale": "typical adult male speaking F0",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 3.66,
+      "audio_seconds": 3.29
+    },
+    "f0": {
+      "mean_f0_hz": 127.6,
+      "median_f0_hz": 128.9,
+      "voiced_frac": 0.56
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "young_boy",
+    "job_id": "d-eval03abcd",
+    "description": "a young boy, high-pitched, excited and a little breathless",
+    "text": "Mom, mom, look what I found in the backyard, it's so cool!",
+    "expected_band_hz": [
+      250,
+      400
+    ],
+    "rationale": "pre-pubescent child F0, well above adult male or female",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 4.0,
+      "audio_seconds": 3.82
+    },
+    "f0": {
+      "mean_f0_hz": 182.9,
+      "median_f0_hz": 175.1,
+      "voiced_frac": 0.664
+    },
+    "band_verdict": "OUTSIDE expected band"
+  },
+  {
+    "id": "elderly_gravelly_man",
+    "job_id": "d-eval04abcd",
+    "description": "an elderly man, gravelly and slow, Southern American drawl",
+    "text": "Back in my day, we didn't have any of these newfangled gadgets.",
+    "expected_band_hz": [
+      70,
+      140
+    ],
+    "rationale": "adult male, gravelly/creaky voice quality often lowers effective F0 further",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 5.13,
+      "audio_seconds": 4.74
+    },
+    "f0": {
+      "mean_f0_hz": 114.2,
+      "median_f0_hz": 107.8,
+      "voiced_frac": 0.814
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "husky_woman",
+    "job_id": "d-eval05abcd",
+    "description": "a woman with a deep, husky, sultry voice, slow and deliberate",
+    "text": "Take your time. There's no rush at all tonight.",
+    "expected_band_hz": [
+      120,
+      210
+    ],
+    "rationale": "female but deliberately low-register - adversarial case, overlaps male band",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 3.75,
+      "audio_seconds": 3.44
+    },
+    "f0": {
+      "mean_f0_hz": 147.7,
+      "median_f0_hz": 158.7,
+      "voiced_frac": 0.636
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "nervous_high_man",
+    "job_id": "d-eval06abcd",
+    "description": "a man with a high-pitched, nervous, fast-talking voice",
+    "text": "Wait, wait, I don't think that's right, let me check again, sorry, sorry.",
+    "expected_band_hz": [
+      140,
+      220
+    ],
+    "rationale": "male but deliberately high-register - adversarial case, overlaps female band",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 3.74,
+      "audio_seconds": 3.42
+    },
+    "f0": {
+      "mean_f0_hz": 167.6,
+      "median_f0_hz": 169.6,
+      "voiced_frac": 0.622
+    },
+    "band_verdict": "in expected band"
+  },
+  {
+    "id": "neutral_narrator",
+    "job_id": "d-eval07abcd",
+    "description": "a calm, neutral voice, professional documentary narrator, no strong gender cues",
+    "text": "The migration begins at dawn, when the first light touches the water.",
+    "expected_band_hz": null,
+    "rationale": "control case - no directional pitch prediction, sanity check only",
+    "gen_meta": {
+      "container_load_seconds": 26.89,
+      "generation_seconds": 4.22,
+      "audio_seconds": 3.9
+    },
+    "f0": {
+      "mean_f0_hz": 135.3,
+      "median_f0_hz": 124.9,
+      "voiced_frac": 0.54
+    },
+    "band_verdict": "n/a (control)"
+  }
+]
