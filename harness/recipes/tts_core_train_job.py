@@ -6,7 +6,15 @@ solved there: WAV-copy-before-training, progress-patching,
 instead of hardcoded to one checkpoint/step-count. Read that file in full
 before changing this one - the gotchas documented there apply here
 unchanged."""
+import os
+
 import modal
+
+# Modal resolves add_local_file/add_local_dir paths against the CLIENT PROCESS's
+# cwd, not this module's directory. The documented invocation is
+# `cd <repo root> && python3 -m harness.run_cycle ...`, but relying on that is
+# fragile, so anchor to the repo root absolutely via __file__ instead.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -21,9 +29,9 @@ image = (
     .run_commands("python3 setup.py build_ext --inplace")
     .run_commands("bash build_monotonic_align.sh")
     .pip_install("numpy<2")
-    .add_local_file("../../training-data/patch_piper_progress.py", remote_path="/tmp/patch_piper_progress.py", copy=True)
+    .add_local_file(os.path.join(_REPO_ROOT, "training-data/patch_piper_progress.py"), remote_path="/tmp/patch_piper_progress.py", copy=True)
     .run_commands("python3 /tmp/patch_piper_progress.py")
-    .add_local_dir("../../training-data/full", remote_path="/filelists_src")
+    .add_local_dir(os.path.join(_REPO_ROOT, "training-data/full"), remote_path="/filelists_src")
 )
 
 app = modal.App("harness-tts-core-train", image=image)

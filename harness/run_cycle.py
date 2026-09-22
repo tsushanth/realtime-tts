@@ -16,11 +16,16 @@ def run_cycle(recipe: Recipe, budget_usd: float, workdir: str, out_dir: str = "h
     results: list[CandidateResult] = []
     spent = 0.0
 
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates):
         estimate = recipe.estimate_cost_usd(candidate)
         if spent + estimate > budget_usd:
-            results.append(CandidateResult(candidate=candidate, status="skipped_over_budget", cost_usd=0.0, metrics=None, error=None))
-            continue
+            # Spec: stop the cycle here. Do NOT skip ahead to a cheaper later
+            # candidate - discover_candidates() order is the recipe's priority
+            # and the harness respects it. Everything from here on is recorded
+            # as skipped without re-costing it; the cycle has definitively ended.
+            for remaining in candidates[i:]:
+                results.append(CandidateResult(candidate=remaining, status="skipped_over_budget", cost_usd=0.0, metrics=None, error=None))
+            break
 
         try:
             model = recipe.train(candidate, workdir)
@@ -30,10 +35,29 @@ def run_cycle(recipe: Recipe, budget_usd: float, workdir: str, out_dir: str = "h
             continue
 
         spent += model.actual_cost_usd
-        metrics = recipe.evaluate(model)
-        results.append(CandidateResult(candidate=candidate, status="trained", cost_usd=model.actual_cost_usd, metrics=metrics, error=None))
 
-    return write_report(recipe_name=recipe.name, budget_usd=budget_usd, total_spent_usd=spent, results=results, out_dir=out_dir)
+        # evaluate() gets its own guard: training already spent real money, so
+        # an evaluation failure must never cost us the report. The candidate is
+        # still "trained" (that part succeeded) with no metrics and the error.
+        try:
+            metrics = recipe.evaluate(model)
+            error = None
+        except Exception as e:  # noqa: BLE001
+            metrics = None
+            error = f"evaluation failed: {e}"
+        results.append(CandidateResult(candidate=candidate, status="trained", cost_usd=model.actual_cost_usd, metrics=metrics, error=error))
+
+    report_path = write_report(recipe_name=recipe.name, budget_usd=budget_usd, total_spent_usd=spent, results=results, out_dir=out_dir)
+
+    # Optional, duck-typed write-back so a recipe can remember what it already
+    # tried. Deliberately not required by the Recipe protocol - the core stays
+    # domain-free and recipes without persistent state need not implement it.
+    if hasattr(recipe, "record_tried"):
+        for r in results:
+            if r.status == "trained":
+                recipe.record_tried(r.candidate.id, report_path)
+
+    return report_path
 
 
 def main():
