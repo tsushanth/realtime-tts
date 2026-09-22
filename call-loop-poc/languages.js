@@ -575,6 +575,24 @@ const LANGS = {
     phoneAskRe: /հեռախոսահամար/i,
     closingRe: /(շնորհակալություն|ցտեսություն|հաջող օր)/i,
   },
+  // Retell's own published language list (docs.retellai.com/build/language-support) has 55
+  // real, itemized languages — checked directly, not just their marketing count. This entry
+  // closes one specific gap against that real list. Uses MiniMax (already wired above for
+  // expressive delivery on English/other languages) since it has a real dedicated Cantonese
+  // voice — the one language it covers that neither ElevenLabs nor Cartesia do.
+  yue: {
+    name: 'Cantonese', dg: { kind: 'nova3', code: 'zh-HK' },
+    tts: { backend: 'minimax', voiceId: 'Cantonese_GentleLady' },
+    say: {
+      backchannel: ['好.', '明白.', '等陣.', '梗係得.'],
+      warmup: '等陣，我準備緊。',
+      calendar: '等陣，我睇下個日曆。',
+      goodbye: '多謝你嘅來電！祝你有愉快嘅一日！',
+      transfer: '而家幫你轉線，唔該等一等。',
+    },
+    phoneAskRe: /電話號碼/i,
+    closingRe: /(多謝|拜拜|愉快)/i,
+  },
 };
 
 // Codes an operator or API user might type -> canonical key. 'pt' is treated as Brazilian since

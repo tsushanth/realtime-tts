@@ -1547,6 +1547,7 @@ export class CallSession {
     this.elevenVoiceId = ELEVENLABS_VOICE_ID;
     this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.fishReferenceId = null; // set via lang.tts.referenceId — no global default, fish is language-only today
+    this.minimaxVoiceId = MINIMAX_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
     this.ttsModel = null; // per-call override via context `ttsModel` — see onClientMessage
@@ -1569,6 +1570,7 @@ export class CallSession {
       elevenVoiceId: this.elevenVoiceId,
       cartesiaVoiceId: this.cartesiaVoiceId,
       fishReferenceId: this.fishReferenceId,
+      minimaxVoiceId: this.minimaxVoiceId,
       ttsModel: this.ttsModel,
       backchannelWords: this.backchannelWords,
     };
@@ -1797,15 +1799,19 @@ export class CallSession {
       } else {
         console.warn(`[call-loop] language ${lang.code} needs ElevenLabs but ELEVENLABS_API_KEY is unset — staying on ${this.ttsBackend} (English voice)`);
       }
-    } else if (this.ttsBackend === 'elevenlabs' && (lang.tts.backend === 'cartesia' || lang.tts.backend === 'fish')) {
+    } else if (this.ttsBackend === 'elevenlabs' && (lang.tts.backend === 'cartesia' || lang.tts.backend === 'fish' || lang.tts.backend === 'minimax')) {
       // Past ElevenLabs' ~29-language ceiling: this language only has real voice coverage on a
-      // second/third backend (Cartesia: sonic-3.6, 44 languages; Fish Audio: a small, individually
-      // vetted set of community voices for languages neither ElevenLabs nor Cartesia cover).
-      // Redirects unconditionally, same as the kokoro/minimax branch above — staying on elevenlabs
-      // for a language it can't actually speak would just mispronounce or 404, so there's no real
-      // "tenant wants broken elevenlabs" case worth preserving here.
+      // second/third/fourth backend (Cartesia: sonic-3.6, 44 languages; Fish Audio: a small,
+      // individually vetted set of community voices; MiniMax: a real dedicated Cantonese voice,
+      // the one language it has that neither of the others cover). Redirects unconditionally, same
+      // as the kokoro/minimax branch above — staying on elevenlabs for a language it can't actually
+      // speak would just mispronounce or 404, so there's no real "tenant wants broken elevenlabs"
+      // case worth preserving here.
       const target = lang.tts.backend;
-      const ready = target === 'cartesia' ? (CARTESIA_API_KEY && CARTESIA_VOICE_ID) : FISH_AUDIO_API_KEY;
+      const ready =
+        target === 'cartesia' ? (CARTESIA_API_KEY && CARTESIA_VOICE_ID) :
+        target === 'minimax' ? (MINIMAX_API_KEY && MINIMAX_GROUP_ID) :
+        FISH_AUDIO_API_KEY;
       if (ready) {
         this.ttsBackend = target;
         this.cost.ttsBackend = target;
@@ -1824,6 +1830,8 @@ export class CallSession {
       this.cartesiaVoiceId = lang.tts.voiceId;
     } else if (this.ttsBackend === 'fish' && lang.tts.referenceId) {
       this.fishReferenceId = lang.tts.referenceId;
+    } else if (this.ttsBackend === 'minimax' && lang.tts.voiceId) {
+      this.minimaxVoiceId = lang.tts.voiceId;
     }
     this.backchannelWords = lang.say.backchannel;
     prewarmLangFillers(lang, this.elevenVoiceId);
@@ -1851,6 +1859,7 @@ export class CallSession {
       this.elevenVoiceId = this._preLangState.elevenVoiceId;
       this.cartesiaVoiceId = this._preLangState.cartesiaVoiceId;
       this.fishReferenceId = this._preLangState.fishReferenceId;
+      this.minimaxVoiceId = this._preLangState.minimaxVoiceId;
       this.ttsModel = this._preLangState.ttsModel;
       this.backchannelWords = this._preLangState.backchannelWords;
       if (DEEPGRAM_API_KEY) { this.dgConnection?.close(); this._connectDeepgram(this._deepgramEotThreshold); }
@@ -2953,7 +2962,7 @@ export class CallSession {
     const voice =
       this.ttsBackend === 'elevenlabs' ? this.elevenVoiceId :
       this.ttsBackend === 'cartesia' ? this.cartesiaVoiceId :
-      this.ttsBackend === 'minimax' ? MINIMAX_VOICE_ID :
+      this.ttsBackend === 'minimax' ? this.minimaxVoiceId :
       this.ttsBackend === 'fish' ? this.fishReferenceId :
       this.voice;
     return `${this.ttsBackend}::${voice}::${text}`;
@@ -4907,7 +4916,7 @@ export class CallSession {
           text,
           stream: false,
           output_format: 'hex',
-          voice_setting: { voice_id: MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0, ...(emotion ? { emotion } : {}) },
+          voice_setting: { voice_id: this.minimaxVoiceId || MINIMAX_VOICE_ID, speed: 1.0, vol: 1.0, pitch: 0, ...(emotion ? { emotion } : {}) },
           audio_setting: audioSetting,
         }),
         signal,
