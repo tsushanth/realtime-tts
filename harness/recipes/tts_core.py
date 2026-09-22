@@ -199,3 +199,8 @@ class TTSCoreRecipe:
             "the three blockers (owner.json visibility, single-voice scoping of "
             "eval/synth.mjs, score.py's reference-based MOS)."
         )
+
+
+from harness.recipes import register
+
+register("tts-core", TTSCoreRecipe)

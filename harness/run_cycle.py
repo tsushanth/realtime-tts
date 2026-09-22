@@ -8,6 +8,7 @@ import os
 from harness.recipe import Recipe
 from harness.report import CandidateResult, write_report
 from harness.recipes import get_recipe
+import harness.recipes.tts_core  # noqa: F401 - side-effecting import, registers "tts-core"
 
 
 def run_cycle(recipe: Recipe, budget_usd: float, workdir: str, out_dir: str = "harness/reports") -> str:
