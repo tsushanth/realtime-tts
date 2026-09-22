@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 from harness.recipe import Candidate, Recipe, TrainedModel
 
 

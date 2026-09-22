@@ -14,3 +14,6 @@ training-data/pilot/wavs/
 training-data/wavs_full/
 training-data/wavs_full.tar
 training-data/parts/
+
+# Harness cycle output reports - regenerated each run, not review artifacts
+harness/reports/*.md

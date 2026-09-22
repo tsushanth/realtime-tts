@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 
 from harness.recipe import Candidate
 from harness.recipes.tts_core import KNOWN_SIZE_VARIANTS, TTSCoreRecipe
@@ -68,3 +67,38 @@ def test_discover_candidates_handles_corrupted_tried_json(tmp_path, monkeypatch)
     assert len(candidates) == len(KNOWN_SIZE_VARIANTS)
     ids = {c.id for c in candidates}
     assert ids == {v["size_label"] for v in KNOWN_SIZE_VARIANTS}
+
+
+def test_record_tried_writes_date_and_report_path_and_hides_candidate(tmp_path, monkeypatch):
+    tried_path = tmp_path / "tried.json"
+    tried_path.write_text("{}")
+    monkeypatch.setattr("harness.recipes.tts_core.TRIED_PATH", str(tried_path))
+
+    recipe = TTSCoreRecipe()
+    before = {c.id for c in recipe.discover_candidates()}
+    assert "low" in before
+
+    recipe.record_tried("low", "harness/reports/2026-09-22-tts-core.md")
+
+    written = json.loads(tried_path.read_text())
+    assert set(written) == {"low"}
+    import datetime
+    assert written["low"]["date"] == datetime.date.today().isoformat()
+    assert written["low"]["report_path"] == "harness/reports/2026-09-22-tts-core.md"
+
+    # and it is now excluded from discovery, so it is not retrained next cycle
+    assert "low" not in {c.id for c in recipe.discover_candidates()}
+
+
+def test_record_tried_accumulates_and_works_without_a_report_path(tmp_path, monkeypatch):
+    tried_path = tmp_path / "tried.json"
+    monkeypatch.setattr("harness.recipes.tts_core.TRIED_PATH", str(tried_path))
+
+    recipe = TTSCoreRecipe()
+    recipe.record_tried("low", "r1.md")
+    recipe.record_tried("medium")
+
+    written = json.loads(tried_path.read_text())
+    assert set(written) == {"low", "medium"}
+    assert "report_path" not in written["medium"]
+    assert "date" in written["medium"]

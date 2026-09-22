@@ -3,6 +3,7 @@ reusing training-data/piper_full_finetune.py's exact training approach
 (same Modal image, same piper.train CLI invocation) parameterized instead
 of hardcoded to one checkpoint. See
 docs/superpowers/specs/2026-09-22-voice-research-harness-design.md."""
+import datetime
 import json
 import os
 
@@ -89,7 +90,29 @@ class TTSCoreRecipe:
             # crashing. This can happen if a write is interrupted mid-flight.
             return {}
 
+    def record_tried(self, candidate_id: str, report_path: str | None = None) -> None:
+        """Mark a candidate as tried so discover_candidates() stops returning
+        it on later cycles. Called (duck-typed, optionally) by the harness core
+        after the report is written. A trained-but-eval-failed candidate still
+        counts as tried: the GPU money is already spent, and retraining it
+        every cycle would burn that money again without fixing the evaluation
+        side, which is a separate problem."""
+        tried = self._load_tried()
+        entry: dict = {"date": datetime.date.today().isoformat()}
+        if report_path:
+            entry["report_path"] = report_path
+        tried[candidate_id] = entry
+        with open(TRIED_PATH, "w") as f:
+            json.dump(tried, f, indent=2, sort_keys=True)
+            f.write("\n")
+
     def train(self, candidate: Candidate, workdir: str) -> TrainedModel:
+        """actual_cost_usd is wall-clock from just before .spawn() until the
+        call returns, times the T4 hourly rate. That window includes Modal
+        queue and cold-start time, which Modal does not bill for, so this is a
+        conservative UPPER BOUND on the real billed cost, not Modal's exact
+        figure - it can trip the budget cap early, never overspend. Integrating
+        Modal's usage-billing API for an exact number is separate follow-up work."""
         import time
 
         from harness.recipes.tts_core_train_job import run_piper_finetune
@@ -146,7 +169,12 @@ class TTSCoreRecipe:
         }
 
     def _run_eval_pipeline(self, model: TrainedModel) -> tuple[str, str]:
-        """NOT IMPLEMENTED - deliberately, see .superpowers/sdd/
+        """Returns (latency_path, quality_path). CONTRACT FOR WHOEVER
+        IMPLEMENTS THIS: the rows it writes for this candidate must carry
+        `engine == CANDIDATE_ENGINE_NAME`, because evaluate() filters on
+        exactly that and will silently aggregate zero rows otherwise.
+
+        NOT IMPLEMENTED - deliberately, see .superpowers/sdd/
         2026-09-22-voice-research-harness/task-6-report.md for the full
         write-up. The intended sequence (export the checkpoint to ONNX,
         publish it as a temporary non-public custom: voice, run
