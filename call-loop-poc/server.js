@@ -5094,15 +5094,46 @@ CallSession.prototype._classifySentiment = async function (userText) {
   }
 };
 
-// Post-call analysis: extract the flow's globalSettings.postCallAnalysis.fields
-// from the transcript into call_logs.analysis. Off unless fields are configured.
+// Post-call analysis: always extracts a fixed set of built-in fields
+// (call_summary/call_successful/in_voicemail/user_sentiment), plus any custom
+// fields from the flow's globalSettings.postCallAnalysis.fields, in one Claude
+// call. Mirrors calldesktech's src/lib/postCallAnalysis.ts exactly — same
+// built-in field names/types/descriptions and the same
+// { built_in, custom } storage shape on calldesk_call_logs.analysis — this is
+// the 'poc' voice-engine's own analysis path (the Retell-engine path runs
+// through that other file via the retell webhook instead). Kept in sync by
+// hand since the two engines don't share a JS module.
+const POC_BUILT_IN_FIELDS = [
+  { name: 'call_summary', type: 'text', description: '1-2 sentence summary of what happened on the call.' },
+  { name: 'call_successful', type: 'boolean', description: "Whether the call achieved its apparent goal (e.g. the caller's request was resolved or the intended action was completed)." },
+  { name: 'in_voicemail', type: 'boolean', description: 'Whether this call was answered by a voicemail/answering machine rather than a live person.' },
+  { name: 'user_sentiment', type: 'enum', description: "The caller's overall sentiment during the call.", options: ['positive', 'neutral', 'negative'] },
+];
+const POC_BUILT_IN_FIELD_NAMES = new Set(POC_BUILT_IN_FIELDS.map((f) => f.name));
+
+function pocDegradedBuiltIn() {
+  return { call_summary: 'Call ended with no transcript available.', call_successful: false, in_voicemail: true, user_sentiment: 'neutral' };
+}
+
 CallSession.prototype._runPostCallAnalysis = async function (transcript) {
+  if (!this.callSid) return null;
   const rawFields = this.flow?.globalSettings?.postCallAnalysis?.fields;
-  if (!anthropic || !this.callSid || !Array.isArray(rawFields) || transcript.length === 0) return null;
-  const fields = rawFields.filter((f) => f && typeof f.name === 'string' && f.name.trim() && ['text', 'boolean', 'number', 'enum'].includes(f.type) && (f.type !== 'enum' || (Array.isArray(f.options) && f.options.length)));
-  if (!fields.length) return null;
+  const customFields = (Array.isArray(rawFields) ? rawFields : [])
+    .filter((f) => f && typeof f.name === 'string' && f.name.trim() && !POC_BUILT_IN_FIELD_NAMES.has(f.name.trim())
+      && ['text', 'boolean', 'number', 'enum'].includes(f.type) && (f.type !== 'enum' || (Array.isArray(f.options) && f.options.length)));
+
+  if (!transcript || transcript.length === 0) {
+    const custom = {};
+    for (const f of customFields) custom[f.name] = null;
+    const analysis = { built_in: pocDegradedBuiltIn(), custom };
+    await updateCallLogByCallSid(this.callSid, { analysis });
+    return analysis;
+  }
+  if (!anthropic) return null;
+
+  const allFields = [...POC_BUILT_IN_FIELDS, ...customFields];
   const properties = {};
-  for (const f of fields) {
+  for (const f of allFields) {
     const description = f.description || undefined;
     if (f.type === 'enum') properties[f.name] = { type: ['string', 'null'], enum: [...f.options, null], description };
     else properties[f.name] = { type: [f.type === 'text' ? 'string' : f.type, 'null'], description };
@@ -5111,15 +5142,24 @@ CallSession.prototype._runPostCallAnalysis = async function (transcript) {
   const res = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1024,
-    system: 'You extract structured data from a phone call transcript. Return a value for every requested field, or null when the transcript does not support one. Never guess.',
-    tools: [{ name: 'record_analysis', description: 'Record the extracted fields', input_schema: { type: 'object', properties, required: fields.map((f) => f.name) } }],
+    system: 'You extract structured data from a phone call transcript. Return a value for every requested field, or null when the transcript does not support one. Never guess. '
+      + 'If the transcript is empty, extremely short, or only contains a voicemail greeting/beep with no live conversation, set in_voicemail to true, call_successful to false, and write a minimal call_summary describing that — do not fabricate details.',
+    tools: [{ name: 'record_analysis', description: 'Record the extracted fields', input_schema: { type: 'object', properties, required: allFields.map((f) => f.name) } }],
     tool_choice: { type: 'tool', name: 'record_analysis' },
     messages: [{ role: 'user', content: `Call transcript:\n\"\"\"\n${text}\n\"\"\"` }],
   });
   const block = res.content.find((b) => b.type === 'tool_use');
   if (!block) return null;
-  const analysis = {};
-  for (const f of fields) analysis[f.name] = block.input?.[f.name] ?? null;
+
+  const built_in = {
+    call_summary: typeof block.input?.call_summary === 'string' ? block.input.call_summary : null,
+    call_successful: typeof block.input?.call_successful === 'boolean' ? block.input.call_successful : null,
+    in_voicemail: typeof block.input?.in_voicemail === 'boolean' ? block.input.in_voicemail : null,
+    user_sentiment: ['positive', 'neutral', 'negative'].includes(block.input?.user_sentiment) ? block.input.user_sentiment : null,
+  };
+  const custom = {};
+  for (const f of customFields) custom[f.name] = block.input?.[f.name] ?? null;
+  const analysis = { built_in, custom };
   await updateCallLogByCallSid(this.callSid, { analysis });
   return analysis;
 };
