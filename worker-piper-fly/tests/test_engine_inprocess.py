@@ -151,5 +151,114 @@ class SpeakerId(unittest.TestCase):
         self.assertFalse(len(a) == len(b) and np.allclose(a, b, atol=1e-3))
 
 
+class StorageBackedVoices(unittest.TestCase):
+    """get_engine and the admin endpoints go through voice_storage.VoiceStorage (Tigris + local
+    LRU disk cache) instead of reading/writing VOICES_DIR directly."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self._orig_storage = server.voice_storage
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        server.voice_storage = self._orig_storage
+
+    def test_get_engine_loads_custom_voice_from_storage(self):
+        from moto import mock_aws
+        import boto3
+
+        with mock_aws():
+            bucket = "test-bucket"
+            boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=bucket)
+
+            from voice_storage import VoiceStorage
+            storage = VoiceStorage(bucket=bucket, endpoint_url=None,
+                                    cache_dir=self.tmp + "/cache", max_cache_entries=8)
+
+            with open(server.MODEL_PATH, "rb") as f:
+                onnx_bytes = f.read()
+            with open(server.MODEL_PATH + ".json", "rb") as f:
+                onnx_json_bytes = f.read()
+
+            storage.put("storage-test-voice", {
+                "model.onnx": onnx_bytes,
+                "model.onnx.json": onnx_json_bytes,
+                "owner.json": b'{"public": true}',
+            })
+
+            server.voice_storage = storage
+            server._voices.clear()
+
+            eng = server.get_engine("custom:storage-test-voice", key_id=None)
+            self.assertIsNotNone(eng)
+
+            # A second call for the same voice must hit the in-memory _voices cache, not storage again
+            eng2 = server.get_engine("custom:storage-test-voice", key_id=None)
+            self.assertIs(eng, eng2)
+
+    def test_admin_put_voice_writes_to_storage(self):
+        from moto import mock_aws
+        import boto3
+        import io
+        import tarfile
+        from fastapi.testclient import TestClient
+
+        with mock_aws():
+            bucket = "test-bucket"
+            boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=bucket)
+            from voice_storage import VoiceStorage
+            storage = VoiceStorage(bucket=bucket, endpoint_url=None,
+                                    cache_dir=self.tmp + "/admin-put-cache", max_cache_entries=8)
+            server.voice_storage = storage
+            orig_token = server.VOICES_ADMIN_TOKEN
+            orig_voices_dir = server.VOICES_DIR
+            server.VOICES_ADMIN_TOKEN = "test-admin-token"
+            server.VOICES_DIR = self.tmp + "/staging"
+            try:
+                buf = io.BytesIO()
+                with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+                    for name, data in [
+                        ("model.onnx", b"fake-model-bytes"),
+                        ("model.onnx.json", b"{}"),
+                        ("owner.json", b'{"public": true}'),
+                    ]:
+                        info = tarfile.TarInfo(name=name)
+                        info.size = len(data)
+                        tf.addfile(info, io.BytesIO(data))
+
+                client = TestClient(server.app)
+                response = client.put(
+                    "/admin/voices/admin-test-voice",
+                    content=buf.getvalue(),
+                    headers={"Authorization": "Bearer test-admin-token"},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNotNone(storage.get("admin-test-voice"))
+            finally:
+                server.VOICES_ADMIN_TOKEN = orig_token
+                server.VOICES_DIR = orig_voices_dir
+
+    def test_admin_delete_and_list_use_storage(self):
+        from moto import mock_aws
+        import boto3
+
+        with mock_aws():
+            bucket = "test-bucket"
+            boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=bucket)
+            from voice_storage import VoiceStorage
+            storage = VoiceStorage(bucket=bucket, endpoint_url=None,
+                                    cache_dir=self.tmp + "/del-cache", max_cache_entries=8)
+            storage.put("del-me", {
+                "model.onnx": b"x", "model.onnx.json": b"{}", "owner.json": b'{"public": true}',
+            })
+            server.voice_storage = storage
+
+            self.assertEqual(storage.list_ids(), ["del-me"])
+            self.assertTrue(storage.delete("del-me"))
+            self.assertEqual(storage.list_ids(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

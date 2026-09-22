@@ -51,7 +51,10 @@ import audiofmt
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/models/full_ft.onnx")
 ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
-VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")  # customer voices: <id>/model.onnx(+.json)(+owner.json)
+VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")  # local cache dir, was previously the source of truth
+TIGRIS_BUCKET = os.environ.get("TIGRIS_BUCKET")
+TIGRIS_ENDPOINT_URL = os.environ.get("TIGRIS_ENDPOINT_URL")  # e.g. https://fly.storage.tigris.dev
+MAX_CACHED_VOICE_FILES = int(os.environ.get("MAX_CACHED_VOICE_FILES", "200"))
 VOICES_ADMIN_TOKEN = os.environ.get("VOICES_ADMIN_TOKEN")  # unset => admin endpoints disabled
 MAX_VOICE_BYTES = int(os.environ.get("MAX_VOICE_BYTES", str(200 * 1024 * 1024)))
 MAX_VOICES = int(os.environ.get("MAX_VOICES", "6"))  # loaded customer voices kept in memory (LRU)
@@ -141,6 +144,18 @@ def split_clause(phonemes: list[str]) -> list[list[str]]:
 engine = PiperEngine(MODEL_PATH, ORT_INTRA_THREADS)
 for _ids in engine.sentences(WARMUP_TEXT):  # pay first-inference costs at startup, not on a caller
     engine.synth(_ids)
+
+from voice_storage import VoiceStorage
+
+voice_storage: "VoiceStorage | None" = None
+if TIGRIS_BUCKET:
+    voice_storage = VoiceStorage(
+        bucket=TIGRIS_BUCKET,
+        endpoint_url=TIGRIS_ENDPOINT_URL,
+        cache_dir=VOICES_DIR,
+        max_cache_entries=MAX_CACHED_VOICE_FILES,
+    )
+
 pool = ThreadPoolExecutor(max_workers=os.cpu_count() or 2)
 app = FastAPI()
 
@@ -169,10 +184,12 @@ def get_engine(voice: str, key_id, uid=None) -> "PiperEngine":
     vid = voice[len("custom:"):]
     if not VOICE_ID_RE.match(vid):
         raise VoiceError("unknown voice")
-    d = os.path.join(VOICES_DIR, vid)
-    model = os.path.join(d, "model.onnx")
-    if not os.path.isfile(model):
+    if voice_storage is None:
+        raise VoiceError("voice storage not configured")
+    d = voice_storage.get(vid)
+    if d is None:
         raise VoiceError("unknown voice")
+    model = os.path.join(d, "model.onnx")
     meta = None
     try:
         meta = json.load(open(os.path.join(d, "owner.json")))
@@ -266,13 +283,13 @@ async def admin_put_voice(vid: str, request: Request):
             assert meta.get("public") is True or _ne("key_ids") or _ne("user_ids")
         except Exception:
             raise HTTPException(status_code=400, detail='owner.json must be {"key_ids": [...]} and/or {"user_ids": [...]} (non-empty), or {"public": true}')
-        dest = os.path.join(VOICES_DIR, vid)
-        old = dest + ".old"
-        shutil.rmtree(old, ignore_errors=True)
-        if os.path.isdir(dest):
-            os.rename(dest, old)
-        os.rename(out, dest)
-        shutil.rmtree(old, ignore_errors=True)
+        if voice_storage is None:
+            raise HTTPException(status_code=503, detail="voice storage not configured")
+        files = {}
+        for fname in VOICE_FILES:
+            with open(os.path.join(out, fname), "rb") as f:
+                files[fname] = f.read()
+        voice_storage.put(vid, files)
         _evict(vid)
         return {"voice": f"custom:{vid}", "bytes": size}
     finally:
@@ -282,8 +299,7 @@ async def admin_put_voice(vid: str, request: Request):
 @app.delete("/admin/voices/{vid}")
 async def admin_delete_voice(vid: str, request: Request):
     _admin(request, vid)
-    existed = os.path.isdir(os.path.join(VOICES_DIR, vid))
-    shutil.rmtree(os.path.join(VOICES_DIR, vid), ignore_errors=True)
+    existed = voice_storage.delete(vid) if voice_storage else False
     _evict(vid)
     return {"deleted": existed}
 
@@ -291,7 +307,7 @@ async def admin_delete_voice(vid: str, request: Request):
 @app.get("/admin/voices")
 async def admin_list_voices(request: Request):
     _admin(request)
-    ids = sorted(d for d in (os.listdir(VOICES_DIR) if os.path.isdir(VOICES_DIR) else []) if VOICE_ID_RE.match(d))
+    ids = voice_storage.list_ids() if voice_storage else []
     return {"voices": ids, "loaded": list(_voices.keys())}
 
 
