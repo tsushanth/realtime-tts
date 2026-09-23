@@ -24,15 +24,18 @@ primary_region = "sjc"
   auto_start_machines = true
   min_machines_running = 1
   max_machines_running = 4  # start conservative; raise once a load test confirms headroom
-                             # NOTE (2026-09-22): the flyctl installed in this environment
-                             # (v0.4.95) does not actually parse this key - `fly config show`
-                             # / the live machine config omit it entirely, confirmed by
-                             # `strings` on the flyctl binary finding no MaxMachinesRunning
-                             # field at all. Provisioning extra machine slots for the Fly
-                             # Proxy to start/stop currently has to go through
-                             # `fly scale count <n> -a piper-tts-sjc`, and even that failed
-                             # here with "organization has reached its machine limit" - see
-                             # LOAD_TEST.md and the Task 4 report for the real numbers.
+                             # NOTE (2026-09-23, re-verified on flyctl v0.4.106): this key
+                             # still doesn't show up in `fly config show -a piper-tts-sjc` or
+                             # the live machine config, even after upgrading flyctl - looks
+                             # like a legacy/dead config key in this Fly version rather than a
+                             # bug specific to one flyctl build. That's NOT a functional gap:
+                             # `fly scale count <n> -a piper-tts-sjc` is the mechanism that
+                             # actually governs machine count on this account, and it works -
+                             # `fly scale count 4` provisioned 4 real machines (confirmed via
+                             # `fly status`), and a real load test against production confirmed
+                             # auto_start_machines actually brings a stopped machine up under
+                             # load. See LOAD_TEST.md and the Task 4 closure report for the
+                             # independently-reproduced numbers.
   [http_service.concurrency]
     # "connections", not "requests": /tts sessions are long-lived WebSocket connections, and
     # a "requests" counter only tracks the HTTP upgrade (which completes instantly), so it

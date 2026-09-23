@@ -40,26 +40,49 @@ fly ssh console -a piper-tts-sjc -C 'sh -c "echo \$AUTH_TOKEN"'
    scale-up transition are exactly the failure mode this piece exists to prevent.
 5. If using Option A, revoke the temporary test key (see above).
 
-## Known caveat, observed 2026-09-22
+## History: blockers hit on 2026-09-22, resolved and re-verified on 2026-09-23
 
-Running this for real against `piper-tts-sjc` surfaced two environment issues that blocked
-a clean pass and are worth checking before you assume a failed run means the config is wrong:
+The first attempt at this load test surfaced two environment issues that blocked a clean
+pass. Both are now resolved; kept here for context in case either regresses.
 
-- **`fly.toml`'s `max_machines_running` key is not parsed by every flyctl version.** The
-  version in use here (v0.4.95) silently drops it - `fly config show` and the live machine
-  config never show it, confirmed by `strings`-ing the flyctl binary and finding no
-  `MaxMachinesRunning` field at all. If your `fly config show -a piper-tts-sjc` output is
-  missing `max_machines_running`, that's why; you likely need a newer flyctl, or to
-  provision machine slots explicitly with `fly scale count <n> -a piper-tts-sjc` instead.
+- **`fly.toml`'s `max_machines_running` key is not parsed by flyctl v0.4.95.** That
+  version silently drops it - `fly config show` and the live machine config never showed
+  it, confirmed by `strings`-ing the flyctl binary and finding no `MaxMachinesRunning`
+  field at all. flyctl was subsequently upgraded to v0.4.106 on the operator machine; the
+  key *still* doesn't appear in `fly config show -a piper-tts-sjc` output on v0.4.106
+  either. Re-checked 2026-09-23 - this now looks like a legacy/dead config key in current
+  Fly, not a version-specific parsing bug. It's not a functional gap in practice: the real
+  governing mechanism for machine count on this account is `fly scale count <n> -a
+  piper-tts-sjc`, confirmed working below.
 - **Org-wide Fly machine quota.** `fly scale count 4` and a rolling redeploy both failed
   with `Your organization has reached its machine limit. Please contact billing@fly.io` -
-  this Fly org runs ~30 other apps sharing one quota. Autoscaling for this app cannot
-  provision machines beyond whatever headroom exists org-wide; check with
-  `fly scale count <n> -a piper-tts-sjc -y` (dry-run the plan first) before relying on a
-  scale-up actually happening in production.
+  this Fly org runs ~30 other apps sharing one quota. The org owner freed up quota by
+  suspending unrelated apps; `fly scale count 4 -a piper-tts-sjc -y` was then re-run and
+  succeeded, confirmed via `fly status -a piper-tts-sjc` showing 4 machines.
 
-Under this constraint, a 20-concurrent/60-request run against the 2 machines that were
-already up (not 1, and never scaled to more) completed 30/60 with 30 "timed out during
-opening handshake" errors, p50=3359ms/p90=9242ms for the ones that completed. That is a
-real, reproducible failure mode at current org headroom, not a hypothetical - raise the
-org's machine quota before treating this service as safe under a comparable traffic spike.
+### Independently re-verified results, 2026-09-23
+
+With `fly scale count` at 4 and only 1 machine started at rest (`min_machines_running = 1`),
+two runs were made directly against `wss://piper-tts-sjc.fly.dev/tts` in production using
+the static `AUTH_TOKEN` fetched via `fly ssh console` (Option B above):
+
+- **12-concurrent / 40 requests, first run (cold - 3 of 4 machines still stopped at start):**
+  35/40 completed, 5 "timed out during opening handshake" errors, p50=1174ms/p90=10909ms.
+  `fly status` before the run showed 1 machine started, 3 stopped; immediately after, all 4
+  were `started` - real scale-out happened during the run, and the errors are consistent
+  with connections landing mid-transition while the 3 stopped machines were still booting.
+- **12-concurrent / 40 requests, second run (warm - all 4 machines already started):**
+  40/40 completed, 0 errors, p50=997ms/p90=2076ms - clean, within the 4-machine x
+  4-connection = 16-connection real capacity.
+- **20-concurrent / 60 requests (exceeds 16-connection capacity by design):** 55/60
+  completed, 5 "timed out during opening handshake" errors, p50=3687ms/p90=8616ms - a
+  real, reproducible failure mode from genuinely exceeding provisioned capacity, not a
+  broken scaler.
+
+Conclusion: `auto_start_machines` / `fly scale count` do provision and start real capacity
+under load in production, and requests routed to already-warm machines within capacity
+complete cleanly. Requests that land while additional machines are still cold-starting, or
+that exceed total provisioned capacity, still fail with handshake timeouts - that's an
+inherent cold-start/overload characteristic to plan around (e.g. a higher
+`min_machines_running` or pre-warming ahead of known traffic spikes), not evidence the
+autoscaling config itself is broken.
