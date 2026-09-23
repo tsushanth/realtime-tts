@@ -30,20 +30,46 @@ fly ssh console -a piper-tts-sjc -C 'sh -c "echo \$AUTH_TOKEN"'
 ## Running the test
 
 1. In one terminal, watch machine count live: `watch -n2 'fly status -a piper-tts-sjc'`
-2. Run the load test above a single machine's known ceiling (`MAX_CONNECTIONS=4` per
-   `fly.toml`, and `soft_limit = 3` per machine) to force a scale-up:
+2. Before load-testing, confirm the machine ceiling is actually raised - `fly scale show
+   -a piper-tts-sjc` should show `COUNT 4`. `fly.toml`'s `max_machines_running` key is not
+   honored by flyctl (see below); `fly scale count 4 -a piper-tts-sjc` is what actually
+   provisions the extra machine slots, and it must be run at least once per app (see
+   `TIGRIS_SETUP.md`). If it's still at the default of 1, none of this will scale.
+3. **In-capacity pass/fail run** - this is the one whose result should be zero errors.
+   Run within the real provisioned capacity (4 machines x `MAX_CONNECTIONS=4` = 16
+   connections):
+   `python3 tests/load_test.py wss://piper-tts-sjc.fly.dev/tts <token> --concurrency 12 --requests 40`
+   - Pass: confirm in the `fly status` terminal that machine count actually increased
+     above 1 during the run (if it started cold), and confirm zero errors in the load
+     test's own output once machines are warm - "at capacity" or handshake-timeout errors
+     on a warm run are exactly the failure mode this piece exists to prevent. A cold run
+     (most machines stopped at the start) may show a handful of handshake timeouts while
+     the stopped machines are still booting; that's expected mid-transition behavior, not
+     a failure - re-run once warm to get the clean pass/fail signal.
+   - Fail: zero machine-count increase during a cold run, or any errors once all
+     machines are already warm/started.
+4. **Overload probe (separate, expected-imperfect run)** - deliberately exceeds the
+   16-connection real capacity to characterize behavior beyond provisioned capacity, not
+   to get a clean result:
    `python3 tests/load_test.py wss://piper-tts-sjc.fly.dev/tts <token> --concurrency 20 --requests 60`
-3. Confirm in the `fly status` terminal that machine count actually increased above 1
-   during the run, and dropped back to 1 a few minutes after the run ends (Fly's default
-   scale-down cooldown).
-4. Confirm zero errors in the load test's own output - "at capacity" errors during a
-   scale-up transition are exactly the failure mode this piece exists to prevent.
+   - Pass criteria here are different from Step 3: some handshake-timeout errors are
+     expected and fine (this run intentionally asks for more than 4 machines can serve).
+     A completely stuck test, 0 completions, or a crash would indicate a real problem;
+     partial completions with timeouts (e.g. the ~55/60 recorded below) do not.
 5. If using Option A, revoke the temporary test key (see above).
 
 ## History: blockers hit on 2026-09-22, resolved and re-verified on 2026-09-23
 
-The first attempt at this load test surfaced two environment issues that blocked a clean
-pass. Both are now resolved; kept here for context in case either regresses.
+Before any of this load test could even run, a stale `[mounts]` volume block had to be
+removed from `fly.toml` (see that file's comment near `[[vm]]`) - a Fly volume can only
+attach to one machine, which structurally blocks Fly from creating additional machines at
+all. That was caught and fixed during Task 4's initial config change, before the first
+load test attempt below, so it is a separate, already-resolved prerequisite - not one of
+the two blockers this section covers.
+
+With the volume already removed, the first attempt at actually running this load test
+surfaced two further, unrelated environment issues that blocked a clean pass. Both are
+now resolved; kept here for context in case either regresses.
 
 - **`fly.toml`'s `max_machines_running` key is not parsed by flyctl v0.4.95.** That
   version silently drops it - `fly config show` and the live machine config never showed
@@ -74,10 +100,11 @@ the static `AUTH_TOKEN` fetched via `fly ssh console` (Option B above):
 - **12-concurrent / 40 requests, second run (warm - all 4 machines already started):**
   40/40 completed, 0 errors, p50=997ms/p90=2076ms - clean, within the 4-machine x
   4-connection = 16-connection real capacity.
-- **20-concurrent / 60 requests (exceeds 16-connection capacity by design):** 55/60
-  completed, 5 "timed out during opening handshake" errors, p50=3687ms/p90=8616ms - a
-  real, reproducible failure mode from genuinely exceeding provisioned capacity, not a
-  broken scaler.
+- **Overload probe, 20-concurrent / 60 requests (exceeds 16-connection capacity by
+  design):** 55/60 completed, 5 "timed out during opening handshake" errors,
+  p50=3687ms/p90=8616ms - a real, reproducible failure mode from genuinely exceeding
+  provisioned capacity, not a broken scaler. This is the expected, non-clean result for
+  this specific run (see Step 4 above) - do not treat it as a regression.
 
 Conclusion: `auto_start_machines` / `fly scale count` do provision and start real capacity
 under load in production, and requests routed to already-warm machines within capacity

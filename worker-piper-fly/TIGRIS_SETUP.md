@@ -21,6 +21,9 @@ as of 2026-09-22 (Task 3 of the production-readiness plan) — see the exact sta
   post-deploy via `curl https://piper-tts-sjc.fly.dev/health`.
 - Existing voice catalog backfilled into Tigris by re-running `publish_voice.py` against
   the now-Tigris-backed admin endpoint (see "Backfill" below).
+- Machine ceiling set via `fly scale count 4 -a piper-tts-sjc` (Task 4) - confirmed via
+  `fly scale show -a piper-tts-sjc` showing `COUNT 4`. See step 5 below; this is not
+  automatic and must be set explicitly per app.
 
 ## Steps for a fresh environment / new app
 
@@ -34,6 +37,14 @@ as of 2026-09-22 (Task 3 of the production-readiness plan) — see the exact sta
 3. Confirm `boto3` is installed in the image (see the Dockerfile's `pip install` line) and
    redeploy: `fly deploy -a <app-name>` so the new secrets and code take effect.
 4. Backfill existing voices (see below).
+5. **Set the real machine ceiling: `fly scale count 4 -a <app-name>`.** `fly.toml`'s
+   `max_machines_running = 4` is not actually honored by flyctl (confirmed on v0.4.95 and
+   v0.4.106 - it never appears in `fly config show`; see `fly.toml`'s comment and
+   `LOAD_TEST.md`). `fly scale count` is the real, confirmed-working mechanism that
+   governs machine count on this account, and a fresh app defaults to a count of 1. Skip
+   this and autoscaling is silently inert - the app will never run more than 1 machine no
+   matter what `fly.toml` says. Verify with `fly scale show -a <app-name>` (expect
+   `COUNT 4`).
 
 ## Backfill
 

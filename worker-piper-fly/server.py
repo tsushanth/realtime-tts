@@ -54,7 +54,20 @@ ORT_INTRA_THREADS = int(os.environ.get("ORT_INTRA_THREADS", "2"))
 VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")  # local cache dir, was previously the source of truth
 TIGRIS_BUCKET = os.environ.get("TIGRIS_BUCKET")
 TIGRIS_ENDPOINT_URL = os.environ.get("TIGRIS_ENDPOINT_URL")  # e.g. https://fly.storage.tigris.dev
-MAX_CACHED_VOICE_FILES = int(os.environ.get("MAX_CACHED_VOICE_FILES", "200"))
+# Local LRU disk cache size (see voice_storage.py), entry-count-based, not byte-aware. Each
+# voice is ~63MB (model.onnx + .json + owner.json), so this bounds cache disk use to roughly
+# entries * 63MB. Sized against the machine's actual disk, not an arbitrary round number:
+# fly.toml declares no [mounts] volume (Task 4 - a volume can't attach to >1 machine), so this
+# cache lands on the machine's local/root filesystem, whose size fly.toml's [[vm]] block does
+# not declare explicitly (only `size`/`memory` are set there; Fly Machines without a declared
+# volume default to a small ephemeral root disk on the order of a few GB - not the multi-TB
+# assumption a dedicated volume might imply). The 69-voice live catalog alone is already
+# ~4.3GB; the old default of 200 could reach ~12GB and risk filling the disk and crashing the
+# machine. 80 entries (~5GB) is picked as a conservative ceiling that comfortably covers the
+# entire current catalog plus headroom for the OS/image/model, while still leaving real margin
+# under a small root disk. Re-tune this (or move to a byte-aware eviction policy in
+# voice_storage.py) if the catalog grows meaningfully past ~80 voices.
+MAX_CACHED_VOICE_FILES = int(os.environ.get("MAX_CACHED_VOICE_FILES", "80"))
 VOICES_ADMIN_TOKEN = os.environ.get("VOICES_ADMIN_TOKEN")  # unset => admin endpoints disabled
 MAX_VOICE_BYTES = int(os.environ.get("MAX_VOICE_BYTES", str(200 * 1024 * 1024)))
 MAX_VOICES = int(os.environ.get("MAX_VOICES", "6"))  # loaded customer voices kept in memory (LRU)
