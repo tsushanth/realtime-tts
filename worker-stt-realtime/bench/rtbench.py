@@ -41,7 +41,7 @@ def load(set_name, n, seed=0, verified_only=False):
         x, sr = sf.read(os.path.join(DATA, set_name, m["id"] + ".wav"), dtype="float32")
         assert sr == 16000
         rms = float(np.sqrt(np.mean(x ** 2)) + 1e-9)
-        sigma = 0.0 if set_name in ("clean", "call", "real") else rms * 10 ** (-30 / 20)   # tel: ~30 dB SNR mild noise floor
+        sigma = 0.0 if set_name in ("clean", "call", "real") or set_name.startswith("pub_") else rms * 10 ** (-30 / 20)   # tel: ~30 dB SNR mild noise floor
         x = x + rng.normal(0, sigma, len(x)).astype("float32") if sigma else x
         tail = rng.normal(0, sigma if sigma else 1e-4, int(TAIL_S * 16000)).astype("float32")
         lead = rng.normal(0, sigma if sigma else 1e-4, int(LEAD_S * 16000)).astype("float32")

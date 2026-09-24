@@ -23,15 +23,19 @@ def _confirmed_ids(path):
     return {ln for ln in lines if ln and not ln.startswith("#")}
 
 
+def is_public_set(name):
+    return name in PUBLIC_SETS or name.startswith("pub_")
+
+
 def assert_allowed(clips, confirmed_path, set_name):
     """Fail closed: outside PUBLIC_SETS every clip needs a call_id exactly listed in confirmed_path."""
     ok = _confirmed_ids(confirmed_path)
-    public = set_name in PUBLIC_SETS
+    public = is_public_set(set_name)
     missing = sum(1 for c in clips if not c.get("call_id") and not public)
     bad = sorted({c["call_id"] for c in clips if c.get("call_id") and c["call_id"] not in ok})
     if missing:
         raise PermissionError(f"refusing third-party STT: {missing} clip(s) in set {set_name!r} have no call_id "
-                              f"(only sets {sorted(PUBLIC_SETS)} may omit it)")
+                              f"(only sets {sorted(PUBLIC_SETS)} and pub_* may omit it)")
     if bad:
         raise PermissionError(f"refusing third-party STT: {len(bad)} call id(s) not in {confirmed_path}: {bad[:5]}")
 
