@@ -6,3 +6,5 @@ websockets>=12
 requests
 faster-whisper
 pytest
+scipy
+pyarrow
