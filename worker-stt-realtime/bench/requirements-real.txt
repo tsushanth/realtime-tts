@@ -1,0 +1,8 @@
+sherpa-onnx==1.13.8
+numpy
+soundfile
+jiwer
+websockets>=12
+requests
+faster-whisper
+pytest
