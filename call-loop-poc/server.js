@@ -584,6 +584,23 @@ const shopperLanguages = new Map(); // place-test-call {language}: language the 
 // above.
 const shopperTtsOverrides = new Map();
 const shopperExpressiveDelivery = new Set();
+// Outreach sample calls (calldesktech scripts/generate-vertical-sample.mjs): per-call OVERRIDE of what
+// answers the shopper's call, so the callee is a fictional-business demo agent instead of whatever
+// tenant owns the dialed number. Registered by /place-test-call {shopper:true, sampleCallee:{...}}
+// and consumed ONCE by /twilio/voice. Guards: the dialed number must be one of OUR tenant-owned
+// numbers, the inbound leg's From must equal the From of the call we placed, 90s expiry, one-shot.
+// Keyed by dialed number. Never touches Retell or any other provider.
+export const sampleCalleeOverrides = new Map();
+const SAMPLE_CALLEE_TTL_MS = 90_000;
+const SAMPLE_CALL_TIME_LIMIT_SEC = 150; // hard Twilio cap on the placed call, whatever the agents do
+function parseSampleCallee(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const systemPrompt = typeof raw.systemPrompt === 'string' ? raw.systemPrompt.trim() : '';
+  const greeting = typeof raw.greeting === 'string' ? raw.greeting.trim() : '';
+  if (systemPrompt.length < 20 || systemPrompt.length > 6000) return null;
+  if (greeting.length < 1 || greeting.length > 400) return null;
+  return { systemPrompt, greeting };
+}
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
 // Batch Call personalization (calldesktech's Batch Call feature): per-call dynamic
@@ -908,6 +925,16 @@ app.post('/twilio/voice', async (req, res) => {
     });
     shopperTtsOverrides.delete(callSid);
     shopperExpressiveDelivery.delete(callSid);
+  } else if (callSid && !req.query.routeAs && (() => {
+    const o = sampleCalleeOverrides.get(req.body.To);
+    return o && o.expiresAt > Date.now() && o.fromNumber === req.body.From;
+  })()) {
+    // Outreach sample callee (see sampleCalleeOverrides): one-shot, flow-less fictional-business agent.
+    const o = sampleCalleeOverrides.get(req.body.To);
+    sampleCalleeOverrides.delete(req.body.To);
+    contextWrittenCallSids.add(callSid);
+    setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
+    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1178,7 +1205,11 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables, ttsBackend: shopperTtsBackend, ttsModel: shopperTtsModel, expressiveDelivery: shopperExpressive } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables, ttsBackend: shopperTtsBackend, ttsModel: shopperTtsModel, expressiveDelivery: shopperExpressive, sampleCallee: sampleCalleeRaw } = req.body || {};
+  const sampleCallee = sampleCalleeRaw === undefined ? null : parseSampleCallee(sampleCalleeRaw);
+  if (sampleCalleeRaw !== undefined && (!shopper || !sampleCallee)) {
+    return res.status(400).json({ error: 'sampleCallee requires shopper:true and {systemPrompt (20-6000 chars), greeting (1-400 chars)}' });
+  }
   const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
@@ -1191,6 +1222,11 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   }
 
   try {
+    if (sampleCallee) {
+      // Only ever dial a number that is one of OUR tenant-owned numbers (never a third party).
+      const ownTenant = await findTenantIdByNumber(toNumber).catch(() => null);
+      if (!ownTenant) return res.status(400).json({ error: 'sampleCallee: toNumber is not one of our own tenant numbers' });
+    }
     const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
     let fromNumber = routeAs || process.env.DEMO_FROM_NUMBER;
     if (!fromNumber) {
@@ -1223,6 +1259,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     // Twilio's own dual-channel recording (caller + callee on separate
     // tracks) gives a real downloadable wav for the ASR eval harnesses,
     // which need actual audio, not just a live transcript.
+    if (sampleCallee) params.set('TimeLimit', String(SAMPLE_CALL_TIME_LIMIT_SEC));
     if (record) {
       params.set('Record', 'true');
       params.set('RecordingChannels', 'dual');
@@ -1272,6 +1309,10 @@ app.post('/place-test-call', express.json(), async (req, res) => {
     if (isDemo) {
       demoFlows.set(callBody.sid, { nodes: demoFlow.nodes, startNodeId: demoFlow.startNodeId, globalSettings: demoFlow.globalSettings, tenantId: demoFlow.tenantId });
       setTimeout(() => demoFlows.delete(callBody.sid), 120_000).unref?.();
+    }
+    if (sampleCallee) {
+      sampleCalleeOverrides.set(toNumber, { ...sampleCallee, fromNumber, expiresAt: Date.now() + SAMPLE_CALLEE_TTL_MS });
+      setTimeout(() => { const o = sampleCalleeOverrides.get(toNumber); if (o && o.expiresAt <= Date.now()) sampleCalleeOverrides.delete(toNumber); }, SAMPLE_CALLEE_TTL_MS + 1000).unref?.();
     }
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
@@ -1489,6 +1530,20 @@ twilioWss.on('connection', (twilioWs) => {
     const resolved = pendingCallContext.get(callSid);
     if (!resolved) return;
     pendingCallContext.delete(callSid);
+    if (resolved.isSampleCallee) {
+      // Flow-less demo agent answering as a fictional business. No tenant, no call log, no webhooks.
+      session.onClientMessage(JSON.stringify({
+        type: 'context',
+        systemPrompt: resolved.systemPrompt,
+        greeting: resolved.greeting,
+        ttsBackend: 'elevenlabs',
+      }), false);
+      setTimeout(() => {
+        console.log(`[call-loop] sample callee call ${callSid} hit max duration, hanging up`);
+        session.close();
+      }, SAMPLE_CALL_TIME_LIMIT_SEC * 1000);
+      return;
+    }
     if (resolved.isShopper) {
       // No flow, no greeting — a flow-less CallSession already stays silent
       // until it hears something (see MYSTERY_SHOPPER_DECISIONS.md decision
