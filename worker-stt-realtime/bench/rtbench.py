@@ -156,7 +156,10 @@ def main():
     vad = SilenceVAD()
     clips = load(a.set, a.n, verified_only=a.only_verified)
     _require_clips(clips, a.set, a.only_verified)
-    strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or a.engine.startswith("moonshine") else [])
+    if a.engine.startswith(("dg-", "el-")):
+        import engines_cloud
+        engines_cloud.assert_allowed(clips, os.path.join(DATA, "confirmed_calls.txt"))
+    strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or a.engine.startswith(("moonshine", "dg-", "el-")) else [])
     # warm-up one short pass so first-call JIT / allocation does not pollute the numbers
     run_clip(eng, vad, {"audio": clips[0]["audio"][:16000], "dur": 1.0, "ref": ""}, ["vad500"], 0)
     rows = []

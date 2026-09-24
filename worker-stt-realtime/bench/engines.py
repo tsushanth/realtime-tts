@@ -183,6 +183,9 @@ class _WhisperStream:
 
 def build(name, threads=1):
     """Registry. Model dirs under STT_MODELS."""
+    if name in ("dg-flux", "el-scribe"):
+        import engines_cloud
+        return engines_cloud.DeepgramFluxEngine() if name == "dg-flux" else engines_cloud.ElevenLabsRealtimeEngine()
     if name == "zip-en-int8":     # Apache-2.0, LibriSpeech-only, chunk 320 ms
         s = "chunk-16-left-128.int8.onnx"
         return SherpaEngine(name, "sherpa-onnx-streaming-zipformer-en-2023-06-26",
