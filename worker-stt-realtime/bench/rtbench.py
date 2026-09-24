@@ -17,6 +17,8 @@ import numpy as np, soundfile as sf, jiwer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+from textnorm import norm            # noqa: E402  (ws_client.py imports norm from here; keep it exported)
+from metrics import keyterm_recall   # noqa: E402
 DATA = os.environ.get("STT_DATA", os.path.join(HERE, "..", "data"))
 CH = 0.04
 TAIL_S = 1.6
@@ -27,30 +29,24 @@ FUNC = set("a an the and or but so of to in on at for with from by as that which
 STRATS = ["commit", "vad300", "vad500", "vad700", "vad500+hint"]
 
 
-_D = "zero one two three four five six seven eight nine".split()
-
-
-def norm(t):
-    t = re.sub(r"\d", lambda m: " " + _D[int(m.group())] + " ", t)   # digits -> spoken (refs are spelled out)
-    t = t.lower().replace("-", " ")
-    t = re.sub(r"[^a-z0-9' ]+", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
-
-
-def load(set_name, n, seed=0):
+def load(set_name, n, seed=0, verified_only=False):
     mp = os.path.join(DATA, set_name, "manifest.json")
-    man = json.load(open(mp if os.path.exists(mp) else os.path.join(DATA, "manifest.json")))[:n]
+    man = json.load(open(mp if os.path.exists(mp) else os.path.join(DATA, "manifest.json")))
+    if verified_only:
+        man = [m for m in man if m.get("verified")]
+    man = man[:n]
     rng = np.random.default_rng(seed)
     out = []
     for m in man:
         x, sr = sf.read(os.path.join(DATA, set_name, m["id"] + ".wav"), dtype="float32")
         assert sr == 16000
         rms = float(np.sqrt(np.mean(x ** 2)) + 1e-9)
-        sigma = 0.0 if set_name in ("clean", "call") else rms * 10 ** (-30 / 20)   # tel: ~30 dB SNR mild noise floor
+        sigma = 0.0 if set_name in ("clean", "call", "real") else rms * 10 ** (-30 / 20)   # tel: ~30 dB SNR mild noise floor
         x = x + rng.normal(0, sigma, len(x)).astype("float32") if sigma else x
         tail = rng.normal(0, sigma if sigma else 1e-4, int(TAIL_S * 16000)).astype("float32")
         lead = rng.normal(0, sigma if sigma else 1e-4, int(LEAD_S * 16000)).astype("float32")
-        out.append({"id": m["id"], "ref": m["ref"], "dur": (len(x) + len(lead)) / 16000, "audio": np.concatenate([lead, x, tail]).astype("float32")})
+        out.append({"id": m["id"], "ref": m["ref"], "call_id": m.get("call_id"), "keyterms": m.get("keyterms", []),
+                    "dur": (len(x) + len(lead)) / 16000, "audio": np.concatenate([lead, x, tail]).astype("float32")})
     return out
 
 
@@ -146,13 +142,14 @@ def main():
     ap.add_argument("--native-ms", type=int, default=0)
     ap.add_argument("--out", required=True)
     ap.add_argument("--label", default="")
+    ap.add_argument("--only-verified", action="store_true")
     a = ap.parse_args()
     import engines
     eng = engines.build(a.engine, a.threads) if not a.native_ms else _native_engine(a.engine, a.threads, a.native_ms / 1000)
     rss_loaded = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     rss_loaded = rss_loaded / (1024 * 1024) if sys.platform == "darwin" else rss_loaded / 1024   # MB
     vad = SilenceVAD()
-    clips = load(a.set, a.n)
+    clips = load(a.set, a.n, verified_only=a.only_verified)
     strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or a.engine.startswith("moonshine") else [])
     # warm-up one short pass so first-call JIT / allocation does not pollute the numbers
     run_clip(eng, vad, {"audio": clips[0]["audio"][:16000], "dur": 1.0, "ref": ""}, ["vad500"], 0)
@@ -166,6 +163,8 @@ def main():
         wer_edits = jiwer.process_words(ref, hyp if hyp else "x")
         row = {"id": c["id"], "dur": c["dur"], "words": len(ref.split()), "wer_err": wer_edits.substitutions + wer_edits.deletions + wer_edits.insertions,
                "hyp": hyp, "ref": ref, "first_partial_s": fp, "cpu_s": cpu, "audio_s": alen, "close_cost_s": close_cost, "strat": {}}
+        kh, kt = keyterm_recall(c.get("keyterms", []), final_text)
+        row["keyterm_hits"], row["keyterm_total"] = kh, kt
         for s, fl in fires.items():
             after = [f for f in fl if f[1] >= c["dur"] - 0.05]      # fires at/after end of speech
             before = [f for f in fl if f[1] < c["dur"] - 0.05]      # fires while still speaking = cut-off
@@ -186,7 +185,10 @@ def main():
             "cpu_per_audio_s": sum(r["cpu_s"] for r in rows) / sum(r["audio_s"] for r in rows),
             "rss_loaded_mb": rss_loaded, "rss_peak_mb": peak,
             "first_partial_med_s": float(np.median([r["first_partial_s"] for r in rows if r["first_partial_s"] is not None])),
-            "close_cost_med_s": float(np.median([r["close_cost_s"] for r in rows])), "strat": {}}
+            "close_cost_med_s": float(np.median([r["close_cost_s"] for r in rows])), "strat": {},
+            "keyterm_total": sum(r["keyterm_total"] for r in rows),
+            "keyterm_recall": (sum(r["keyterm_hits"] for r in rows) / sum(r["keyterm_total"] for r in rows))
+                              if sum(r["keyterm_total"] for r in rows) else None}
     for s in strategies:
         lats = [r["strat"][s]["lat"] for r in rows if r["strat"][s]["lat"] is not None]
         summ["strat"][s] = {"lat_med": float(np.median(lats)) if lats else None, "lat_p90": float(np.percentile(lats, 90)) if lats else None,
