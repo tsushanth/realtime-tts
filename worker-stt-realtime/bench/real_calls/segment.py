@@ -117,6 +117,23 @@ def build_manifest(raw_dir, out_dir, model_size="large-v3-turbo", max_calls=None
     return kept
 
 
+def stats_lines(manifest_path):
+    """Per-call utterance counts and min/median/max lengths. Reads durations only, never text."""
+    import statistics
+    with open(manifest_path) as f:
+        man = json.load(f)
+    per = {}
+    for e in man:
+        per.setdefault(e["call_id"], []).append(e["end_s"] - e["start_s"])
+    lines = [f"{c}: {len(d)} utts" for c, d in sorted(per.items())]
+    d = [x for v in per.values() for x in v]
+    if d:
+        lines.append(f"total {len(d)} utts in {len(per)} calls; length s: min {min(d):.1f} median {statistics.median(d):.1f} max {max(d):.1f}")
+    else:
+        lines.append("no utterances in manifest")
+    return lines
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=os.path.join(DATA, "real_raw"))
@@ -124,7 +141,11 @@ def main():
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--max-calls", type=int, default=None)
     ap.add_argument("--force", action="store_true", help="overwrite a manifest containing verified entries")
+    ap.add_argument("--stats", action="store_true", help="print utterance counts/lengths from <out>/manifest.json and exit (no text)")
     a = ap.parse_args()
+    if a.stats:
+        print("\n".join(stats_lines(os.path.join(a.out, "manifest.json"))))
+        return
     kept = build_manifest(a.raw, a.out, a.model, a.max_calls, a.force)
     print(f"{len(kept)} utterances in {len({e['call_id'] for e in kept})} calls -> {a.out}")
 

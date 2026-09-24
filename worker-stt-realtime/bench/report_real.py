@@ -76,6 +76,11 @@ def _tri(ok):
     return "PASS" if ok else "FAIL"
 
 
+def is_unverified(s):
+    """A real-set summary not scored on hand-verified references (missing flag counts as unverified)."""
+    return s.get("set") == "real" and s.get("only_verified") is not True
+
+
 def _eval_local(o, bw, bk):
     """Tri-state checks for one local engine against the WER baseline `bw` and keyterm baseline `bk`."""
     wer_c, wer_o = bw.get("wer"), o.get("wer")
@@ -84,7 +89,12 @@ def _eval_local(o, bw, bk):
     else:
         wer = _tri(wer_o <= 1.5 * wer_c + EPS)
     ko, kc = o.get("keyterm_recall"), bk.get("keyterm_recall")
-    if not (_ok(ko) and _ok(kc)) or min(o.get("keyterm_total") or 0, bk.get("keyterm_total") or 0) < MIN_KEYTERMS:
+    unver = is_unverified(o) or is_unverified(bw)
+    if unver:
+        wer = "INSUFFICIENT"
+    if unver or is_unverified(bk):
+        kt = "INSUFFICIENT"
+    elif not (_ok(ko) and _ok(kc)) or min(o.get("keyterm_total") or 0, bk.get("keyterm_total") or 0) < MIN_KEYTERMS:
         kt = "INSUFFICIENT"
     else:
         kt = _tri(ko >= kc - 0.10 - EPS)
@@ -140,10 +150,15 @@ def main():
     summ = load_results(a.results)
     if not summ:
         sys.exit(f"no results found: expected {os.path.join(a.results, 'real__*.json')} (run rtbench.py --set real first)")
-    g = gate(summ)
+    try:
+        g = gate(summ)
+        table = render_table(summ)
+    except ValueError as e:
+        sys.exit(f"error: {e}")
+    warns = [f"**WARNING: {s['engine']} was scored on unverified draft references**" for s in summ if is_unverified(s)]
     body = ["# Real-call STT evaluation (Phase 1)", "",
             "Verified utterances only; paced replay as in `bench/rtbench.py`; local engines measured on the dev machine's CPU (a proxy, not Fly).",
-            "", render_table(summ), "", "## Decision gate", ""]
+            "", *([w for w in warns] + [""] if warns else []), table, "", "## Decision gate", ""]
     if "error" in g:
         body.append(g["error"])
     else:

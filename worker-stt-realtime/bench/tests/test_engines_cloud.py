@@ -152,7 +152,7 @@ def test_rtbench_main_gates_before_building_engine(tmp_path, monkeypatch):
         raise AssertionError("engines.build called before the gate")
     monkeypatch.setattr(engines, "build", boom)
     for eng in ("dg-flux", "el-scribe"):
-        monkeypatch.setattr("sys.argv", ["rtbench", "--engine", eng, "--set", "real", "--out", str(tmp_path / "o.json")])
+        monkeypatch.setattr("sys.argv", ["rtbench", "--engine", eng, "--set", "real", "--out", str(tmp_path / "real__o__real.json")])
         with pytest.raises(PermissionError):
             rtbench.main()
 
@@ -405,7 +405,7 @@ def _rtbench_setup(tmp_path, monkeypatch, manifest):
 
 def test_rtbench_main_refuses_real_clip_without_call_id(tmp_path, monkeypatch):
     rtbench = _rtbench_setup(tmp_path, monkeypatch, [{"id": "c1", "ref": "hi"}])
-    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "dg-flux", "--set", "real", "--out", str(tmp_path / "o.json")])
+    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "dg-flux", "--set", "real", "--out", str(tmp_path / "real__o__real.json")])
     with pytest.raises(PermissionError, match="no call_id"):
         rtbench.main()
 
@@ -413,7 +413,7 @@ def test_rtbench_main_refuses_real_clip_without_call_id(tmp_path, monkeypatch):
 def test_rtbench_main_native_ms_with_third_party_is_an_arg_error(tmp_path, monkeypatch):
     rtbench = _rtbench_setup(tmp_path, monkeypatch, [{"id": "c1", "ref": "hi", "call_id": "other"}])
     monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "el-scribe", "--set", "real", "--native-ms", "500",
-                                     "--out", str(tmp_path / "o.json")])
+                                     "--out", str(tmp_path / "real__o__real.json")])
     with pytest.raises(SystemExit) as ei:
         rtbench.main()
     assert ei.value.code == 2

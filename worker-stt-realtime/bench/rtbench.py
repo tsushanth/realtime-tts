@@ -50,6 +50,12 @@ def load(set_name, n, seed=0, verified_only=False):
     return out
 
 
+def check_out_name(set_name, out):
+    """Real-call result JSONs hold transcripts; only `real__*` names are gitignored, so refuse anything else."""
+    if set_name == "real" and not os.path.basename(out).startswith("real__"):
+        sys.exit(f"error: --set real writes transcripts into --out; its basename must start with 'real__' (gitignored), got {os.path.basename(out)!r}")
+
+
 def _require_clips(clips, set_name, only_verified):
     if not clips:
         sys.exit(f"no clips to run (set={set_name!r}, only_verified={only_verified}); check data/{set_name}/manifest.json")
@@ -167,6 +173,8 @@ def main():
     ap.add_argument("--label", default="")
     ap.add_argument("--only-verified", action="store_true")
     a = ap.parse_args()
+    if a.set == "real" and not os.path.basename(a.out).startswith("real__"):
+        ap.error(f"--set real writes transcripts into --out; its basename must start with 'real__' (gitignored), got {os.path.basename(a.out)!r}")
     import engines
     third = engines.is_third_party(a.engine)
     if a.native_ms and third:
@@ -221,7 +229,7 @@ def main():
     peak = peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
     tot_err = sum(r["wer_err"] for r in rows); tot_w = sum(r["words"] for r in rows)
     kt_hits = sum(r["keyterm_hits"] for r in rows); kt_total = sum(r["keyterm_total"] for r in rows)
-    summ = {"engine": a.engine, "set": a.set, "label": a.label, "n": len(rows), "threads": a.threads, "wer": tot_err / tot_w,
+    summ = {"engine": a.engine, "set": a.set, "label": a.label, "only_verified": bool(a.only_verified), "n": len(rows), "threads": a.threads, "wer": tot_err / tot_w,
             "cpu_per_audio_s": sum(r["cpu_s"] for r in rows) / sum(r["audio_s"] for r in rows),
             "rss_loaded_mb": rss_loaded, "rss_peak_mb": peak,
             "first_partial_med_s": float(np.median([r["first_partial_s"] for r in rows if r["first_partial_s"] is not None])),

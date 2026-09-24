@@ -591,6 +591,12 @@ git commit -m "stt-eval: utterance segmentation, Whisper draft references, revie
 
 - [ ] **Step 7: CONTROLLER/USER STEP (not for the implementer): build the manifest and hand-verify**
 
+**Pre-flight:**
+- `cd worker-stt-realtime/bench && ../.venv/bin/python -m pytest tests -q` must pass in full (95 tests at the time of writing).
+- `ls ../models/silero_vad.onnx` must exist; the models are downloaded by the command below.
+- Do not re-run `export_review` after you have started editing `review.tsv`: it overwrites the file.
+- Every verified call must be listed in `data/confirmed_calls.txt`, or the third-party (cloud) runs abort.
+
 ```bash
 cd worker-stt-realtime && . .venv/bin/activate && df -h /System/Volumes/Data | tail -1   # models below need ~1 GB free
 mkdir -p models && (cd models && B=https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models \
@@ -598,6 +604,7 @@ mkdir -p models && (cd models && B=https://github.com/k2-fsa/sherpa-onnx/release
   && curl -fsSL -o silero_vad.onnx $B/silero_vad.onnx)   # NOT fetch_models.sh: it fills docker_models/ and has no NeMo
 cd bench && export STT_MODELS=$PWD/../models STT_DATA=$PWD/../data
 python3 -m real_calls.segment --max-calls 40
+python3 -m real_calls.segment --stats   # sanity check: utterances per call and min/median/max length (no text); eyeball VAD behaviour before hand review
 python3 -c "from real_calls.review import export_review; export_review('../data/real/manifest.json','../data/real/review.tsv', call_ids=None)"
 ```
 The user picks about 15 calls (~30 min of audio) with names and numbers, fills `verified_text` and `keyterms` (semicolon-separated: names, digit strings) in `data/real/review.tsv`, then:
@@ -1242,12 +1249,19 @@ git commit -m "stt-eval: comparison report and Phase 1 decision gate"
 
 - [ ] **Step 6: CONTROLLER/USER STEP (not for the implementer): run the matrix and read the gate**
 
+**Pre-flight:**
+- `cd worker-stt-realtime/bench && ../.venv/bin/python -m pytest tests -q` must pass in full (95 tests at the time of writing).
+- `ls ../models/silero_vad.onnx` must exist (downloaded by Task 2 Step 7).
+- Do not re-run `export_review` after you have started editing `review.tsv`: it overwrites the file.
+- Every verified call must be listed in `data/confirmed_calls.txt`, or the third-party runs abort.
+- `--out` for `--set real` must be named `real__*.json` (rtbench refuses anything else, since result files contain transcripts).
+
 Prerequisites from Tasks 1-2 (verified utterances, `data/confirmed_calls.txt`). Keys are exported into the shell only for the cloud runs, from the env file, never echoed:
 ```bash
 cd worker-stt-realtime/bench && . ../.venv/bin/activate
 export STT_DATA=$PWD/../data STT_MODELS=$PWD/../models
 for e in zip-en-int8 nemo-480; do python3 rtbench.py --engine $e --set real --n 500 --only-verified --out results/real__${e}__real.json; done
-set -a; . <(grep -E '^(DEEPGRAM|ELEVENLABS)_API_KEY=' ../../call-loop-poc/.env); set +a
+set -a; . <(grep -E '^(DEEPGRAM|ELEVENLABS)_API_KEY=' "$HOME/Documents/GitHub/realtime-tts/call-loop-poc/.env"); set +a
 for e in dg-flux el-scribe; do python3 rtbench.py --engine $e --set real --n 500 --only-verified --out results/real__${e}__real.json; done
 python3 report_real.py
 ```

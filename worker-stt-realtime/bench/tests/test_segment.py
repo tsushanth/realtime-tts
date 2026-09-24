@@ -78,3 +78,15 @@ def test_build_manifest_refuses_to_clobber_verified(tmp_path, monkeypatch):
     assert json.load(open(out / "manifest.json"))[0]["id"] == "x"
     kept = build_manifest(str(raw), str(out), force=True)
     assert len(kept) == 3
+
+
+def test_stats_mode_prints_counts_and_durations_only(tmp_path, monkeypatch, capsys):
+    (tmp_path / "manifest.json").write_text(json.dumps([
+        {"id": "a_000", "call_id": "a", "start_s": 0.0, "end_s": 2.0, "ref": "SECRET TEXT"},
+        {"id": "a_001", "call_id": "a", "start_s": 3.0, "end_s": 7.0, "ref": "SECRET TEXT"},
+        {"id": "b_000", "call_id": "b", "start_s": 1.0, "end_s": 4.0, "ref": "SECRET TEXT"}]))
+    monkeypatch.setattr("sys.argv", ["segment", "--stats", "--out", str(tmp_path)])
+    segment.main()
+    out = capsys.readouterr().out
+    assert "a: 2 utts" in out and "b: 1 utts" in out and "SECRET" not in out
+    assert "min 2.0" in out and "median 3.0" in out and "max 4.0" in out

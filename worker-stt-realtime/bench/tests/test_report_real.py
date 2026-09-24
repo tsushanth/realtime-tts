@@ -7,8 +7,8 @@ from pathlib import Path
 from report_real import gate, load_results, price_per_hour, render_table
 
 
-def _s(engine, wer, kr, commit_lat, cpu=0.1, native=0.6, n=40, kt=30, ff=1.0):
-    return {"engine": engine, "n": n, "wer": wer, "keyterm_recall": kr, "keyterm_total": kt,
+def _s(engine, wer, kr, commit_lat, cpu=0.1, native=0.6, n=40, kt=30, ff=1.0, ov=True):
+    return {"engine": engine, "set": "real", "only_verified": ov, "n": n, "wer": wer, "keyterm_recall": kr, "keyterm_total": kt,
             "first_partial_med_s": 0.5, "cpu_per_audio_s": cpu,
             "strat": {"commit": {"lat_med": commit_lat, "lat_p90": commit_lat * 2, "cut_utts": 0, "fired_frac": ff},
                       "native": {"lat_med": native, "lat_p90": native * 1.3, "cut_utts": 3}}}
@@ -180,3 +180,47 @@ def test_tristate_and_footnotes_rendered_in_report(tmp_path):
     t = out.read_text()
     assert "INSUFFICIENT" in t and "PASS" in t and "dg-flux" in t
     assert "30" in t and "0.9" in t and "compute-only, 100% packed" in t and "INSUFFICIENT DATA" in t
+
+
+# ---- fix wave: unverified references, unknown-cloud CLI error ----
+def _run_cli(tmp_path, summaries):
+    d = tmp_path / "r"
+    d.mkdir()
+    for s in summaries:
+        (d / f"real__{s['engine']}__real.json").write_text(json.dumps({"summary": s}))
+    out = tmp_path / "o.md"
+    p = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "report_real.py"),
+                        "--results", str(d), "--out", str(out)], capture_output=True, text=True)
+    return p, out
+
+
+def test_unverified_local_engine_makes_wer_and_keyterm_insufficient():
+    r = gate([_s("nemo-480", 0.1, 0.9, 0.05, ov=False), _s("dg-flux", 0.1, 0.9, 0.2)])
+    assert r["checks"]["wer_within_1.5x"] == "INSUFFICIENT" and r["checks"]["keyterm_within_10pts"] == "INSUFFICIENT"
+    assert r["pass"] is None
+
+
+def test_missing_only_verified_counts_as_unverified_and_cloud_side_too():
+    s = _s("nemo-480", 0.1, 0.9, 0.05)
+    del s["only_verified"]
+    assert gate([s, _s("dg-flux", 0.1, 0.9, 0.2)])["pass"] is None
+    assert gate([_s("nemo-480", 0.1, 0.9, 0.05), _s("dg-flux", 0.1, 0.9, 0.2, ov=False)])["pass"] is None
+
+
+def test_other_sets_are_unaffected_by_verified_rule():
+    s = _s("nemo-480", 0.1, 0.9, 0.05, ov=False)
+    s["set"] = "clean"
+    assert gate([s, _s("dg-flux", 0.1, 0.9, 0.2)])["pass"] is True
+
+
+def test_report_prints_warning_for_unverified_engine(tmp_path):
+    p, out = _run_cli(tmp_path, [_s("nemo-480", 0.1, 0.9, 0.05, ov=False), _s("dg-flux", 0.1, 0.9, 0.2)])
+    assert p.returncode == 0
+    assert "WARNING: nemo-480 was scored on unverified draft references" in out.read_text()
+    assert "WARNING: dg-flux" not in out.read_text()
+
+
+def test_cli_unknown_cloud_engine_clear_error(tmp_path):
+    p, out = _run_cli(tmp_path, [_s("nemo-480", 0.1, 0.9, 0.05), _s("dg-nova", 0.1, 0.9, 0.2)])
+    assert p.returncode == 1 and "Traceback" not in p.stderr and "dg-nova" in p.stderr
+    assert not out.exists()
