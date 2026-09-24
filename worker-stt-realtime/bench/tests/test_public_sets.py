@@ -154,7 +154,7 @@ def test_build_earnings_short_raises(tmp_path):
 
 def test_build_fleurs_short_raises(tmp_path):
     tar, tsv = _fake_fleurs(tmp_path)
-    with pytest.raises(ValueError, match="requested 10.*available 4"):
+    with pytest.raises(ValueError, match="requested 10.*only 4 available"):
         public_sets.build_fleurs(str(tmp_path / "o"), n=10, tar_path=tar, tsv_path=tsv, allow_short=False)
     assert not (tmp_path / "o" / "pub_fleurs").exists()
 
