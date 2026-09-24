@@ -417,3 +417,62 @@ def test_rtbench_main_native_ms_with_third_party_is_an_arg_error(tmp_path, monke
     with pytest.raises(SystemExit) as ei:
         rtbench.main()
     assert ei.value.code == 2
+
+
+def test_code_sanitiser_is_strict():
+    f = ec._Stream._code
+    assert f("BAD_AUDIO") == "BAD_AUDIO" and f("auth_error") == "auth_error"
+    assert f("a" * 32) == "a" * 32
+    for bad in ("0123456789abcdef0123456789abcdef01234567", "1abc", "a-b", "a.b", "a" * 33, "", None, 5):
+        assert f(bad) == "unknown"
+
+
+def test_deepgram_final_timeout_raises(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 0.2)
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="final timeout: no terminal event"):
+            st.final()
+
+
+def test_elevenlabs_final_timeout_raises(monkeypatch):
+    monkeypatch.setattr(ec._ELStream, "AUTO_COMMIT_WAIT_S", 0.05)
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 0.2)
+
+    def handler(ws):
+        ws.send(json.dumps({"message_type": "session_started"}))
+        for msg in ws:
+            if not json.loads(msg)["commit"]:
+                ws.send(json.dumps({"message_type": "partial_transcript", "text": "par"}))
+
+    with _serve(handler) as port:
+        st = ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="final timeout: no terminal event"):
+            st.final()
+
+
+def test_final_with_turn_already_done_does_not_wait(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+
+    def handler(ws):
+        ws.send(json.dumps({"message_type": "session_started"}))
+        for msg in ws:
+            ws.send(json.dumps({"message_type": "committed_transcript", "text": "auto"}))
+
+    with _serve(handler) as port:
+        st = ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(st.native_eos)
+        t0 = time.time()
+        assert st.final() == "auto"
+        assert time.time() - t0 < 1.0

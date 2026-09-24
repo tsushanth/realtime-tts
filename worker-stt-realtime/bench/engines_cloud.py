@@ -41,6 +41,8 @@ def _pcm16(x):
 
 
 class _Stream:
+    FLUSH_WAIT_S = 3.0
+
     def __init__(self, url, headers):
         from websockets.sync.client import connect
         self.committed, self.partial, self.eos, self.error = [], "", False, None
@@ -86,10 +88,16 @@ class _Stream:
             self._final_started = True
             self._final_done = self._turn_done()
 
+    def _require_final_done(self):
+        with self.lock:
+            done = self._final_done
+        if not done:
+            raise RuntimeError("final timeout: no terminal event")
+
     @staticmethod
     def _code(v):
         """Machine code only: free-form server prose is never put into an exception."""
-        return v if isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", v) else "unknown"
+        return v if isinstance(v, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", v) else "unknown"
 
     def _raise_if_error(self):
         with self.lock:
@@ -158,8 +166,9 @@ class _DGStream(_Stream):
             except Exception:
                 pass
             # a drop before the flush EndOfTurn is a reader error; EndOfTurn then close is a normal finish
-            self._wait(lambda: self._final_done or self.error, 3.0)
+            self._wait(lambda: self._final_done or self.error, self.FLUSH_WAIT_S)
             self._raise_if_error()
+            self._require_final_done()
             return self.text()
         finally:
             self.close()
@@ -200,8 +209,9 @@ class _ELStream(_Stream):
             done = lambda: self._final_done or self.error
             if not self._wait(done, self.AUTO_COMMIT_WAIT_S):
                 self._chunk(np.zeros(1600, dtype="float32"), True)
-                self._wait(done, 3.0)
+                self._wait(done, self.FLUSH_WAIT_S)
             self._raise_if_error()
+            self._require_final_done()
             return self.text()
         finally:
             self.close()
