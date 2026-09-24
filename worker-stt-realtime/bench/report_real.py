@@ -8,6 +8,11 @@ import math
 import os
 import sys
 
+CLOUD_PREFIXES = ("dg-", "el-")
+MIN_UTTS = 30            # WER check needs >= this many utterances on both engines, and equal n
+MIN_KEYTERMS = 30        # keyterm check needs >= this many keyterms on both engines
+MIN_FIRED_FRAC = 0.9     # commit latency check needs the strategy to have fired on >= this fraction
+EPS = 1e-9
 CLOUD_PRICE = {"dg-flux": 0.39, "el-scribe": 0.39}     # $/audio-hour, published rates (2026-09)
 MODAL_CPU_PER_CORE_S = 0.0000131                      # $/core-second, worker-stt/DESIGN.md (compute only, packed)
 
@@ -25,7 +30,7 @@ def load_results(results_dir, tag="real"):
 
 
 def price_per_hour(s):
-    if s["engine"] in CLOUD_PRICE:
+    if is_cloud(s["engine"]):
         return CLOUD_PRICE[s["engine"]]
     cpu = s.get("cpu_per_audio_s")
     return cpu * 3600 * MODAL_CPU_PER_CORE_S if _ok(cpu) else float("nan")
@@ -45,13 +50,13 @@ def _price(s):
 
 
 def render_table(summaries):
-    lines = ["| engine | n utts | WER | keyterm recall | first partial ms | commit final ms med/p90 | native final ms med/p90 | cpu-s per audio-s | $/audio-hr |",
+    lines = ["| engine | n utts | WER | keyterm recall | first partial ms | commit final ms med/p90 | native final ms med/p90 | cpu-s per audio-s | $/audio-hr (compute-only, 100% packed, dev-machine CPU proxy, Modal CPU rate; not like-for-like with per-hour cloud pricing) |",
              "|---|---|---|---|---|---|---|---|---|"]
     for s in summaries:
         strat = s.get("strat", {})
         c, n = strat.get("commit", {}), strat.get("native", {})
         cpu = s.get("cpu_per_audio_s")
-        cpu_txt = "-" if s["engine"] in CLOUD_PRICE or not _ok(cpu) else round(cpu, 3)
+        cpu_txt = "-" if is_cloud(s["engine"]) or not _ok(cpu) else round(cpu, 3)
         lines.append(f"| {s['engine']} | {s.get('n', '-')} | {_pct(s.get('wer'))} | {_pct(s.get('keyterm_recall'))} | "
                      f"{_ms(s.get('first_partial_med_s'))} | {_ms(c.get('lat_med'))}/{_ms(c.get('lat_p90'))} | "
                      f"{_ms(n.get('lat_med'))}/{_ms(n.get('lat_p90'))} | "
@@ -59,23 +64,72 @@ def render_table(summaries):
     return "\n".join(lines)
 
 
+def is_cloud(engine):
+    if engine in CLOUD_PRICE:
+        return True
+    if engine.startswith(CLOUD_PREFIXES):
+        raise ValueError(f"cloud-prefixed engine {engine!r} has no entry in CLOUD_PRICE")
+    return False
+
+
+def _tri(ok):
+    return "PASS" if ok else "FAIL"
+
+
+def _eval_local(o, bw, bk):
+    """Tri-state checks for one local engine against the WER baseline `bw` and keyterm baseline `bk`."""
+    wer_c, wer_o = bw.get("wer"), o.get("wer")
+    if not (_ok(wer_c) and _ok(wer_o)) or min(o.get("n") or 0, bw.get("n") or 0) < MIN_UTTS or o.get("n") != bw.get("n"):
+        wer = "INSUFFICIENT"
+    else:
+        wer = _tri(wer_o <= 1.5 * wer_c + EPS)
+    ko, kc = o.get("keyterm_recall"), bk.get("keyterm_recall")
+    if not (_ok(ko) and _ok(kc)) or min(o.get("keyterm_total") or 0, bk.get("keyterm_total") or 0) < MIN_KEYTERMS:
+        kt = "INSUFFICIENT"
+    else:
+        kt = _tri(ko >= kc - 0.10 - EPS)
+    c = o.get("strat", {}).get("commit", {})
+    lat, ff = c.get("lat_med"), c.get("fired_frac")
+    lat_r = "INSUFFICIENT" if not (_ok(lat) and _ok(ff)) or ff < MIN_FIRED_FRAC else _tri(lat <= 0.150 + EPS)
+    cpu = o.get("cpu_per_audio_s")
+    cpu_r = "INSUFFICIENT" if not _ok(cpu) else _tri(cpu <= 0.15 + EPS)
+    return {"wer_within_1.5x": wer, "keyterm_within_10pts": kt, "commit_final_le_150ms": lat_r, "cpu_le_0.15": cpu_r}
+
+
+def _verdict(checks):
+    v = list(checks.values())
+    return "PASS" if all(x == "PASS" for x in v) else "FAIL" if "FAIL" in v else "INSUFFICIENT"
+
+
 def gate(summaries):
-    usable = [s for s in summaries if _ok(s.get("wer"))]     # an engine with no valid WER cannot be ranked
-    ours = [s for s in usable if s["engine"] not in CLOUD_PRICE]
-    cloud = [s for s in usable if s["engine"] in CLOUD_PRICE]
+    ours = [s for s in summaries if not is_cloud(s["engine"])]
+    cloud = [s for s in summaries if is_cloud(s["engine"])]
     if not ours or not cloud:
-        return {"error": "need at least one local and one cloud result with a valid WER"}
-    bo, bc = min(ours, key=lambda s: s["wer"]), min(cloud, key=lambda s: s["wer"])
-    ko, kc = bo.get("keyterm_recall"), bc.get("keyterm_recall")
-    lat = bo.get("strat", {}).get("commit", {}).get("lat_med")
-    cpu = bo.get("cpu_per_audio_s")
-    checks = {
-        "wer_within_1.5x": bo["wer"] <= 1.5 * bc["wer"],
-        "keyterm_within_10pts": _ok(ko) and _ok(kc) and ko >= kc - 0.10,
-        "commit_final_le_150ms": _ok(lat) and lat <= 0.150,
-        "cpu_le_0.15": _ok(cpu) and cpu <= 0.15,
-    }
-    return {"best_ours": bo, "best_cloud": bc, "checks": checks, "pass": all(checks.values())}
+        return {"error": "need at least one local and one cloud result"}
+    cw = [s for s in cloud if _ok(s.get("wer"))]
+    ck = [s for s in cloud if _ok(s.get("keyterm_recall"))]
+    bc = min(cw, key=lambda s: s["wer"]) if cw else cloud[0]                          # WER baseline: lowest WER
+    bk = max(ck, key=lambda s: s["keyterm_recall"]) if ck else cloud[0]               # keyterm baseline: highest recall
+    locals_ = []
+    for o in ours:
+        checks = _eval_local(o, bc, bk)
+        locals_.append({"engine": o["engine"], "checks": checks, "verdict": _verdict(checks)})
+    passers = [x for x in locals_ if x["verdict"] == "PASS"]
+    by_eng = {s["engine"]: s for s in ours}
+    if passers:
+        rec = min(passers, key=lambda x: by_eng[x["engine"]]["wer"])["engine"]
+        overall = True
+    else:
+        rec = None
+        overall = None if any(x["verdict"] == "INSUFFICIENT" for x in locals_) else False
+    valid = [s for s in ours if _ok(s.get("wer"))]
+    bo = by_eng[rec] if rec else (min(valid, key=lambda s: s["wer"]) if valid else ours[0])
+    res = {"best_ours": bo, "best_cloud": bc, "best_cloud_keyterm": bk, "locals": locals_,
+           "checks": next(x["checks"] for x in locals_ if x["engine"] == bo["engine"]),
+           "pass": overall, "recommended": rec}
+    if _ok(bc.get("wer")) and bc["wer"] < 0.02:
+        res["advisory"] = "advisory: cloud WER very low, 1.5x rule is degenerate"
+    return res
 
 
 def main():
@@ -93,9 +147,22 @@ def main():
     if "error" in g:
         body.append(g["error"])
     else:
-        body += [f"Best local: **{g['best_ours']['engine']}**, best cloud: **{g['best_cloud']['engine']}**.", ""]
-        body += [f"- {'PASS' if v else 'FAIL'}: {k}" for k, v in g["checks"].items()]
-        body += ["", f"**Result: {'ship-worthy, proceed to Phase 2 with ' + g['best_ours']['engine'] if g['pass'] else 'not yet, Phase 2 becomes an accuracy investigation'}**"]
+        bc, bk = g["best_cloud"], g["best_cloud_keyterm"]
+        body += [f"Cloud baselines: WER vs **{bc['engine']}** (lowest WER), keyterm recall vs **{bk['engine']}** (highest keyterm recall).", ""]
+        if g.get("advisory"):
+            body += [f"- {g['advisory']}", ""]
+        for x in g["locals"]:
+            body += [f"### {x['engine']}: {x['verdict']}"] + [f"- {v}: {k}" for k, v in x["checks"].items()] + [""]
+        if g["pass"]:
+            res = "ship-worthy, proceed to Phase 2 with " + g["recommended"]
+        elif g["pass"] is None:
+            res = "INSUFFICIENT DATA, no local engine passed and some checks could not be evaluated; collect more data before deciding"
+        else:
+            res = "not yet, Phase 2 becomes an accuracy investigation"
+        body += [f"**Result: {res}**"]
+    body += ["", f"Footnotes: a check is INSUFFICIENT (not FAIL) when data is missing or thin: WER needs n >= {MIN_UTTS} on both engines and equal n; "
+             f"keyterm needs keyterm_total >= {MIN_KEYTERMS} on both; commit latency needs fired_frac >= {MIN_FIRED_FRAC}. "
+             "Price is compute-only, 100% packed, dev-machine CPU proxy at the Modal CPU rate; not like-for-like with per-hour cloud pricing."]
     text = "\n".join(body) + "\n"
     with open(a.out, "w") as f:
         f.write(text)
