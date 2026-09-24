@@ -18,6 +18,11 @@ describe('sampleCallee', () => {
 
   beforeEach(() => { sampleCalleeOverrides.clear(); pendingCallContext.clear(); });
 
+  it('call-recording is secret-gated', async () => {
+    const res = await request(app).get('/call-recording/CA' + 'c'.repeat(32));
+    expect(res.status).toBe(401);
+  });
+
   it('rejects sampleCallee without shopper:true', async () => {
     const res = await request(app).post('/place-test-call').set('Authorization', 'Bearer test-secret')
       .send({ toNumber: '+15550000001', routeAs: '+15550000002', sampleCallee: callee });

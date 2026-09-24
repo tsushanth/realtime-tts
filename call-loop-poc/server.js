@@ -1205,6 +1205,33 @@ app.get('/call-status/:sid', async (req, res) => {
 // number's real tenant agent. Public, reveals nothing.
 app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1 }));
 
+// Secret-gated lookup of the Twilio recording for a call we placed (shopper calls with record:true never
+// get a RecordingStatusCallback, so nothing stores the URL). Used with GET /recording-audio?url= to copy
+// the audio out before the retention sweep can delete it. Read-only.
+app.get('/call-recording/:sid', async (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) return res.status(401).json({ error: 'unauthorized' });
+  if (!/^CA[0-9a-f]{32}$/.test(req.params.sid)) return res.status(400).json({ error: 'bad sid' });
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return res.status(500).json({ error: 'twilio creds not configured' });
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Recordings.json?CallSid=${req.params.sid}`, {
+      headers: { Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64') },
+    });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: 'twilio lookup failed' });
+    const rec = (b.recordings || []).sort((x, y) => (Number(y.duration) || 0) - (Number(x.duration) || 0))[0];
+    if (!rec) return res.json({ status: 'none' });
+    res.json({
+      status: rec.status,
+      channels: rec.channels,
+      duration: Number(rec.duration) || 0,
+      url: `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Recordings/${rec.sid}.mp3`,
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.post('/place-test-call', express.json(), async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
