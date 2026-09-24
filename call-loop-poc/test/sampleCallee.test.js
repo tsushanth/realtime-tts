@@ -11,6 +11,11 @@ const { app, pendingCallContext, sampleCalleeOverrides } = await import('../serv
 const callee = { systemPrompt: 'You are the after-hours line for a fictional brokerage.', greeting: 'Thanks for calling, how can I help?' };
 
 describe('sampleCallee', () => {
+  it('advertises the capability', async () => {
+    const res = await request(app).get('/sample-callee-capability');
+    expect(res.body).toEqual({ sampleCallee: 1 });
+  });
+
   beforeEach(() => { sampleCalleeOverrides.clear(); pendingCallContext.clear(); });
 
   it('rejects sampleCallee without shopper:true', async () => {

@@ -1200,6 +1200,11 @@ app.get('/call-status/:sid', async (req, res) => {
   res.status(r.ok ? 200 : r.status).json({ status: b.status, duration: Number(b.duration) || 0 });
 });
 
+// Capability probe so clients (calldesktech scripts/generate-vertical-sample.mjs) can tell a poc that
+// supports sampleCallee from an older one, which would silently IGNORE the field and run the dialed
+// number's real tenant agent. Public, reveals nothing.
+app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1 }));
+
 app.post('/place-test-call', express.json(), async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
@@ -1349,7 +1354,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
         .catch((err) => console.error('[call-loop] shopper internal-test call log failed (non-fatal)', err));
     }
 
-    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status });
+    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status, ...(sampleCallee ? { sampleCallee: true } : {}) });
   } catch (err) {
     console.error('[call-loop] place-test-call failed', err);
     res.status(500).json({ error: err.message });
