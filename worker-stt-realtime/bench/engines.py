@@ -181,8 +181,16 @@ class _WhisperStream:
         self._txt = self._dec(); return self._txt
 
 
+def is_third_party(name):
+    """Engines that send audio to a third party (must pass the confirmed-calls gate)."""
+    return name in ("dg-flux", "el-scribe")
+
+
 def build(name, threads=1):
     """Registry. Model dirs under STT_MODELS."""
+    if is_third_party(name):
+        import engines_cloud
+        return engines_cloud.DeepgramFluxEngine() if name == "dg-flux" else engines_cloud.ElevenLabsRealtimeEngine()
     if name == "zip-en-int8":     # Apache-2.0, LibriSpeech-only, chunk 320 ms
         s = "chunk-16-left-128.int8.onnx"
         return SherpaEngine(name, "sherpa-onnx-streaming-zipformer-en-2023-06-26",

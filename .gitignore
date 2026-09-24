@@ -14,3 +14,8 @@ training-data/pilot/wavs/
 training-data/wavs_full/
 training-data/wavs_full.tar
 training-data/parts/
+
+# Real call audio, transcripts and per-run results: never commit
+worker-stt-realtime/data/
+worker-stt-realtime/models/
+worker-stt-realtime/bench/results/real__*.json
