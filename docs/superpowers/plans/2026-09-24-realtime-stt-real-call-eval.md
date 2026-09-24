@@ -1269,6 +1269,79 @@ Expected: `REAL_CALL_EVAL.md` written with a table and the PASS/FAIL gate. Commi
 
 ---
 
+### Task 6: Download through calldesktech's recording proxy, keep only the far-end channel
+
+Why (verified 2026-09-24 on real calls): (1) the Twilio token in `call-loop-poc/.env` is stale (API returns 401), while calldesktech already fetches audio through call-loop-poc's `GET {CALL_LOOP_POC_BASE_URL}/recording-audio?url=<twilio recording url>` with `Authorization: Bearer {CALL_LOOP_POC_TEST_CALL_SECRET}` (both names live in `calldesktech/.env`); the proxy relays Twilio's bytes untouched, and the `.wav` variant of the URL returns 8 kHz PCM stereo. (2) Recordings are 2-channel: channel 0 (index 0) is the FAR END (caller / callee / test persona), channel 1 is OUR AGENT (checked by transcribing each channel of one inbound and one outbound call against the stored assistant lines). The STT in production only hears the far end, so scoring the mixed-down agent voice would corrupt WER. (3) The phone columns in `calldesk_call_logs` are unreliable (Twilio shows outbound calls to the owner's cell logged as `to_number` = the poc line; 133 inbound rows log caller = to = the poc line), so number matching cannot identify own calls; the owner attests that all poc-engine calls are their own test calls (test framework, scripted personas, calls to their own cell and own toll-free line).
+
+**Files:**
+- Modify: `worker-stt-realtime/bench/real_calls/fetch.py`
+- Test: `worker-stt-realtime/bench/tests/test_fetch.py` (update the existing `download_call` tests from Task 1)
+
+**Interfaces:**
+- Produces: `download_call(row, base_url, secret, raw_dir, caller_channel=0) -> str` (path of the mono 16 kHz PCM_16 wav of the far-end channel); CLI `fetch` no longer reads a Twilio env file (`--twilio-env` removed) and reads `CALL_LOOP_POC_BASE_URL` / `CALL_LOOP_POC_TEST_CALL_SECRET` from `--calldesk-env`; new flags `--caller-channel {0,1}` (default 0) and `--include-unmatched` (also download poc-engine calls whose phone columns do not match `data/own_numbers.txt`; prints how many were included).
+
+- [ ] **Step 1: Update tests first (red)**
+
+In the existing `download_call` tests, monkeypatch `requests.get` (streaming response with `iter_content`) and `subprocess.run`, with the new signature `download_call(row, "https://poc.example", "s3cret", raw_dir)`. Required assertions (write them, run red):
+1. The proxy is called at `https://poc.example/recording-audio` with params `{"url": <recording_wav_url(row["recording_url"])>}` and header `Authorization: Bearer s3cret`.
+2. For a 2-channel probe result (fake `subprocess.run` returns stdout `"2"` for the ffprobe call), the ffmpeg command contains `-af` with `pan=mono|c0=c0` (and `c1` when `caller_channel=1`), `-ar 16000`, `-c:a pcm_s16le`.
+3. For a 1-channel probe result the ffmpeg filter is `anull` (no pan) and the call still succeeds.
+4. ffmpeg failure leaves no `dest` and no `.src.wav`/`.part.wav` files (as before); success leaves only `dest`.
+5. The secret never appears in any exception message or printed output when the proxy returns HTTP 500 (`raise_for_status` error text must not contain `s3cret`; assert it).
+6. `cmd_fetch` wiring test: with a monkeypatched `fetch_rows`, `load_env` returning the two proxy variables, and `download_call` stubbed, `fetch --include-unmatched` downloads rows even when `own_numbers.txt` matches none, while without the flag it downloads only matching rows (use a tmp `STT_DATA`).
+
+- [ ] **Step 2: Implement**
+
+```python
+def _channels(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                          "stream=channels", "-of", "csv=p=0", path], capture_output=True, text=True, check=True).stdout
+    return int(out.strip())
+
+
+def download_call(row, base_url, secret, raw_dir, caller_channel=0):
+    dest = os.path.join(raw_dir, row["id"] + ".wav")
+    if os.path.exists(dest):
+        return dest
+    src, part = dest + ".src.wav", dest + ".part.wav"
+    try:
+        with requests.get(base_url.rstrip("/") + "/recording-audio",
+                          params={"url": recording_wav_url(row["recording_url"])},
+                          headers={"Authorization": f"Bearer {secret}"}, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(src, "wb") as f:
+                for chunk in r.iter_content(1 << 16):
+                    f.write(chunk)
+        af = f"pan=mono|c0=c{caller_channel}" if _channels(src) >= 2 else "anull"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af", af, "-ar", "16000",
+                        "-c:a", "pcm_s16le", part], check=True)
+        os.replace(part, dest)
+    finally:
+        for p in (src, part):
+            if os.path.exists(p):
+                os.remove(p)
+    return dest
+```
+Update `cmd_fetch` per the Interfaces block (proxy variables from `--calldesk-env`; `KeyError` for a missing variable must be turned into `SystemExit("missing CALL_LOOP_POC_BASE_URL / CALL_LOOP_POC_TEST_CALL_SECRET in <path>")` without printing any value; `--include-unmatched` picks `[r for r in rows if r.get("voice_engine") == "poc" and r.get("recording_url")]` instead of `select_own_calls`), drop `--twilio-env`, add `--caller-channel` with help text "0 = far end (caller/callee/test persona), 1 = our agent; verified 2026-09-24".
+
+- [ ] **Step 3: Run tests to verify they pass**
+
+Run: `cd worker-stt-realtime/bench && ../.venv/bin/python -m pytest tests -q`
+Expected: all tests pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add worker-stt-realtime/bench
+git commit -m "stt-eval: download via calldesktech recording proxy and keep only the far-end channel"
+```
+
+- [ ] **Step 5: CONTROLLER STEP (not for the implementer): run the fetch**
+
+`python3 -m real_calls.fetch fetch --include-unmatched --caller-channel 0` (reads `calldesktech/.env`, never prints values), then check counts and durations with `ls`/`ffprobe` only.
+
+---
+
 ## Self-review
 
 **Spec coverage:** data source and privacy rules (Tasks 1, 4 gate); own-number direction-aware selection (Task 1); utterance cutting, draft references, hand-verified subset, keyterms (Task 2); candidates and metrics incl. WER, keyterm recall, latency, cuts, cpu, price (Tasks 3-5); decision gate thresholds (Task 5 `gate`); non-goals respected (no `server.py`, gateway or deploy changes). The user's tasks 4-6 (Fly deploy, speculative end-of-turn, gateway wiring/pricing) are deliberately deferred to the Phase 2 plan per the spec's scope, because the deployed artifact depends on the gate result.

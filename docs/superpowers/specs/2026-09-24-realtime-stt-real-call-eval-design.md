@@ -67,3 +67,10 @@ Otherwise Phase 2 becomes an accuracy investigation (bigger/finetuned model, hot
 
 No deploy, no gateway change, no pricing decision, no non-English, no changes to `server.py` in Phase 1.
 Numbers from a Mac CPU are a proxy; Fly numbers come in Phase 2.
+
+## Addendum 2026-09-24 (findings from real data)
+
+- Recordings are 2-channel 8 kHz; channel 0 is the far end, channel 1 our agent (verified by transcription on an inbound and an outbound call). The evaluation uses channel 0 only, because production STT only hears the far end.
+- Audio is fetched through calldesktech's `/recording-audio` proxy (the Twilio token in `call-loop-poc/.env` is stale).
+- The phone columns in `calldesk_call_logs` are unreliable, so own-call selection by number (constraint 2) cannot identify the owner's calls. The owner attests all poc-engine calls are their own test calls (scripted test-framework personas, calls to the owner's cell and own toll-free line). Fetching is local-only; the per-call `confirmed_calls.txt` gate for third-party engines is unchanged and remains the binding control.
+- Representativeness caveat: far-end speech on inbound test calls is synthetic (framework personas), so results measure telephone-path accuracy on synthetic speech plus a few human/voicemail calls, not the full diversity of real callers.
