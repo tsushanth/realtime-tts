@@ -1,0 +1,28 @@
+app = "piper-tts-sjc-autoscaler"
+primary_region = "sjc"
+
+# Dynamically scales the number of STARTED machines in piper-tts-sjc's
+# existing machine pool (see `fly scale count` in TIGRIS_SETUP.md - the
+# pool itself, currently 10 machines, is provisioned separately; this
+# autoscaler decides how many of those pre-existing machines should be
+# running at any moment based on real, live concurrency).
+#
+# Real production metric: Fly's own hosted Prometheus already exposes
+# fly_app_concurrency per-app with zero instrumentation needed on our
+# side - confirmed live against piper-tts-sjc during a real load test
+# (2026-09-23): the query below tracked real concurrent connections
+# within ~1-2 minutes of ingestion delay.
+[build]
+  image = "flyio/fly-autoscaler:0.2"
+
+[env]
+  FAS_APP_NAME = "piper-tts-sjc"
+  # soft_limit=3 per machine (fly.toml's http_service.concurrency) - one
+  # machine per ~3 concurrent connections, always at least 1 (matches
+  # piper-tts-sjc's own min_machines_running=1 floor; the two mechanisms
+  # are independent so this avoids the autoscaler ever computing 0 and
+  # fighting Fly's own proxy-level minimum).
+  FAS_STARTED_MACHINE_COUNT = "max(1, ceil(concurrency / 3))"
+  FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/personal"
+  FAS_PROMETHEUS_METRIC_NAME = "concurrency"
+  FAS_PROMETHEUS_QUERY = "sum(fly_app_concurrency{app=\"piper-tts-sjc\"})"
