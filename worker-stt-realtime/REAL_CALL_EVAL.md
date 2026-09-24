@@ -47,3 +47,5 @@ The ranking is identical on hand-listened references only and with fillers dropp
 - **References:** 51 hand-listened, 59 accepted from Whisper drafts (`ref_source` in the manifest). Non-English calls/utterances (French, Spanish, Italian, Dutch, Polish) and clipped/garbled ones were excluded.
 - **Latency is not like-for-like:** local "commit" latency assumes the client tells us speech ended (52 ms nemo); Deepgram's includes the CloseStream flush (168 ms). "Native" is each engine's own endpointing: Deepgram 580 ms; ElevenLabs used its default VAD commit (1,517 ms, untuned); local engines have no server-side endpointing here.
 - **CPU:** dev-machine CPU, not Fly; no concurrent-load test yet.
+
+See `REAL_CALL_EVAL_METHODOLOGY.md` for what data was used and why, how the reference set was built, exclusions, method, decisions and known issues. Aggregate numbers per engine: `bench/results/real_summary.json`.
