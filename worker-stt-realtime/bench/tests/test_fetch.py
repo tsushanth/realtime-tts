@@ -1,3 +1,5 @@
+import io
+import json
 import os
 import subprocess
 
@@ -13,8 +15,9 @@ def test_read_own_numbers(tmp_path):
 
 
 class _Resp:
-    def __init__(self, status_error=None):
+    def __init__(self, status_error=None, headers=None):
         self.status_error = status_error
+        self.headers = headers or {}
 
     def __enter__(self):
         return self
@@ -30,15 +33,16 @@ class _Resp:
         yield b"data"
 
 
-ROW = {"id": "c1", "recording_url": "https://x/RE1"}
+ROW = {"id": "c1", "recording_url": "https://x/RE1", "duration_seconds": 30}
 BASE, SECRET = "https://poc.example", "s3cret"
 
 
-def _fake_run(channels, calls):
+def _fake_run(channels, calls, duration=30.0):
     def run(cmd, **kw):
         calls.append(cmd)
         if cmd[0] == "ffprobe":
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"{channels}\n", stderr="")
+            out = f"{duration}\n" if "format=duration" in cmd else f"{channels}\n"
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
         open(cmd[-1], "wb").write(b"wav")
         return subprocess.CompletedProcess(cmd, 0)
     return run
@@ -79,7 +83,7 @@ def test_download_call_mono_uses_anull(tmp_path, monkeypatch):
     dest = fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
     ff = [c for c in calls if c[0] == "ffmpeg"][0]
     assert ff[ff.index("-af") + 1] == "anull"
-    assert os.listdir(tmp_path) == ["c1.wav"] and os.path.exists(dest)
+    assert sorted(os.listdir(tmp_path)) == ["c1.wav", "c1.wav.meta"] and os.path.exists(dest)
 
 
 def test_download_call_ffmpeg_failure_leaves_nothing(tmp_path, monkeypatch):
@@ -87,7 +91,8 @@ def test_download_call_ffmpeg_failure_leaves_nothing(tmp_path, monkeypatch):
 
     def run(cmd, **kw):
         if cmd[0] == "ffprobe":
-            return subprocess.CompletedProcess(cmd, 0, stdout="2\n", stderr="")
+            out = "30.0\n" if "format=duration" in cmd else "2\n"
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
         open(cmd[-1], "wb").write(b"trunc")
         raise subprocess.CalledProcessError(1, cmd)
 
@@ -101,18 +106,88 @@ def test_download_call_success_leaves_only_dest(tmp_path, monkeypatch):
     monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp())
     monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
     dest = fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
-    assert os.listdir(tmp_path) == ["c1.wav"]
+    assert sorted(os.listdir(tmp_path)) == ["c1.wav", "c1.wav.meta"]
     assert open(dest, "rb").read() == b"wav"
 
 
 def test_download_call_http_500_does_not_leak_secret(tmp_path, monkeypatch, capsys):
-    err = fetch.requests.HTTPError("500 Server Error for url: https://poc.example/recording-audio?url=x")
-    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp(err))
+    def get(url, **k):
+        resp = fetch.requests.Response()
+        resp.status_code = 500
+        resp.reason = "Internal Server Error"
+        resp.raw = io.BytesIO(b"")
+        resp.url = url + "?url=" + k["params"]["url"]
+        return resp
+
+    monkeypatch.setattr(fetch.requests, "get", get)
     monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
     with pytest.raises(fetch.requests.HTTPError) as ei:
         fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
+    assert "500" in str(ei.value) and "recording-audio" in str(ei.value)
     out = capsys.readouterr()
-    assert SECRET not in str(ei.value) and SECRET not in out.out + out.err
+    assert SECRET not in str(ei.value) and SECRET not in repr(ei.value) and SECRET not in out.out + out.err
+    assert os.listdir(tmp_path) == []
+
+
+def test_sidecar_written_and_secret_free(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path), caller_channel=1)
+    assert sorted(os.listdir(tmp_path)) == ["c1.wav", "c1.wav.meta"]
+    meta = open(tmp_path / "c1.wav.meta").read()
+    assert json.loads(meta) == {"caller_channel": 1, "sr": 16000, "source": "proxy-wav"}
+    assert SECRET not in meta
+
+
+def _count_gets(monkeypatch):
+    n = []
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: n.append(1) or _Resp())
+    return n
+
+
+def test_reuse_only_with_matching_sidecar(tmp_path, monkeypatch):
+    n = _count_gets(monkeypatch)
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path), caller_channel=0)
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path), caller_channel=0)
+    assert len(n) == 1  # reused
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path), caller_channel=1)
+    assert len(n) == 2  # channel changed -> refetch
+    assert json.load(open(tmp_path / "c1.wav.meta"))["caller_channel"] == 1
+
+
+def test_missing_sidecar_is_stale(tmp_path, monkeypatch):
+    n = _count_gets(monkeypatch)
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
+    (tmp_path / "c1.wav").write_bytes(b"old mixed")
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
+    assert len(n) == 1 and (tmp_path / "c1.wav").read_bytes() == b"wav"
+    assert (tmp_path / "c1.wav.meta").exists()
+
+
+def test_truncated_download_raises_and_cleans(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, [], duration=10.0))  # 10 < 0.7*30
+    with pytest.raises(RuntimeError, match="shorter than logged duration"):
+        fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
+    assert os.listdir(tmp_path) == []
+
+
+def test_normal_length_passes_and_missing_duration_skips(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, [], duration=25.0))
+    fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
+    row2 = {"id": "c2", "recording_url": "https://x/RE2"}
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, [], duration=1.0))
+    fetch.download_call(row2, BASE, SECRET, str(tmp_path))
+    assert (tmp_path / "c2.wav").exists()
+
+
+def test_content_length_mismatch_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **k: _Resp(headers={"Content-Length": "999"}))
+    monkeypatch.setattr(fetch.subprocess, "run", _fake_run(2, []))
+    with pytest.raises(RuntimeError, match="incomplete"):
+        fetch.download_call(ROW, BASE, SECRET, str(tmp_path))
     assert os.listdir(tmp_path) == []
 
 
@@ -165,3 +240,10 @@ def test_cmd_fetch_missing_env_var_no_leak(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as ei:
         fetch.cmd_fetch(_args())
     assert "CALL_LOOP_POC_BASE_URL" in str(ei.value) and SECRET not in str(ei.value)
+
+
+def test_cmd_fetch_max_calls_newest_first(tmp_path, monkeypatch, capsys):
+    got = _wire(tmp_path, monkeypatch, "+19998887777\n")
+    fetch.cmd_fetch(_args(include_unmatched=True, max_calls=1))
+    assert [g[0] for g in got] == ["a"]  # first row as returned by fetch_rows
+    assert "excluded" not in capsys.readouterr().out

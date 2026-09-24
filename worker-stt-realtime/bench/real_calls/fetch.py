@@ -47,24 +47,58 @@ def _channels(path):
     return int(out.strip())
 
 
+def _duration(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                          "-of", "csv=p=0", path], capture_output=True, text=True, check=True).stdout
+    return float(out.strip())
+
+
+TRUNCATION_RATIO = 0.7  # downloaded audio shorter than this fraction of the logged duration = truncated
+
+
+def _is_fresh(dest, caller_channel):
+    """A cached wav is reusable only if its sidecar records the same channel; no sidecar = stale."""
+    if not os.path.exists(dest):
+        return False
+    try:
+        with open(dest + ".meta") as f:
+            return json.load(f).get("caller_channel") == caller_channel
+    except (OSError, ValueError):
+        return False
+
+
 def download_call(row, base_url, secret, raw_dir, caller_channel=0):
     """Fetch via calldesktech's recording proxy; keep one channel as mono 16 kHz PCM_16."""
     dest = os.path.join(raw_dir, row["id"] + ".wav")
-    if os.path.exists(dest):
+    meta = dest + ".meta"
+    if _is_fresh(dest, caller_channel):
         return dest
+    for p in (dest, meta):
+        if os.path.exists(p):
+            os.remove(p)
     src, part = dest + ".src.wav", dest + ".part.wav"
     try:
         with requests.get(base_url.rstrip("/") + "/recording-audio",
                           params={"url": recording_wav_url(row["recording_url"])},
                           headers={"Authorization": f"Bearer {secret}"}, stream=True, timeout=120) as r:
             r.raise_for_status()
+            written = 0
             with open(src, "wb") as f:
                 for chunk in r.iter_content(1 << 16):
                     f.write(chunk)
+                    written += len(chunk)
+            cl = r.headers.get("Content-Length")
+            if cl and not r.headers.get("Content-Encoding") and int(cl) != written:
+                raise RuntimeError("downloaded audio incomplete (Content-Length mismatch)")
+        logged = row.get("duration_seconds")
+        if logged and _duration(src) < TRUNCATION_RATIO * float(logged):
+            raise RuntimeError("downloaded audio much shorter than logged duration")
         af = f"pan=mono|c0=c{caller_channel}" if _channels(src) >= 2 else "anull"
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af", af, "-ar", "16000",
                         "-c:a", "pcm_s16le", part], check=True)
         os.replace(part, dest)
+        with open(meta, "w") as f:
+            json.dump({"caller_channel": caller_channel, "sr": 16000, "source": "proxy-wav"}, f)
     finally:
         for p in (src, part):
             if os.path.exists(p):
@@ -103,9 +137,13 @@ def cmd_fetch(a):
         if not os.path.exists(own_path):
             raise SystemExit("data/own_numbers.txt is required (your own phone numbers, one per line)")
         picked = select_own_calls(rows, read_own_numbers(own_path), limit=a.max_calls)
-    print(f"downloading {len(picked)} calls ({len(rows) - len(picked)} excluded)")
+    print(f"downloading {len(picked)} calls")
     raw_dir = os.path.join(DATA, "real_raw")
     os.makedirs(raw_dir, exist_ok=True)
+    stale = sum(1 for r in picked if os.path.exists(os.path.join(raw_dir, r["id"] + ".wav"))
+                and not _is_fresh(os.path.join(raw_dir, r["id"] + ".wav"), a.caller_channel))
+    if stale:
+        print(f"refetching {stale} files (channel/format unknown or different)")
     for r in picked:
         download_call(r, base_url, secret, raw_dir, caller_channel=a.caller_channel)
     with open(os.path.join(raw_dir, "calls.json"), "w") as f:
