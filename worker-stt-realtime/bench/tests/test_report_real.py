@@ -224,3 +224,58 @@ def test_cli_unknown_cloud_engine_clear_error(tmp_path):
     p, out = _run_cli(tmp_path, [_s("nemo-480", 0.1, 0.9, 0.05), _s("dg-nova", 0.1, 0.9, 0.2)])
     assert p.returncode == 1 and "Traceback" not in p.stderr and "dg-nova" in p.stderr
     assert not out.exists()
+
+
+# ---- task 3: public sets (--tag/--set/--title) ----
+def _pub(engine, set_name, wer=0.1):
+    s = _s(engine, wer, None, 0.05, kt=0)
+    s.update({"set": set_name, "keyterm_total": 0})
+    s.pop("only_verified")
+    return s
+
+
+def _pub_dir(tmp_path):
+    d = tmp_path / "pr"
+    d.mkdir()
+    for st in ("pub_fleurs_tel", "pub_other"):
+        for e in ("nemo-480", "dg-flux"):
+            (d / f"pub__{e}__{st}.json").write_text(json.dumps({"summary": _pub(e, st)}))
+    return d
+
+
+def _run_pub(tmp_path, *extra):
+    d = _pub_dir(tmp_path)
+    out = tmp_path / "o.md"
+    p = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "report_real.py"),
+                        "--results", str(d), "--out", str(out), *extra], capture_output=True, text=True)
+    return p, out
+
+
+def test_load_results_set_filter(tmp_path):
+    d = _pub_dir(tmp_path)
+    assert len(load_results(str(d), tag="pub")) == 4
+    got = load_results(str(d), tag="pub", set_name="pub_fleurs_tel")
+    assert len(got) == 2 and {s["set"] for s in got} == {"pub_fleurs_tel"}
+
+
+def test_cli_pub_set_report(tmp_path):
+    p, out = _run_pub(tmp_path, "--tag", "pub", "--set", "pub_fleurs_tel", "--title", "FLEURS tel eval")
+    assert p.returncode == 0, p.stderr
+    t = out.read_text()
+    assert t.startswith("# FLEURS tel eval")
+    assert "unverified draft references" not in t
+    assert "Keyterm check not applicable to public sets" in t and "INSUFFICIENT" in t
+    assert "ship-worthy" not in t and "not yet" not in t
+    assert t.count("| nemo-480 |") == 1
+
+
+def test_cli_no_match_for_set_or_tag(tmp_path):
+    p, out = _run_pub(tmp_path, "--tag", "pub", "--set", "pub_missing")
+    assert p.returncode != 0 and "Traceback" not in p.stderr and "no results" in p.stderr.lower()
+    assert not out.exists()
+
+
+def test_unverified_warning_still_applies_to_real_with_title(tmp_path):
+    p, out = _run_cli(tmp_path, [_s("nemo-480", 0.1, 0.9, 0.05, ov=False), _s("dg-flux", 0.1, 0.9, 0.2)])
+    assert "unverified draft references" in out.read_text()
+    assert out.read_text().startswith("# Real-call STT evaluation (Phase 1)")

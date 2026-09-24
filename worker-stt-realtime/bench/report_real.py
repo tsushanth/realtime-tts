@@ -21,12 +21,18 @@ def _ok(x):
     return isinstance(x, (int, float)) and not math.isnan(x)
 
 
-def load_results(results_dir, tag="real"):
+def load_results(results_dir, tag="real", set_name=None):
     out = []
     for f in sorted(glob.glob(os.path.join(results_dir, f"{tag}__*.json"))):
         with open(f) as fh:
-            out.append(json.load(fh)["summary"])
+            summ = json.load(fh)["summary"]
+        if set_name is None or summ.get("set") == set_name:
+            out.append(summ)
     return out
+
+
+def is_public(s):
+    return str(s.get("set", "")).startswith("pub_")
 
 
 def price_per_hour(s):
@@ -146,17 +152,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "results"))
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "REAL_CALL_EVAL.md"))
+    ap.add_argument("--tag", default="real")
+    ap.add_argument("--set", dest="set_name", default=None)
+    ap.add_argument("--title", default=None)
     a = ap.parse_args()
-    summ = load_results(a.results)
+    summ = load_results(a.results, a.tag, a.set_name)
     if not summ:
-        sys.exit(f"no results found: expected {os.path.join(a.results, 'real__*.json')} (run rtbench.py --set real first)")
+        sys.exit(f"no results found: expected {os.path.join(a.results, a.tag + '__*.json')}"
+                 + (f" with set {a.set_name!r}" if a.set_name else "") + " (run rtbench.py first)")
+    public = all(is_public(s) for s in summ)
     try:
         g = gate(summ)
         table = render_table(summ)
     except ValueError as e:
         sys.exit(f"error: {e}")
     warns = [f"**WARNING: {s['engine']} was scored on unverified draft references**" for s in summ if is_unverified(s)]
-    body = ["# Real-call STT evaluation (Phase 1)", "",
+    body = [f"# {a.title or 'Real-call STT evaluation (Phase 1)'}", "",
             "Verified utterances only; paced replay as in `bench/rtbench.py`; local engines measured on the dev machine's CPU (a proxy, not Fly).",
             "", *([w for w in warns] + [""] if warns else []), table, "", "## Decision gate", ""]
     if "error" in g:
@@ -168,7 +179,10 @@ def main():
             body += [f"- {g['advisory']}", ""]
         for x in g["locals"]:
             body += [f"### {x['engine']}: {x['verdict']}"] + [f"- {v}: {k}" for k, v in x["checks"].items()] + [""]
-        if g["pass"]:
+        if public:
+            res = ("Keyterm check not applicable to public sets (no keyterms); WER table is the result. "
+                   "Gate verdict: INSUFFICIENT")
+        elif g["pass"]:
             res = "ship-worthy, proceed to Phase 2 with " + g["recommended"]
         elif g["pass"] is None:
             res = "INSUFFICIENT DATA, no local engine passed and some checks could not be evaluated; collect more data before deciding"
