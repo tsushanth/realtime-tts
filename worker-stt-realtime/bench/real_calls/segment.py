@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import tempfile
 
 import soundfile as sf
 
@@ -26,9 +27,10 @@ def _runs(flags, frame_s):
 
 def split_speech_ranges(flags, frame_s, min_silence_s=0.6, min_seg_s=1.5, max_seg_s=15.0, pad_s=0.25):
     total = len(flags) * frame_s
+    cap = max_seg_s - 2 * pad_s  # so padded output never exceeds max_seg_s
     groups = []
     for r in _runs(flags, frame_s):
-        if groups and r[0] - groups[-1][-1][1] < min_silence_s:
+        if groups and r[0] - groups[-1][-1][1] < min_silence_s - 1e-9:
             groups[-1].append(r)
         else:
             groups.append([r])
@@ -36,15 +38,15 @@ def split_speech_ranges(flags, frame_s, min_silence_s=0.6, min_seg_s=1.5, max_se
     for g in groups:
         cur = None
         for s, e in g:
-            while e - s > max_seg_s:
+            while e - s > cap:
                 if cur:
                     segs.append(cur)
                     cur = None
-                segs.append((s, s + max_seg_s))
-                s += max_seg_s
+                segs.append((s, s + cap))
+                s += cap
             if cur is None:
                 cur = (s, e)
-            elif e - cur[0] > max_seg_s:
+            elif e - cur[0] > cap:
                 segs.append(cur)
                 cur = (s, e)
             else:
@@ -81,7 +83,13 @@ def draft_refs(paths, model_size="large-v3-turbo"):
         yield " ".join(s.text.strip() for s in segs).strip()
 
 
-def build_manifest(raw_dir, out_dir, model_size="large-v3-turbo", max_calls=None):
+def build_manifest(raw_dir, out_dir, model_size="large-v3-turbo", max_calls=None, force=False):
+    manifest_path = os.path.join(out_dir, "manifest.json")
+    if os.path.exists(manifest_path) and not force:
+        with open(manifest_path) as f:
+            n_ver = sum(1 for e in json.load(f) if e.get("verified"))
+        if n_ver:
+            raise RuntimeError(f"{manifest_path} has {n_ver} verified entries that a rebuild would overwrite; pass force=True (--force) to proceed")
     os.makedirs(out_dir, exist_ok=True)
     wavs = sorted(f for f in os.listdir(raw_dir) if f.endswith(".wav"))[:max_calls]
     entries = []
@@ -102,8 +110,10 @@ def build_manifest(raw_dir, out_dir, model_size="large-v3-turbo", max_calls=None
             kept.append(entry)
         else:
             os.remove(os.path.join(out_dir, entry["id"] + ".wav"))
-    with open(os.path.join(out_dir, "manifest.json"), "w") as f:
+    fd, tmp = tempfile.mkstemp(dir=out_dir, suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
         json.dump(kept, f, indent=1)
+    os.replace(tmp, manifest_path)
     return kept
 
 
@@ -113,8 +123,9 @@ def main():
     ap.add_argument("--out", default=os.path.join(DATA, "real"))
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--max-calls", type=int, default=None)
+    ap.add_argument("--force", action="store_true", help="overwrite a manifest containing verified entries")
     a = ap.parse_args()
-    kept = build_manifest(a.raw, a.out, a.model, a.max_calls)
+    kept = build_manifest(a.raw, a.out, a.model, a.max_calls, a.force)
     print(f"{len(kept)} utterances in {len({e['call_id'] for e in kept})} calls -> {a.out}")
 
 
