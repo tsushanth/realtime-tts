@@ -2,12 +2,20 @@
 
   pub_fleurs      FLEURS en-US test, clean 16 kHz
   pub_fleurs_tel  same utterances through telephony.to_telephone
-  pub_earnings    Earnings-22 (chunked) real call-like audio
+  pub_earnings    Earnings-22 (chunked) call audio, sampled across shards / row groups / calls
+
+Every manifest entry carries source="public" (second key of the engines_cloud pub_* gate).
+Sets are staged in a temp directory next to the target and renamed into place only when complete.
+
+Caveat: Earnings-22 references are raw text with disfluencies ("Uh", "um") and digit/word mismatches, so WER on it
+is not comparable to FLEURS (whose references are normalised lowercase without punctuation).
 """
 import io
 import json
+import math
 import os
 import random
+import shutil
 import tarfile
 
 import numpy as np
@@ -19,14 +27,32 @@ from telephony import to_telephone
 SR = 16000
 
 
-def _write_set(out_root, name, ids, refs, audios):
-    d = os.path.join(out_root, name)
-    os.makedirs(d, exist_ok=True)
-    for i, x in zip(ids, audios):
-        sf.write(os.path.join(d, i + ".wav"), x, SR, subtype="PCM_16")
-    with open(os.path.join(d, "manifest.json"), "w") as f:
-        json.dump([{"id": i, "ref": r} for i, r in zip(ids, refs)], f, indent=1)
-    return {"set": name, "n": len(ids), "hours": sum(len(x) for x in audios) / SR / 3600}
+def _stage_set(out_root, name, ids, refs, audios, extra=None):
+    """Write the set into a temp dir under out_root; returns (tmp_dir, info). Caller publishes or discards."""
+    os.makedirs(out_root, exist_ok=True)
+    tmp = os.path.join(out_root, f".{name}.tmp-{os.getpid()}")
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    try:
+        for i, x in zip(ids, audios):
+            sf.write(os.path.join(tmp, i + ".wav"), x, SR, subtype="PCM_16")
+        man = [dict({"id": i, "ref": r, "source": "public"}, **(extra[k] if extra else {}))
+               for k, (i, r) in enumerate(zip(ids, refs))]
+        with open(os.path.join(tmp, "manifest.json"), "w") as f:
+            json.dump(man, f, indent=1)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return tmp, {"set": name, "n": len(ids), "hours": sum(len(x) for x in audios) / SR / 3600}
+
+
+def _publish(out_root, name, tmp):
+    dst = os.path.join(out_root, name)
+    old = os.path.join(out_root, f".{name}.old-{os.getpid()}")
+    if os.path.exists(dst):
+        os.rename(dst, old)
+    os.rename(tmp, dst)
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def _to_mono16(x, sr):
@@ -37,6 +63,10 @@ def _to_mono16(x, sr):
     return x.astype("float32")
 
 
+def _too_short(what, n, got):
+    return ValueError(f"{what}: requested {n} utterances but only {got} available (pass allow_short=True to accept)")
+
+
 def _default_fleurs_files():
     from huggingface_hub import hf_hub_download
     kw = dict(repo_id="google/fleurs", repo_type="dataset")
@@ -44,15 +74,18 @@ def _default_fleurs_files():
             hf_hub_download(filename="data/en_us/test.tsv", **kw))
 
 
-def build_fleurs(out_root, n=50, seed=0, tar_path=None, tsv_path=None):
+def build_fleurs(out_root, n=50, seed=0, tar_path=None, tsv_path=None, allow_short=False):
     if tar_path is None or tsv_path is None:
         tar_path, tsv_path = _default_fleurs_files()
-    rows = []
+    by_text = {}   # dedupe by transcription: same sentence read by several speakers must not fill the sample
     with open(tsv_path, encoding="utf-8") as f:
         for ln in f:
             c = ln.rstrip("\n").split("\t")
             if len(c) >= 6 and 3 * SR <= int(c[5]) <= 15 * SR and c[3].strip():
-                rows.append((c[1], c[3].strip()))
+                by_text.setdefault(c[3].strip(), c[1])
+    rows = [(fn, t) for t, fn in by_text.items()]
+    if len(rows) < n and not allow_short:
+        raise _too_short("fleurs", n, len(rows))
     picked = random.Random(seed).sample(rows, min(n, len(rows)))
     want = {"test/" + fn: k for k, (fn, _) in enumerate(picked)}
     audio = {}
@@ -63,42 +96,74 @@ def build_fleurs(out_root, n=50, seed=0, tar_path=None, tsv_path=None):
                 audio[want[m.name]] = _to_mono16(x, sr)
                 if len(audio) == len(want):
                     break
+    if len(audio) < n and not allow_short:
+        raise _too_short("fleurs (tar members found)", n, len(audio))
     ks = sorted(audio)
     ids = [f"fleurs_{k:03d}" for k in ks]
     refs = [picked[k][1] for k in ks]
-    clean = [audio[k] for k in ks]
-    tel = [to_telephone(audio[k], seed=k) for k in ks]
-    return {"pub_fleurs": _write_set(out_root, "pub_fleurs", ids, refs, clean),
-            "pub_fleurs_tel": _write_set(out_root, "pub_fleurs_tel", ids, refs, tel)}
+    staged = []
+    try:
+        clean_tmp, ci = _stage_set(out_root, "pub_fleurs", ids, refs, [audio[k] for k in ks])
+        staged.append(clean_tmp)
+        tel_tmp, ti = _stage_set(out_root, "pub_fleurs_tel", ids, refs, [to_telephone(audio[k], seed=k) for k in ks])
+        staged.append(tel_tmp)
+    except BaseException:
+        for t in staged:
+            shutil.rmtree(t, ignore_errors=True)
+        raise
+    _publish(out_root, "pub_fleurs", clean_tmp)
+    _publish(out_root, "pub_fleurs_tel", tel_tmp)
+    return {"pub_fleurs": ci, "pub_fleurs_tel": ti}
 
 
 def _default_earnings_source():
+    """Shard handles (zero-arg callables that open lazily); nothing is downloaded here."""
     from huggingface_hub import HfFileSystem
     fs = HfFileSystem()
-    for p in sorted(fs.glob("datasets/distil-whisper/earnings22/chunked/test-*.parquet")):
-        yield fs.open(p, "rb")
+    return [(lambda p=p: fs.open(p, "rb"))
+            for p in sorted(fs.glob("datasets/distil-whisper/earnings22/chunked/test-*.parquet"))]
 
 
-def build_earnings(out_root, n=50, seed=0, min_s=3.0, max_s=15.0, parquet_source=None):
-    """Takes the first n valid utterances in shard/row order (deterministic; seed is accepted for API symmetry)."""
+def build_earnings(out_root, n=50, seed=0, min_s=3.0, max_s=15.0, parquet_source=None, allow_short=False):
+    """Sample across calls: `seed` picks up to 25 shards, ONE random row group per shard (a row group is one
+    call), and up to ceil(n / n_shards) random valid rows from it. parquet_source() returns shard paths, file
+    objects, or zero-arg callables returning either; each shard is opened lazily and only one row group is read."""
     import pyarrow.parquet as pq
-    src = (parquet_source or _default_earnings_source)()
-    ids, refs, audios = [], [], []
-    for f in src:
-        pf = pq.ParquetFile(f)
-        for g in range(pf.num_row_groups):   # one row group at a time; never the whole shard
-            t = pf.read_row_group(g, columns=["audio", "transcription"]).to_pylist()
-            for r in t:
-                ref = (r["transcription"] or "").strip()
-                if not ref:
-                    continue
-                x, sr = sf.read(io.BytesIO(r["audio"]["bytes"]), dtype="float32")
-                x = _to_mono16(x, sr)
-                if not (min_s <= len(x) / SR <= max_s):
-                    continue
-                ids.append(f"earn_{len(ids):03d}")
-                refs.append(ref)
-                audios.append(x)
-                if len(ids) >= n:
-                    return _write_set(out_root, "pub_earnings", ids, refs, audios)
-    return _write_set(out_root, "pub_earnings", ids, refs, audios)
+    rng = random.Random(seed)
+    shards = list((parquet_source or _default_earnings_source)())
+    n_shards = min(len(shards), 25)
+    picked = rng.sample(shards, n_shards)
+    per_group = math.ceil(n / n_shards) if n_shards else 0
+    ids, refs, audios, extra = [], [], [], []
+    for sh in picked:
+        if len(ids) >= n:
+            break
+        pf = pq.ParquetFile(sh() if callable(sh) else sh)
+        names = pf.schema_arrow.names
+        cols = [c for c in ("audio", "transcription", "file_id") if c in names]
+        tbl = pf.read_row_group(rng.randrange(pf.num_row_groups), columns=cols)
+        audio_col, text_col = tbl.column("audio"), tbl.column("transcription")
+        fid_col = tbl.column("file_id") if "file_id" in cols else None
+        got = 0
+        for r in rng.sample(range(tbl.num_rows), tbl.num_rows):   # random order, decoded lazily
+            if got >= per_group or len(ids) >= n:
+                break
+            ref = (text_col[r].as_py() or "").strip()
+            if not ref:
+                continue
+            x, sr = sf.read(io.BytesIO(audio_col[r].as_py()["bytes"]), dtype="float32")
+            x = _to_mono16(x, sr)
+            if not (min_s <= len(x) / SR <= max_s):
+                continue
+            ids.append(f"earn_{len(ids):03d}")
+            refs.append(ref)
+            audios.append(x)
+            extra.append({"file_id": fid_col[r].as_py()} if fid_col is not None else {})
+            got += 1
+    if len(ids) < n and not allow_short:
+        raise _too_short("earnings", n, len(ids))
+    tmp, info = _stage_set(out_root, "pub_earnings", ids, refs, audios, extra)
+    _publish(out_root, "pub_earnings", tmp)
+    info["distinct_file_ids"] = len({e["file_id"] for e in extra if "file_id" in e})
+    print(f"pub_earnings: {info['n']} utterances from {info['distinct_file_ids']} distinct file_ids")
+    return info

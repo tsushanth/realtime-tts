@@ -45,7 +45,7 @@ def load(set_name, n, seed=0, verified_only=False):
         x = x + rng.normal(0, sigma, len(x)).astype("float32") if sigma else x
         tail = rng.normal(0, sigma if sigma else 1e-4, int(TAIL_S * 16000)).astype("float32")
         lead = rng.normal(0, sigma if sigma else 1e-4, int(LEAD_S * 16000)).astype("float32")
-        out.append({"id": m["id"], "ref": m["ref"], "call_id": m.get("call_id"), "keyterms": m.get("keyterms", []),
+        out.append({"id": m["id"], "ref": m["ref"], "call_id": m.get("call_id"), "source": m.get("source"), "keyterms": m.get("keyterms", []),
                     "dur": (len(x) + len(lead)) / 16000, "audio": np.concatenate([lead, x, tail]).astype("float32")})
     return out
 

@@ -1,5 +1,9 @@
 """Deepgram Flux and ElevenLabs Scribe v2 Realtime behind the bench stream interface.
-Third-party engines only ever see calls listed in a confirmed-calls file (assert_allowed)."""
+Third-party engines only ever see calls listed in a confirmed-calls file (assert_allowed).
+
+Public sets: the fixed names in PUBLIC_SETS, or `pub_<suffix>` (suffix non-empty, not starting with "real") whose
+every clip carries source == "public" and no call_id (two-key rule). This guards against ACCIDENTS (a real-call
+set mislabelled or copied under a pub_ name), not against someone hand-writing manifests to defeat it."""
 import base64
 import json
 import os
@@ -24,18 +28,27 @@ def _confirmed_ids(path):
 
 
 def is_public_set(name):
-    return name in PUBLIC_SETS or name.startswith("pub_")
+    if name in PUBLIC_SETS:
+        return True
+    suffix = name[4:] if name.startswith("pub_") else ""
+    return bool(suffix) and not suffix.lower().startswith("real")
 
 
 def assert_allowed(clips, confirmed_path, set_name):
     """Fail closed: outside PUBLIC_SETS every clip needs a call_id exactly listed in confirmed_path."""
+    if set_name not in PUBLIC_SETS and is_public_set(set_name):
+        bad_pub = sum(1 for c in clips if c.get("source") != "public" or c.get("call_id"))
+        if bad_pub:
+            raise PermissionError(f"refusing third-party STT: {bad_pub} clip(s) in pub_* set {set_name!r} violate the "
+                                  f"two-key rule (every clip needs source == 'public' and no call_id)")
+        return
     ok = _confirmed_ids(confirmed_path)
-    public = is_public_set(set_name)
+    public = set_name in PUBLIC_SETS
     missing = sum(1 for c in clips if not c.get("call_id") and not public)
     bad = sorted({c["call_id"] for c in clips if c.get("call_id") and c["call_id"] not in ok})
     if missing:
         raise PermissionError(f"refusing third-party STT: {missing} clip(s) in set {set_name!r} have no call_id "
-                              f"(only sets {sorted(PUBLIC_SETS)} and pub_* may omit it)")
+                              f"(only sets {sorted(PUBLIC_SETS)} may omit it)")
     if bad:
         raise PermissionError(f"refusing third-party STT: {len(bad)} call id(s) not in {confirmed_path}: {bad[:5]}")
 

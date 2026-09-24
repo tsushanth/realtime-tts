@@ -48,7 +48,7 @@ def _hf_energy(x):
 def test_build_fleurs(tmp_path):
     tar, tsv = _fake_fleurs(tmp_path)
     out = tmp_path / "out"
-    info = public_sets.build_fleurs(str(out), n=10, seed=0, tar_path=tar, tsv_path=tsv)
+    info = public_sets.build_fleurs(str(out), n=4, seed=0, tar_path=tar, tsv_path=tsv)
     assert set(info) == {"pub_fleurs", "pub_fleurs_tel"} and info["pub_fleurs"]["n"] == 4
     clean = json.load(open(out / "pub_fleurs" / "manifest.json"))
     tel = json.load(open(out / "pub_fleurs_tel" / "manifest.json"))
@@ -95,43 +95,161 @@ def _fake_parquet(tmp_path):
         "transcription": [t for _, t in rows],
     })
     p = tmp_path / "e.parquet"
-    pq.write_table(tbl, p, row_group_size=2)
+    pq.write_table(tbl, p, row_group_size=5)
     return str(p)
 
 
-def test_build_earnings(tmp_path):
+def _multi_shards(tmp_path, n_shards=4, groups=3, per=6):
+    paths = []
+    for s in range(n_shards):
+        rows, fids = [], []
+        for g in range(groups):
+            for r in range(per):
+                rows.append((_enc(_noise(16000, 4.0, s * 100 + g * 10 + r), 16000, "WAV"), f"s{s} g{g} r{r}"))
+                fids.append(f"call_{s}_{g}")
+        tbl = pa.table({"audio": pa.array([{"bytes": b, "path": None} for b, _ in rows]),
+                        "transcription": [t for _, t in rows], "file_id": fids})
+        p = tmp_path / f"shard{s}.parquet"
+        pq.write_table(tbl, p, row_group_size=per)
+        paths.append(str(p))
+    return paths
+
+
+def test_build_earnings_filters_and_resamples(tmp_path):
     src = _fake_parquet(tmp_path)
     out = tmp_path / "out"
-    info = public_sets.build_earnings(str(out), n=10, parquet_source=lambda: [src])
+    info = public_sets.build_earnings(str(out), n=3, parquet_source=lambda: [src])
     man = json.load(open(out / "pub_earnings" / "manifest.json"))
-    assert [m["ref"] for m in man] == ["good one", "resampled row", "extra"]
-    assert info["set"] == "pub_earnings" and info["n"] == 3 and info["hours"] > 0
+    assert sorted(m["ref"] for m in man) == ["extra", "good one", "resampled row"]   # short + blank rows dropped
+    assert info["set"] == "pub_earnings" and info["n"] == len(man) and info["hours"] > 0
     for m in man:
         i = sf.info(str(out / "pub_earnings" / (m["id"] + ".wav")))
         assert (i.samplerate, i.channels, i.subtype) == (16000, 1, "PCM_16")
-    assert abs(sf.info(str(out / "pub_earnings" / (man[1]["id"] + ".wav"))).duration - 6.0) < 0.01
+        assert m["source"] == "public"
+    r = [m for m in man if m["ref"] == "resampled row"]
+    assert r
+    if True:
+        assert abs(sf.info(str(out / "pub_earnings" / (r[0]["id"] + ".wav"))).duration - 6.0) < 0.01
 
 
-def test_build_earnings_stops_early(tmp_path):
+def test_build_earnings_spans_calls_and_is_seeded(tmp_path):
+    shards = _multi_shards(tmp_path)
+    a, a2, b = tmp_path / "a", tmp_path / "a2", tmp_path / "b"
+    public_sets.build_earnings(str(a), n=8, seed=1, parquet_source=lambda: list(shards))
+    public_sets.build_earnings(str(a2), n=8, seed=1, parquet_source=lambda: list(shards))
+    public_sets.build_earnings(str(b), n=8, seed=2, parquet_source=lambda: list(shards))
+    ma = json.load(open(a / "pub_earnings" / "manifest.json"))
+    assert len(ma) == 8 and len({m["file_id"] for m in ma}) >= 3
+    strip = lambda m: [(x["id"], x["ref"]) for x in m]   # noqa: E731
+    assert strip(ma) == strip(json.load(open(a2 / "pub_earnings" / "manifest.json")))
+    assert strip(ma) != strip(json.load(open(b / "pub_earnings" / "manifest.json")))
+
+
+def test_build_earnings_short_raises(tmp_path):
     src = _fake_parquet(tmp_path)
-    out = tmp_path / "out"
-    public_sets.build_earnings(str(out), n=1, parquet_source=lambda: [src])
-    assert len(json.load(open(out / "pub_earnings" / "manifest.json"))) == 1
+    with pytest.raises(ValueError, match="requested 10.*available"):
+        public_sets.build_earnings(str(tmp_path / "o"), n=10, parquet_source=lambda: [src])
+    assert not (tmp_path / "o" / "pub_earnings").exists()
+
+
+def test_build_fleurs_short_raises(tmp_path):
+    tar, tsv = _fake_fleurs(tmp_path)
+    with pytest.raises(ValueError, match="requested 10.*available 4"):
+        public_sets.build_fleurs(str(tmp_path / "o"), n=10, tar_path=tar, tsv_path=tsv, allow_short=False)
+    assert not (tmp_path / "o" / "pub_fleurs").exists()
+
+
+def test_fleurs_dedupes_transcriptions(tmp_path):
+    tar, tsv = _fake_fleurs(tmp_path)
+    lines = open(tsv).read().splitlines()
+    # make rows 1,2,3 share one transcription -> only 2 unique eligible texts remain (rows 1 and 5)
+    for k in (1, 2, 3):
+        c = lines[k].split("\t")
+        c[3] = "same text"
+        lines[k] = "\t".join(c)
+    open(tsv, "w").write("\n".join(lines) + "\n")
+    public_sets.build_fleurs(str(tmp_path / "o"), n=10, tar_path=tar, tsv_path=tsv, allow_short=True)
+    man = json.load(open(tmp_path / "o" / "pub_fleurs" / "manifest.json"))
+    assert sorted(m["ref"] for m in man) == ["same text", "text number 5"]
+
+
+def test_fleurs_atomic_when_tel_fails(tmp_path, monkeypatch):
+    tar, tsv = _fake_fleurs(tmp_path)
+    out = tmp_path / "o"
+    calls = {"n": 0}
+    real = public_sets.to_telephone
+
+    def flaky(x, seed=0, **k):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("boom")
+        return real(x, seed=seed, **k)
+    monkeypatch.setattr(public_sets, "to_telephone", flaky)
+    with pytest.raises(RuntimeError):
+        public_sets.build_fleurs(str(out), n=4, tar_path=tar, tsv_path=tsv)
+    assert os.listdir(out) == [] if out.exists() else True
+
+
+def test_rebuild_removes_stale_files(tmp_path):
+    tar, tsv = _fake_fleurs(tmp_path)
+    out = tmp_path / "o"
+    public_sets.build_fleurs(str(out), n=4, seed=0, tar_path=tar, tsv_path=tsv)
+    stale = out / "pub_fleurs" / "stale.wav"
+    stale.write_bytes(b"x")
+    public_sets.build_fleurs(str(out), n=2, seed=0, tar_path=tar, tsv_path=tsv)
+    assert not stale.exists()
+    assert len(json.load(open(out / "pub_fleurs" / "manifest.json"))) == 2
+    assert sorted(os.listdir(out)) == ["pub_fleurs", "pub_fleurs_tel"]
 
 
 def test_is_public_set():
-    assert ec.is_public_set("pub_x") and ec.is_public_set("clean") and ec.is_public_set("tel")
-    assert not ec.is_public_set("real") and not ec.is_public_set("weird") and not ec.is_public_set("xpub_")
+    for ok in ("pub_x", "clean", "tel", "call", "pub_fleurs_tel"):
+        assert ec.is_public_set(ok)
+    for bad in ("real", "weird", "xpub_", "pub_", "pub_real", "pub_real_x", "pub_Real"):
+        assert not ec.is_public_set(bad)
 
 
-def test_assert_allowed_pub(tmp_path):
+GOOD = {"call_id": None, "source": "public", "ref": "SECRET WORDS"}
+
+
+def test_assert_allowed_pub_two_key(tmp_path):
     c = tmp_path / "c.txt"
     c.write_text("a\n")
-    ec.assert_allowed([{"call_id": None}], str(c), "pub_fleurs_tel")
+    ec.assert_allowed([dict(GOOD)], str(c), "pub_fleurs_tel")
+    for clip in (dict(GOOD, call_id="a"), {"call_id": None}, dict(GOOD, source="real"), dict(GOOD, source=None)):
+        with pytest.raises(PermissionError, match="pub_") as ei:
+            ec.assert_allowed([clip], str(c), "pub_fleurs_tel")
+        assert "SECRET" not in str(ei.value)
+    for name in ("pub_", "pub_real", "pub_real_x", "real", "weird"):
+        with pytest.raises(PermissionError):
+            ec.assert_allowed([dict(GOOD)], str(c), name)
+    ec.assert_allowed([{"call_id": None}], str(c), "tel")   # old behaviour intact
+
+
+def test_main_refuses_pub_set_without_source(tmp_path, monkeypatch):
+    import engines
+    d = tmp_path / "pub_x"
+    d.mkdir()
+    sf.write(str(d / "a.wav"), np.zeros(16000, dtype="float32"), 16000, subtype="PCM_16")
+    (d / "manifest.json").write_text(json.dumps([{"id": "a", "ref": "hi"}]))
+    monkeypatch.setattr(rtbench, "DATA", str(tmp_path))
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+
+    def boom(*a, **k):
+        raise AssertionError("engines.build called before the gate")
+    monkeypatch.setattr(engines, "build", boom)
+    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "dg-flux", "--set", "pub_x", "--out", str(tmp_path / "o.json")])
     with pytest.raises(PermissionError):
-        ec.assert_allowed([{"call_id": None}], str(c), "real")
-    with pytest.raises(PermissionError):
-        ec.assert_allowed([{"call_id": None}], str(c), "weird")
+        rtbench.main()
+
+
+def test_load_passes_source_through(tmp_path, monkeypatch):
+    d = tmp_path / "pub_x"
+    d.mkdir()
+    sf.write(str(d / "a.wav"), np.zeros(1600, dtype="float32"), 16000, subtype="PCM_16")
+    (d / "manifest.json").write_text(json.dumps([{"id": "a", "ref": "hi", "source": "public"}]))
+    monkeypatch.setattr(rtbench, "DATA", str(tmp_path))
+    assert rtbench.load("pub_x", 1)[0]["source"] == "public"
 
 
 def test_load_pub_set_no_noise(tmp_path, monkeypatch):
