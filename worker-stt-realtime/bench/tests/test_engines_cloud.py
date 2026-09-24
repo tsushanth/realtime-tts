@@ -478,10 +478,6 @@ def test_final_with_turn_already_done_does_not_wait(monkeypatch):
         assert time.time() - t0 < 1.0
 
 
-def _dg_stream_with_partial(handler, monkeypatch, flush=5.0):
-    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", flush)
-
-
 def test_deepgram_clean_close_after_closestream_returns_partial(monkeypatch):
     monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
 
@@ -558,3 +554,63 @@ def test_deepgram_clean_close_before_closestream_still_an_error():
                 st.final()
         finally:
             st.close()
+
+
+def test_deepgram_clean_close_observed_before_final_raises():
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+                ws.close(1000)     # normal close BEFORE any CloseStream
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert st.closed.wait(2)     # reader has observed the close; only then call final()
+            with pytest.raises(RuntimeError, match="connection lost"):
+                st.final()
+        finally:
+            st.close()
+
+
+def test_deepgram_send_failure_in_final_records_error_and_flag_stays_unset():
+    class _DeadWS:
+        def send(self, data):
+            raise OSError("SECRET socket text")
+
+        def close(self):
+            pass
+
+    with _serve(lambda ws: [None for _ in ws]) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        real = st.ws
+        st.ws = _DeadWS()
+        try:
+            with pytest.raises(RuntimeError, match="connection lost: OSError") as ei:
+                st.final()
+            assert "SECRET" not in str(ei.value)
+            assert st._flush_sent is False
+        finally:
+            real.close()
+
+
+def test_deepgram_going_away_1001_after_closestream_returns_partial(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+            else:
+                ws.close(1001)
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        t0 = time.time()
+        assert st.final() == "par"
+        assert time.time() - t0 < 2.0

@@ -169,11 +169,15 @@ class _DGStream(_Stream):
         try:
             self._raise_if_error()
             self._begin_final()
-            self._flush_sent = True     # before the send, so a fast server close is seen as post-flush
             try:
                 self.ws.send(json.dumps({"type": "CloseStream"}))
-            except Exception:
-                pass
+            except Exception as e:
+                with self.lock:     # socket already gone: never a clean flush (type only, no message text)
+                    if self.error is None:
+                        self.error = f"connection lost: {type(e).__name__}"
+                raise RuntimeError(self.error) from None
+            with self.lock:     # only after a successful send; the reader checks it under the same lock
+                self._flush_sent = True
             # a drop before the flush EndOfTurn is a reader error; EndOfTurn then close is a normal finish
             self._wait(lambda: self._final_done or self.error, self.FLUSH_WAIT_S)
             self._raise_if_error()
