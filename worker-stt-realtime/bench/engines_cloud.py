@@ -3,6 +3,7 @@ Third-party engines only ever see calls listed in a confirmed-calls file (assert
 import base64
 import json
 import os
+import re
 import threading
 import time
 
@@ -45,6 +46,7 @@ class _Stream:
         self.committed, self.partial, self.eos, self.error = [], "", False, None
         self.closed, self.ready = threading.Event(), threading.Event()
         self._closing = False
+        self._final_started = self._final_done = False
         self.lock = threading.Lock()
         self.ws = connect(url, additional_headers=headers, open_timeout=10, max_size=None)
         threading.Thread(target=self._read, daemon=True).start()
@@ -65,7 +67,7 @@ class _Stream:
             lost = type(e).__name__     # type only: message text could carry secrets
         finally:
             with self.lock:
-                if not self._closing and self.error is None:
+                if not self._closing and not (self._final_started and self._final_done) and self.error is None:
                     self.error = f"connection lost: {lost}"
             self.closed.set()
             self.ready.set()
@@ -77,6 +79,17 @@ class _Stream:
             self.ws.close()
         except Exception:
             pass
+
+    def _begin_final(self):
+        """Mark final() started; a turn already complete counts as the flush being done."""
+        with self.lock:
+            self._final_started = True
+            self._final_done = self._turn_done()
+
+    @staticmethod
+    def _code(v):
+        """Machine code only: free-form server prose is never put into an exception."""
+        return v if isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", v) else "unknown"
 
     def _raise_if_error(self):
         with self.lock:
@@ -117,7 +130,7 @@ class _Stream:
 class _DGStream(_Stream):
     def handle(self, m):
         if m.get("type") == "Error":
-            self.error = f"deepgram error: {m.get('code') or ''} {m.get('description') or ''}".strip()
+            self.error = f"deepgram error: {self._code(m.get('code'))}"
             return
         if m.get("type") != "TurnInfo":
             return
@@ -130,24 +143,26 @@ class _DGStream(_Stream):
             if tr:
                 self.committed.append(tr)
             self.partial, self.eos = "", True
+            if self._final_started:
+                self._final_done = True
 
     def push(self, x):
         self._send(_pcm16(x))
 
     def final(self):
-        self._raise_if_error()
-        self._closing = True     # server closes after CloseStream; that is expected
         try:
-            self.ws.send(json.dumps({"type": "CloseStream"}))
-        except Exception:
-            pass
-        self._wait(lambda: self._turn_done() or self.error, 3.0)
-        text = self.text()
-        err = self.error
-        self.close()
-        if err:
-            raise RuntimeError(err)
-        return text
+            self._raise_if_error()
+            self._begin_final()
+            try:
+                self.ws.send(json.dumps({"type": "CloseStream"}))
+            except Exception:
+                pass
+            # a drop before the flush EndOfTurn is a reader error; EndOfTurn then close is a normal finish
+            self._wait(lambda: self._final_done or self.error, 3.0)
+            self._raise_if_error()
+            return self.text()
+        finally:
+            self.close()
 
 
 class _ELStream(_Stream):
@@ -165,8 +180,10 @@ class _ELStream(_Stream):
             if tx:
                 self.committed.append(tx)
             self.partial, self.eos = "", True
+            if self._final_started:
+                self._final_done = True
         elif "error" in t or t in self._ERRORS:
-            self.error = m.get("error") or t
+            self.error = self._code(t)
             self.ready.set()
 
     def _chunk(self, x, commit):
@@ -179,7 +196,8 @@ class _ELStream(_Stream):
     def final(self):
         try:
             self._raise_if_error()
-            done = lambda: self._turn_done() or self.error
+            self._begin_final()
+            done = lambda: self._final_done or self.error
             if not self._wait(done, self.AUTO_COMMIT_WAIT_S):
                 self._chunk(np.zeros(1600, dtype="float32"), True)
                 self._wait(done, 3.0)

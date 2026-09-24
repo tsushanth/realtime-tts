@@ -169,6 +169,8 @@ def main():
     a = ap.parse_args()
     import engines
     third = engines.is_third_party(a.engine)
+    if a.native_ms and third:
+        ap.error("--native-ms is only supported for local sherpa engines")
     if third:
         # gate BEFORE building the engine (no key needed, no audio can leave, if refused)
         import engines_cloud

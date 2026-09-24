@@ -90,7 +90,7 @@ def test_elevenlabs_auth_error_raises_on_new_stream():
         ws.close()
 
     with _serve(handler) as port:
-        with pytest.raises(RuntimeError, match="bad key"):
+        with pytest.raises(RuntimeError, match="auth_error"):
             ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
 
 
@@ -168,9 +168,9 @@ def test_elevenlabs_error_after_start_raises_on_push_and_final():
         try:
             st.push(np.zeros(640, dtype="float32"))
             assert _until(lambda: st.error is not None)
-            with pytest.raises(RuntimeError, match="out of credits"):
+            with pytest.raises(RuntimeError, match="quota_exceeded"):
                 st.push(np.zeros(640, dtype="float32"))
-            with pytest.raises(RuntimeError, match="out of credits"):
+            with pytest.raises(RuntimeError, match="quota_exceeded"):
                 st.final()
         finally:
             st.close()
@@ -187,7 +187,7 @@ def test_deepgram_error_message_raises_on_push_and_final():
         try:
             st.push(np.zeros(640, dtype="float32"))
             assert _until(lambda: st.error is not None)
-            with pytest.raises(RuntimeError, match="BAD_AUDIO bad frame"):
+            with pytest.raises(RuntimeError, match="deepgram error: BAD_AUDIO$"):
                 st.push(np.zeros(640, dtype="float32"))
             with pytest.raises(RuntimeError, match="BAD_AUDIO"):
                 st.final()
@@ -289,3 +289,131 @@ def test_rtbench_main_closes_warmup_and_clip_streams(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "fw-tiny-cpu", "--out", str(tmp_path / "o.json")])
     rtbench.main()
     assert len(eng.streams) == 3 and all(s.closes >= 1 for s in eng.streams)
+
+
+def test_error_text_never_includes_server_prose():
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "Error", "code": "BAD_AUDIO", "description": "SECRET prose"}))
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert _until(lambda: st.error is not None)
+            assert "SECRET" not in st.error and "prose" not in st.error
+        finally:
+            st.close()
+
+    def el(ws):
+        ws.send(json.dumps({"message_type": "auth_error", "error": "SECRET prose"}))
+        ws.close()
+
+    with _serve(el) as port:
+        with pytest.raises(RuntimeError) as ei:
+            ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        assert "SECRET" not in str(ei.value)
+
+
+def test_deepgram_drop_during_final_raises():
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+            else:
+                ws.close()     # CloseStream received: drop with no EndOfTurn
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="connection lost"):
+            st.final()
+
+
+def test_deepgram_endofturn_then_close_returns_text_repeatedly():
+    def handler(ws):
+        for msg in ws:
+            if not isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "EndOfTurn", "transcript": "done"}))
+                ws.close()
+                return
+
+    for _ in range(5):     # the reader-exit / wait race must never produce a false error
+        with _serve(handler) as port:
+            st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+            st.push(np.zeros(640, dtype="float32"))
+            assert st.final() == "done"
+
+
+def test_elevenlabs_drop_during_final_raises(monkeypatch):
+    monkeypatch.setattr(ec._ELStream, "AUTO_COMMIT_WAIT_S", 0.05)
+
+    def handler(ws):
+        ws.send(json.dumps({"message_type": "session_started"}))
+        for msg in ws:
+            if json.loads(msg)["commit"]:
+                ws.close()     # manual commit received: drop with no committed_transcript
+                return
+            ws.send(json.dumps({"message_type": "partial_transcript", "text": "par"}))
+
+    with _serve(handler) as port:
+        st = ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="connection lost"):
+            st.final()
+
+
+def test_elevenlabs_commit_then_close_returns_text_repeatedly(monkeypatch):
+    monkeypatch.setattr(ec._ELStream, "AUTO_COMMIT_WAIT_S", 0.05)
+
+    def handler(ws):
+        ws.send(json.dumps({"message_type": "session_started"}))
+        for msg in ws:
+            if json.loads(msg)["commit"]:
+                ws.send(json.dumps({"message_type": "committed_transcript", "text": "all done"}))
+                ws.close()
+                return
+            ws.send(json.dumps({"message_type": "partial_transcript", "text": "par"}))
+
+    for _ in range(5):
+        with _serve(handler) as port:
+            st = ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+            st.push(np.zeros(640, dtype="float32"))
+            assert st.final() == "all done"
+
+
+def _rtbench_setup(tmp_path, monkeypatch, manifest):
+    import soundfile as sf
+    import engines
+    import rtbench
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    (tmp_path / "real").mkdir()
+    sf.write(str(tmp_path / "real" / "c1.wav"), np.zeros(16000, dtype="float32"), 16000)
+    (tmp_path / "real" / "manifest.json").write_text(json.dumps(manifest))
+    (tmp_path / "confirmed_calls.txt").write_text("other\n")
+    monkeypatch.setattr(rtbench, "DATA", str(tmp_path))
+
+    def boom(*a, **k):
+        raise AssertionError("engines.build called")
+    monkeypatch.setattr(engines, "build", boom)
+    return rtbench
+
+
+def test_rtbench_main_refuses_real_clip_without_call_id(tmp_path, monkeypatch):
+    rtbench = _rtbench_setup(tmp_path, monkeypatch, [{"id": "c1", "ref": "hi"}])
+    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "dg-flux", "--set", "real", "--out", str(tmp_path / "o.json")])
+    with pytest.raises(PermissionError, match="no call_id"):
+        rtbench.main()
+
+
+def test_rtbench_main_native_ms_with_third_party_is_an_arg_error(tmp_path, monkeypatch):
+    rtbench = _rtbench_setup(tmp_path, monkeypatch, [{"id": "c1", "ref": "hi", "call_id": "other"}])
+    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "el-scribe", "--set", "real", "--native-ms", "500",
+                                     "--out", str(tmp_path / "o.json")])
+    with pytest.raises(SystemExit) as ei:
+        rtbench.main()
+    assert ei.value.code == 2
