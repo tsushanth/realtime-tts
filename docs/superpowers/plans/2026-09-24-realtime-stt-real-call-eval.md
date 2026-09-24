@@ -592,8 +592,11 @@ git commit -m "stt-eval: utterance segmentation, Whisper draft references, revie
 - [ ] **Step 7: CONTROLLER/USER STEP (not for the implementer): build the manifest and hand-verify**
 
 ```bash
-cd worker-stt-realtime/bench && . ../.venv/bin/activate && bash ../fetch_models.sh   # silero_vad.onnx + engines
-export STT_MODELS=$PWD/../models STT_DATA=$PWD/../data
+cd worker-stt-realtime && . .venv/bin/activate && df -h /System/Volumes/Data | tail -1   # models below need ~1 GB free
+mkdir -p models && (cd models && B=https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models \
+  && for m in sherpa-onnx-streaming-zipformer-en-2023-06-26 sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8; do curl -fsSL $B/$m.tar.bz2 | tar xj; done \
+  && curl -fsSL -o silero_vad.onnx $B/silero_vad.onnx)   # NOT fetch_models.sh: it fills docker_models/ and has no NeMo
+cd bench && export STT_MODELS=$PWD/../models STT_DATA=$PWD/../data
 python3 -m real_calls.segment --max-calls 40
 python3 -c "from real_calls.review import export_review; export_review('../data/real/manifest.json','../data/real/review.tsv', call_ids=None)"
 ```
