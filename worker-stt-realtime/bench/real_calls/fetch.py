@@ -1,5 +1,8 @@
 """screen: show how many recorded calls exist and which masked numbers they involve.
-fetch:  download calls whose counterparty is in data/own_numbers.txt (one number per line) to data/real_raw/.
+fetch:  download poc-engine calls to data/real_raw/ as mono 16 kHz wav of one channel (default: far end,
+        channel 0). Audio comes through calldesktech's call-loop-poc recording proxy
+        (CALL_LOOP_POC_BASE_URL / CALL_LOOP_POC_TEST_CALL_SECRET from --calldesk-env). Only calls whose
+        counterparty is in data/own_numbers.txt unless --include-unmatched.
 Secrets are read from env files at run time and never printed."""
 import argparse
 import json
@@ -38,22 +41,32 @@ def read_own_numbers(path):
     return [ln for ln in lines if ln and not ln.startswith("#")]
 
 
-def download_call(row, sid, token, raw_dir):
+def _channels(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                          "stream=channels", "-of", "csv=p=0", path], capture_output=True, text=True, check=True).stdout
+    return int(out.strip())
+
+
+def download_call(row, base_url, secret, raw_dir, caller_channel=0):
+    """Fetch via calldesktech's recording proxy; keep one channel as mono 16 kHz PCM_16."""
     dest = os.path.join(raw_dir, row["id"] + ".wav")
     if os.path.exists(dest):
         return dest
-    tmp = dest + ".src.wav"
-    part = dest + ".part.wav"
+    src, part = dest + ".src.wav", dest + ".part.wav"
     try:
-        with requests.get(recording_wav_url(row["recording_url"]), auth=(sid, token), stream=True, timeout=120) as r:
+        with requests.get(base_url.rstrip("/") + "/recording-audio",
+                          params={"url": recording_wav_url(row["recording_url"])},
+                          headers={"Authorization": f"Bearer {secret}"}, stream=True, timeout=120) as r:
             r.raise_for_status()
-            with open(tmp, "wb") as f:
+            with open(src, "wb") as f:
                 for chunk in r.iter_content(1 << 16):
                     f.write(chunk)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-ac", "1", "-ar", "16000", part], check=True)
+        af = f"pan=mono|c0=c{caller_channel}" if _channels(src) >= 2 else "anull"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af", af, "-ar", "16000",
+                        "-c:a", "pcm_s16le", part], check=True)
         os.replace(part, dest)
     finally:
-        for p in (tmp, part):
+        for p in (src, part):
             if os.path.exists(p):
                 os.remove(p)
     return dest
@@ -74,17 +87,27 @@ def cmd_screen(a):
 
 
 def cmd_fetch(a):
-    own_path = os.path.join(DATA, "own_numbers.txt")
-    if not os.path.exists(own_path):
-        raise SystemExit("data/own_numbers.txt is required (your own phone numbers, one per line)")
-    rows = fetch_rows(load_env(a.calldesk_env), a.limit)
-    picked = select_own_calls(rows, read_own_numbers(own_path), limit=a.max_calls)
-    print(f"downloading {len(picked)} own calls ({len(rows) - len(picked)} excluded)")
-    tw = load_env(a.twilio_env)
+    env = load_env(a.calldesk_env)
+    try:
+        base_url, secret = env["CALL_LOOP_POC_BASE_URL"], env["CALL_LOOP_POC_TEST_CALL_SECRET"]
+    except KeyError:
+        raise SystemExit(f"missing CALL_LOOP_POC_BASE_URL / CALL_LOOP_POC_TEST_CALL_SECRET in {a.calldesk_env}") from None
+    rows = fetch_rows(env, a.limit)
+    if a.include_unmatched:
+        picked = [r for r in rows if r.get("voice_engine") == "poc" and r.get("recording_url")]
+        if a.max_calls:
+            picked = picked[:a.max_calls]
+        print(f"including {len(picked)} poc-engine calls without matching data/own_numbers.txt")
+    else:
+        own_path = os.path.join(DATA, "own_numbers.txt")
+        if not os.path.exists(own_path):
+            raise SystemExit("data/own_numbers.txt is required (your own phone numbers, one per line)")
+        picked = select_own_calls(rows, read_own_numbers(own_path), limit=a.max_calls)
+    print(f"downloading {len(picked)} calls ({len(rows) - len(picked)} excluded)")
     raw_dir = os.path.join(DATA, "real_raw")
     os.makedirs(raw_dir, exist_ok=True)
     for r in picked:
-        download_call(r, tw["TWILIO_ACCOUNT_SID"], tw["TWILIO_AUTH_TOKEN"], raw_dir)
+        download_call(r, base_url, secret, raw_dir, caller_channel=a.caller_channel)
     with open(os.path.join(raw_dir, "calls.json"), "w") as f:
         json.dump(picked, f, indent=1)
     print(f"done: {raw_dir}")
@@ -94,9 +117,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["screen", "fetch"])
     ap.add_argument("--calldesk-env", default="~/Documents/GitHub/calldesktech/.env")
-    ap.add_argument("--twilio-env", default="~/Documents/GitHub/realtime-tts/call-loop-poc/.env")
     ap.add_argument("--limit", type=int, default=250)
     ap.add_argument("--max-calls", type=int, default=None)
+    ap.add_argument("--caller-channel", type=int, choices=[0, 1], default=0,
+                    help="0 = far end (caller/callee/test persona), 1 = our agent; verified 2026-09-24")
+    ap.add_argument("--include-unmatched", action="store_true",
+                    help="also download poc-engine calls whose phone columns do not match data/own_numbers.txt")
     a = ap.parse_args()
     {"screen": cmd_screen, "fetch": cmd_fetch}[a.cmd](a)
 
