@@ -50,6 +50,11 @@ def load(set_name, n, seed=0, verified_only=False):
     return out
 
 
+def _require_clips(clips, set_name, only_verified):
+    if not clips:
+        sys.exit(f"no clips to run (set={set_name!r}, only_verified={only_verified}); check data/{set_name}/manifest.json")
+
+
 class SilenceVAD:
     """silero (via sherpa-onnx) -> trailing silence in ms of *audio time*."""
     def __init__(self):
@@ -150,6 +155,7 @@ def main():
     rss_loaded = rss_loaded / (1024 * 1024) if sys.platform == "darwin" else rss_loaded / 1024   # MB
     vad = SilenceVAD()
     clips = load(a.set, a.n, verified_only=a.only_verified)
+    _require_clips(clips, a.set, a.only_verified)
     strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or a.engine.startswith("moonshine") else [])
     # warm-up one short pass so first-call JIT / allocation does not pollute the numbers
     run_clip(eng, vad, {"audio": clips[0]["audio"][:16000], "dur": 1.0, "ref": ""}, ["vad500"], 0)
@@ -181,14 +187,14 @@ def main():
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     peak = peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
     tot_err = sum(r["wer_err"] for r in rows); tot_w = sum(r["words"] for r in rows)
+    kt_hits = sum(r["keyterm_hits"] for r in rows); kt_total = sum(r["keyterm_total"] for r in rows)
     summ = {"engine": a.engine, "set": a.set, "label": a.label, "n": len(rows), "threads": a.threads, "wer": tot_err / tot_w,
             "cpu_per_audio_s": sum(r["cpu_s"] for r in rows) / sum(r["audio_s"] for r in rows),
             "rss_loaded_mb": rss_loaded, "rss_peak_mb": peak,
             "first_partial_med_s": float(np.median([r["first_partial_s"] for r in rows if r["first_partial_s"] is not None])),
             "close_cost_med_s": float(np.median([r["close_cost_s"] for r in rows])), "strat": {},
-            "keyterm_total": sum(r["keyterm_total"] for r in rows),
-            "keyterm_recall": (sum(r["keyterm_hits"] for r in rows) / sum(r["keyterm_total"] for r in rows))
-                              if sum(r["keyterm_total"] for r in rows) else None}
+            "keyterm_total": kt_total,
+            "keyterm_recall": (kt_hits / kt_total) if kt_total else None}
     for s in strategies:
         lats = [r["strat"][s]["lat"] for r in rows if r["strat"][s]["lat"] is not None]
         summ["strat"][s] = {"lat_med": float(np.median(lats)) if lats else None, "lat_p90": float(np.percentile(lats, 90)) if lats else None,

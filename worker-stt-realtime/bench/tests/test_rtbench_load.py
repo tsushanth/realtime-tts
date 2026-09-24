@@ -26,3 +26,27 @@ def test_load_real_set_carries_metadata_and_filters_verified(tmp_path, monkeypat
     assert clips[0]["keyterms"] == ["hello"]
     only = rtbench.load("real", 10, verified_only=True)
     assert [c["id"] for c in only] == ["a_000"]
+
+
+def _mid(clip):
+    lead = int(rtbench.LEAD_S * 16000)
+    return clip["audio"][lead:lead + 16000]
+
+
+def test_real_set_injects_no_noise_but_tel_does(tmp_path, monkeypatch):
+    _make_set(tmp_path)
+    tel = tmp_path / "tel"
+    tel.mkdir()
+    sf.write(str(tel / "a_000.wav"), np.zeros(16000, dtype="float32"), 16000, subtype="PCM_16")
+    (tel / "manifest.json").write_text(json.dumps([{"id": "a_000", "ref": "hello"}]))
+    monkeypatch.setattr(rtbench, "DATA", str(tmp_path))
+    assert not _mid(rtbench.load("real", 1)[0]).any()
+    assert _mid(rtbench.load("tel", 1)[0]).any()
+
+
+def test_require_clips_exits_with_clear_message():
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        rtbench._require_clips([], "real", True)
+    assert "no clips to run" in str(e.value) and "'real'" in str(e.value)
+    rtbench._require_clips([{"id": "x"}], "real", True)

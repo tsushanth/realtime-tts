@@ -15,3 +15,15 @@ def test_keyterm_recall_partial_and_word_boundaries():
     assert keyterm_recall(["Sushant", "Ashant"], "hi ashant") == (1, 2)
     assert keyterm_recall(["ash"], "ashant") == (0, 1)
     assert keyterm_recall([], "anything") == (0, 0)
+
+
+def test_keyterm_recall_repeated_terms_count_each():
+    assert keyterm_recall(["Sushant", "Sushant"], "sushant") == (2, 2)
+
+
+def test_keyterm_recall_drops_terms_that_normalise_to_empty():
+    assert keyterm_recall(["!!!", "hi"], "hi there") == (1, 1)
+
+
+def test_keyterm_recall_digit_term_matches_spoken_form():
+    assert keyterm_recall(["5"], "it is five") == (1, 1)
