@@ -17,7 +17,7 @@
 - All work runs from `worker-stt-realtime/bench/` unless a path says otherwise; tests: `python3 -m pytest tests -q`.
 - Real audio, `calls.json`, transcripts and per-run result JSON contain call content: they live only under gitignored `worker-stt-realtime/data/` and `worker-stt-realtime/bench/results/real__*.json`. Never commit them, never print transcripts to shared logs.
 - Secrets (`SUPABASE_SERVICE_ROLE_KEY`, `TWILIO_AUTH_TOKEN`, `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`) are read from env files or env vars at run time and never printed, logged, or written to any file.
-- Third-party engines (`dg-*`, `el-*`) must refuse to run on any clip whose `call_id` is not in `data/confirmed_calls.txt` (clips with no `call_id` are public/synthetic and allowed).
+- Third-party engines (`dg-*`, `el-*`) must refuse to run on any clip whose `call_id` is not in `data/confirmed_calls.txt` (fail closed: a clip with no `call_id` is allowed only for the public/synthetic sets `clean`, `tel`, `call`; for any other set, including `real`, every clip needs a confirmed `call_id`).
 - Own-call rule is direction-aware: inbound -> `caller_phone`, outbound -> `to_number`, matched against `data/own_numbers.txt` after normalisation.
 - Audio format everywhere: mono, 16 kHz, PCM_16 wav. Utterances 1.5-15 s.
 - Do not modify `worker-stt-realtime/server.py`, the gateway, or any deploy config in this plan.
@@ -593,7 +593,7 @@ git commit -m "stt-eval: utterance segmentation, Whisper draft references, revie
 
 **Pre-flight:**
 - `cd worker-stt-realtime/bench && ../.venv/bin/python -m pytest tests -q` must pass in full (95 tests at the time of writing).
-- `ls ../models/silero_vad.onnx` must exist; the models are downloaded by the command below.
+- After the model download command below finishes, `ls ../models/silero_vad.onnx` must exist.
 - Do not re-run `export_review` after you have started editing `review.tsv`: it overwrites the file.
 - Every verified call must be listed in `data/confirmed_calls.txt`, or the third-party (cloud) runs abort.
 
@@ -1076,7 +1076,7 @@ git commit -m "stt-eval: Deepgram Flux and ElevenLabs Scribe adapters with confi
 
 - [ ] **Step 7: CONTROLLER STEP (not for the implementer): live smoke test on a synthetic clip**
 
-Public synthetic audio only (no call data). With keys exported from `call-loop-poc/.env` (read, never printed):
+Public synthetic audio only (no call data). With keys exported from `$HOME/Documents/GitHub/realtime-tts/call-loop-poc/.env` (absolute path: worktrees carry no ignored files; read, never printed):
 ```bash
 say -o /tmp/smoke.aiff "Hello, my name is Sushant and my number is five five five one two three four." && ffmpeg -y -loglevel error -i /tmp/smoke.aiff -ac 1 -ar 16000 /tmp/smoke.wav
 python3 - <<'EOF'
