@@ -264,7 +264,7 @@ def test_cli_pub_set_report(tmp_path):
     t = out.read_text()
     assert t.startswith("# FLEURS tel eval")
     assert "unverified draft references" not in t
-    assert "Keyterm check not applicable to public sets" in t and "INSUFFICIENT" in t
+    assert "Keyterm check not applicable (public sets have no keyterms)" in t
     assert "ship-worthy" not in t and "not yet" not in t
     assert t.count("| nemo-480 |") == 1
 
@@ -275,7 +275,47 @@ def test_cli_no_match_for_set_or_tag(tmp_path):
     assert not out.exists()
 
 
-def test_unverified_warning_still_applies_to_real_with_title(tmp_path):
-    p, out = _run_cli(tmp_path, [_s("nemo-480", 0.1, 0.9, 0.05, ov=False), _s("dg-flux", 0.1, 0.9, 0.2)])
-    assert "unverified draft references" in out.read_text()
-    assert out.read_text().startswith("# Real-call STT evaluation (Phase 1)")
+def test_unverified_warning_still_applies_to_real_and_title_rendered(tmp_path):
+    d = tmp_path / "r"
+    d.mkdir()
+    for x in [_s("nemo-480", 0.1, 0.9, 0.05, ov=False), _s("dg-flux", 0.1, 0.9, 0.2)]:
+        (d / f"real__{x['engine']}__real.json").write_text(json.dumps({"summary": x}))
+    out = tmp_path / "o.md"
+    subprocess.run([sys.executable, str(Path(__file__).parent.parent / "report_real.py"), "--results", str(d),
+                    "--out", str(out), "--title", "My Title"], check=True, capture_output=True)
+    t = out.read_text()
+    assert "unverified draft references" in t and t.startswith("# My Title")
+    assert "## Decision gate" in t and "Cloud baselines" in t and "wer_within_1.5x" in t
+    assert "Verified utterances only; paced replay" in t
+
+
+def test_pub_report_has_no_gate_section_or_check_lines(tmp_path):
+    p, out = _run_pub(tmp_path, "--tag", "pub", "--set", "pub_fleurs_tel")
+    assert p.returncode == 0, p.stderr
+    t = out.read_text()
+    for bad in ("Decision gate", "Cloud baselines", "wer_within_1.5x", "commit_final_le_150ms", "cpu_le_0.15",
+                "keyterm_within_10pts", "### ", "Verified utterances only"):
+        assert bad not in t, bad
+    assert "Keyterm check not applicable (public sets have no keyterms); the WER/latency table is the result." in t
+    assert "Reference transcripts come from the public dataset; paced replay as in bench/rtbench.py; local engines measured on the dev machine's CPU (a proxy, not Fly)." in t
+    assert "| nemo-480 |" in t
+
+
+def test_pub_report_unknown_cloud_engine_still_exits_1(tmp_path):
+    d = tmp_path / "r"
+    d.mkdir()
+    for e in ("nemo-480", "dg-nova"):
+        (d / f"pub__{e}__pub_x.json").write_text(json.dumps({"summary": _pub(e, "pub_x")}))
+    p = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "report_real.py"), "--results", str(d),
+                        "--out", str(tmp_path / "o.md"), "--tag", "pub"], capture_output=True, text=True)
+    assert p.returncode == 1 and "dg-nova" in p.stderr and "Traceback" not in p.stderr
+
+
+def test_mixed_real_and_pub_selection_errors(tmp_path):
+    d = tmp_path / "r"
+    d.mkdir()
+    (d / "pub__nemo-480__real.json").write_text(json.dumps({"summary": _s("nemo-480", 0.1, 0.9, 0.05)}))
+    (d / "pub__dg-flux__pub_x.json").write_text(json.dumps({"summary": _pub("dg-flux", "pub_x")}))
+    p = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "report_real.py"), "--results", str(d),
+                        "--out", str(tmp_path / "o.md"), "--tag", "pub"], capture_output=True, text=True)
+    assert p.returncode != 0 and "mix" in p.stderr.lower() and "Traceback" not in p.stderr

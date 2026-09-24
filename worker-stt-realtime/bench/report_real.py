@@ -161,15 +161,27 @@ def main():
         sys.exit(f"no results found: expected {os.path.join(a.results, a.tag + '__*.json')}"
                  + (f" with set {a.set_name!r}" if a.set_name else "") + " (run rtbench.py first)")
     public = all(is_public(s) for s in summ)
+    if not public and any(is_public(s) for s in summ):
+        sys.exit("error: selected results mix real and pub_* sets; use --set to select one set")
     try:
         g = gate(summ)
         table = render_table(summ)
     except ValueError as e:
         sys.exit(f"error: {e}")
     warns = [f"**WARNING: {s['engine']} was scored on unverified draft references**" for s in summ if is_unverified(s)]
-    body = [f"# {a.title or 'Real-call STT evaluation (Phase 1)'}", "",
-            "Verified utterances only; paced replay as in `bench/rtbench.py`; local engines measured on the dev machine's CPU (a proxy, not Fly).",
-            "", *([w for w in warns] + [""] if warns else []), table, "", "## Decision gate", ""]
+    intro = ("Reference transcripts come from the public dataset; paced replay as in bench/rtbench.py; local engines measured on the dev machine's CPU (a proxy, not Fly)."
+             if public else
+             "Verified utterances only; paced replay as in `bench/rtbench.py`; local engines measured on the dev machine's CPU (a proxy, not Fly).")
+    body = [f"# {a.title or 'Real-call STT evaluation (Phase 1)'}", "", intro,
+            "", *([w for w in warns] + [""] if warns else []), table, ""]
+    if public:
+        body += ["Keyterm check not applicable (public sets have no keyterms); the WER/latency table is the result."]
+        text = "\n".join(body) + "\n"
+        with open(a.out, "w") as f:
+            f.write(text)
+        print(text)
+        return
+    body += ["## Decision gate", ""]
     if "error" in g:
         body.append(g["error"])
     else:
@@ -179,10 +191,7 @@ def main():
             body += [f"- {g['advisory']}", ""]
         for x in g["locals"]:
             body += [f"### {x['engine']}: {x['verdict']}"] + [f"- {v}: {k}" for k, v in x["checks"].items()] + [""]
-        if public:
-            res = ("Keyterm check not applicable to public sets (no keyterms); WER table is the result. "
-                   "Gate verdict: INSUFFICIENT")
-        elif g["pass"]:
+        if g["pass"]:
             res = "ship-worthy, proceed to Phase 2 with " + g["recommended"]
         elif g["pass"] is None:
             res = "INSUFFICIENT DATA, no local engine passed and some checks could not be evaluated; collect more data before deciding"
