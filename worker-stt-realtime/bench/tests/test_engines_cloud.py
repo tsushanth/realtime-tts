@@ -614,3 +614,45 @@ def test_deepgram_going_away_1001_after_closestream_returns_partial(monkeypatch)
         t0 = time.time()
         assert st.final() == "par"
         assert time.time() - t0 < 2.0
+
+
+def test_deepgram_close_frame_without_status_1005_after_closestream_returns_partial(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+    seen = {}
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+            else:
+                with ws.send_context():
+                    ws.protocol.send_close()     # close frame with an empty payload (no status code)
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        t0 = time.time()
+        assert st.final() == "par"
+        assert time.time() - t0 < 2.0
+        seen["code"] = st.ws.close_code
+    assert seen["code"] == 1005     # the fake really produced "no status received"
+
+
+def test_deepgram_1005_before_closestream_still_an_error():
+    def handler(ws):
+        for msg in ws:
+            with ws.send_context():
+                ws.protocol.send_close()
+            return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert st.closed.wait(2)
+            with pytest.raises(RuntimeError, match="connection lost"):
+                st.final()
+        finally:
+            st.close()

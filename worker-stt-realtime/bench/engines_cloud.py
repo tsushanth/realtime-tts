@@ -68,7 +68,9 @@ class _Stream:
                 with self.lock:
                     self.handle(msg)
             # loop ended without an exception: websockets swallowed ConnectionClosedOK; confirm the code
-            clean = getattr(self.ws, "close_code", None) in (1000, 1001)
+            # 1005 = close frame received WITHOUT a status code (what Deepgram sends after CloseStream);
+            # no close frame at all is 1006 and stays an error
+            clean = getattr(self.ws, "close_code", None) in (1000, 1001, 1005)
         except Exception as e:
             lost = type(e).__name__     # type only: message text could carry secrets
         finally:
