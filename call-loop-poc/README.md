@@ -121,3 +121,21 @@ both sides, not just from our own server logs.
   - **Retry/failure handling**: no-answer, voicemail, busy, and failed calls all need a
     defined policy (retry once? skip? flag for a human?) — Retell does voicemail
     detection specifically to handle this; we have none.
+
+## Outreach sample calls (`sampleCallee`)
+
+`POST /place-test-call {shopper:true, sampleCallee:{systemPrompt, greeting}}` makes a fictional-business demo
+agent answer the shopper's call (used by calldesktech `scripts/generate-vertical-sample.mjs`). Supporting
+endpoints: `GET /sample-callee-capability` (public probe, does not reveal the allowlist) and the secret-gated
+`GET /call-recording/:sid` (only serves CallSids that this feature placed, kept in memory for 30 minutes).
+
+Deploy steps / operational rules:
+1. Set `SAMPLE_CALLEE_NUMBERS` on the poc host (`fly secrets set SAMPLE_CALLEE_NUMBERS=+1555... -a call-loop-poc`)
+   to a comma-separated list of DEDICATED internal outreach numbers ONLY, never a live customer line. Until it
+   is set (or if empty) every `sampleCallee` request gets HTTP 403; it never means allow-all.
+2. Why dedicated: `/twilio/voice` does not validate Twilio signatures and caller ID can be spoofed, so during
+   the 30s override window a caller presenting our outbound number could reach the fictional agent. A
+   non-matching caller never consumes the override, but the residual risk is only acceptable on dedicated numbers.
+3. Rotate `TEST_CALL_SECRET` if it has ever been shared.
+4. After sample calls, check the callee number's tenant call log for stray `is_internal_test` rows and remove
+   them if unwanted (the shopper leg is logged against the tenant that owns the dialed number).

@@ -587,11 +587,50 @@ const shopperExpressiveDelivery = new Set();
 // Outreach sample calls (calldesktech scripts/generate-vertical-sample.mjs): per-call OVERRIDE of what
 // answers the shopper's call, so the callee is a fictional-business demo agent instead of whatever
 // tenant owns the dialed number. Registered by /place-test-call {shopper:true, sampleCallee:{...}}
-// and consumed ONCE by /twilio/voice. Guards: the dialed number must be one of OUR tenant-owned
-// numbers, the inbound leg's From must equal the From of the call we placed, 90s expiry, one-shot.
-// Keyed by dialed number. Never touches Retell or any other provider.
+// and consumed ONCE by /twilio/voice. Guards: the dialed number must be in the explicit allowlist env
+// SAMPLE_CALLEE_NUMBERS (comma-separated E.164; unset/empty refuses everything), the inbound leg's From
+// must equal the From of the call we placed, 30s expiry, one-shot. Keyed by normalized dialed number.
+// Never touches Retell or any other provider.
+// RESIDUAL RISK (accepted only because of the allowlist): /twilio/voice does not validate Twilio
+// signatures and caller ID can be spoofed, so a caller who dials an allowlisted number within the 30s
+// window while presenting our outbound number would reach the fictional agent. SAMPLE_CALLEE_NUMBERS
+// must therefore contain ONLY dedicated internal/outreach numbers, NEVER a live customer line.
+// A non-matching hit never consumes the override (the real caller keeps the normal tenant agent).
 export const sampleCalleeOverrides = new Map();
-const SAMPLE_CALLEE_TTL_MS = 90_000;
+const SAMPLE_CALLEE_TTL_MS = 30_000;
+const E164_RE = /^\+[1-9]\d{6,14}$/;
+const normNumber = (n) => (typeof n === 'string' ? n.trim() : '');
+function sampleCalleeAllowlist() {
+  return new Set(String(process.env.SAMPLE_CALLEE_NUMBERS || '').split(',').map((x) => x.trim()).filter((x) => E164_RE.test(x)));
+}
+// CallSids this feature placed (bounded, expiring) - /call-recording only serves these.
+export const sampleCallSids = new Map();
+const SAMPLE_SID_TTL_MS = 30 * 60_000;
+const SAMPLE_SID_MAX = 50;
+function rememberSampleSid(sid) {
+  const now = Date.now();
+  for (const [k, exp] of sampleCallSids) if (exp <= now) sampleCallSids.delete(k);
+  while (sampleCallSids.size >= SAMPLE_SID_MAX) sampleCallSids.delete(sampleCallSids.keys().next().value);
+  sampleCallSids.set(sid, now + SAMPLE_SID_TTL_MS);
+}
+function isSampleSid(sid) {
+  const exp = sampleCallSids.get(sid);
+  if (!exp) return false;
+  if (exp <= Date.now()) { sampleCallSids.delete(sid); return false; }
+  return true;
+}
+// Returns the matching, unexpired override for an inbound hit, or null. Mismatched From warns and leaves it.
+function matchSampleCallee(to, from) {
+  const key = normNumber(to);
+  const o = sampleCalleeOverrides.get(key);
+  if (!o) return null;
+  if (o.expiresAt <= Date.now()) { sampleCalleeOverrides.delete(key); return null; }
+  if (o.fromNumber !== normNumber(from)) {
+    console.warn(`[call-loop] inbound call to sample-callee number ${key} with non-matching From while an override is pending - NOT consuming it`);
+    return null;
+  }
+  return o;
+}
 const SAMPLE_CALL_TIME_LIMIT_SEC = 150; // hard Twilio cap on the placed call, whatever the agents do
 function parseSampleCallee(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -925,13 +964,10 @@ app.post('/twilio/voice', async (req, res) => {
     });
     shopperTtsOverrides.delete(callSid);
     shopperExpressiveDelivery.delete(callSid);
-  } else if (callSid && !req.query.routeAs && (() => {
-    const o = sampleCalleeOverrides.get(req.body.To);
-    return o && o.expiresAt > Date.now() && o.fromNumber === req.body.From;
-  })()) {
+  } else if (callSid && !req.query.routeAs && matchSampleCallee(req.body.To, req.body.From)) {
     // Outreach sample callee (see sampleCalleeOverrides): one-shot, flow-less fictional-business agent.
-    const o = sampleCalleeOverrides.get(req.body.To);
-    sampleCalleeOverrides.delete(req.body.To);
+    const o = matchSampleCallee(req.body.To, req.body.From);
+    sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
     pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, createdAt: Date.now() });
@@ -1212,6 +1248,8 @@ app.get('/call-recording/:sid', async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) return res.status(401).json({ error: 'unauthorized' });
   if (!/^CA[0-9a-f]{32}$/.test(req.params.sid)) return res.status(400).json({ error: 'bad sid' });
+  // Only calls this feature placed (never a real customer's recording).
+  if (!isSampleSid(req.params.sid)) return res.status(404).json({ error: 'not a sample call' });
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return res.status(500).json({ error: 'twilio creds not configured' });
   try {
     const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Recordings.json?CallSid=${req.params.sid}`, {
@@ -1242,6 +1280,11 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (sampleCalleeRaw !== undefined && (!shopper || !sampleCallee)) {
     return res.status(400).json({ error: 'sampleCallee requires shopper:true and {systemPrompt (20-6000 chars), greeting (1-400 chars)}' });
   }
+  if (sampleCallee) {
+    if (typeof toNumber !== 'string' || !E164_RE.test(toNumber)) return res.status(400).json({ error: 'sampleCallee: toNumber must be E.164 (+15551234567)' });
+    // Explicit allowlist of dedicated sample numbers; unset/empty refuses everything.
+    if (!sampleCalleeAllowlist().has(toNumber)) return res.status(403).json({ error: 'sampleCallee: toNumber is not in SAMPLE_CALLEE_NUMBERS (dedicated sample numbers only)' });
+  }
   const isDemo = !!(demoFlow && Array.isArray(demoFlow.nodes) && demoFlow.nodes.length && demoFlow.startNodeId);
   // Shopper mode (see MYSTERY_SHOPPER_DECISIONS.md): we're calling OUT to
   // play the customer, so there's no tenant to route as — toNumber is
@@ -1254,11 +1297,6 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   }
 
   try {
-    if (sampleCallee) {
-      // Only ever dial a number that is one of OUR tenant-owned numbers (never a third party).
-      const ownTenant = await findTenantIdByNumber(toNumber).catch(() => null);
-      if (!ownTenant) return res.status(400).json({ error: 'sampleCallee: toNumber is not one of our own tenant numbers' });
-    }
     const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
     let fromNumber = routeAs || process.env.DEMO_FROM_NUMBER;
     if (!fromNumber) {
@@ -1343,7 +1381,8 @@ app.post('/place-test-call', express.json(), async (req, res) => {
       setTimeout(() => demoFlows.delete(callBody.sid), 120_000).unref?.();
     }
     if (sampleCallee) {
-      sampleCalleeOverrides.set(toNumber, { ...sampleCallee, fromNumber, expiresAt: Date.now() + SAMPLE_CALLEE_TTL_MS });
+      rememberSampleSid(callBody.sid);
+      sampleCalleeOverrides.set(toNumber, { ...sampleCallee, fromNumber: normNumber(fromNumber), expiresAt: Date.now() + SAMPLE_CALLEE_TTL_MS });
       setTimeout(() => { const o = sampleCalleeOverrides.get(toNumber); if (o && o.expiresAt <= Date.now()) sampleCalleeOverrides.delete(toNumber); }, SAMPLE_CALLEE_TTL_MS + 1000).unref?.();
     }
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
@@ -1570,10 +1609,13 @@ twilioWss.on('connection', (twilioWs) => {
         greeting: resolved.greeting,
         ttsBackend: 'elevenlabs',
       }), false);
-      setTimeout(() => {
+      const hangup = setTimeout(() => {
         console.log(`[call-loop] sample callee call ${callSid} hit max duration, hanging up`);
         session.close();
       }, SAMPLE_CALL_TIME_LIMIT_SEC * 1000);
+      hangup.unref?.();
+      const origClose = session.close.bind(session);
+      session.close = (...a) => { clearTimeout(hangup); return origClose(...a); };
       return;
     }
     if (resolved.isShopper) {
