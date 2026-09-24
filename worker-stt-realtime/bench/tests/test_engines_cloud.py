@@ -322,7 +322,7 @@ def test_deepgram_drop_during_final_raises():
             if isinstance(msg, bytes):
                 ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
             else:
-                ws.close()     # CloseStream received: drop with no EndOfTurn
+                ws.close(1011)     # CloseStream received: abnormal close with no EndOfTurn
                 return
 
     with _serve(handler) as port:
@@ -476,3 +476,85 @@ def test_final_with_turn_already_done_does_not_wait(monkeypatch):
         t0 = time.time()
         assert st.final() == "auto"
         assert time.time() - t0 < 1.0
+
+
+def _dg_stream_with_partial(handler, monkeypatch, flush=5.0):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", flush)
+
+
+def test_deepgram_clean_close_after_closestream_returns_partial(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "full text"}))
+            else:
+                ws.close(1000)     # normal close, no EndOfTurn
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "full text")
+        t0 = time.time()
+        assert st.final() == "full text"
+        assert time.time() - t0 < 2.0     # far below FLUSH_WAIT_S=5
+        assert st.error is None
+
+
+def test_deepgram_abnormal_close_after_closestream_raises(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+            else:
+                ws.close(1011)
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="connection lost"):
+            st.final()
+
+
+def test_deepgram_tcp_drop_after_closestream_raises(monkeypatch):
+    monkeypatch.setattr(ec._Stream, "FLUSH_WAIT_S", 5.0)
+
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "TurnInfo", "event": "Update", "transcript": "par"}))
+            else:
+                ws.socket.close()     # no close frame
+                return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.push(np.zeros(640, dtype="float32"))
+        assert _until(lambda: st.text() == "par")
+        with pytest.raises(RuntimeError, match="connection lost"):
+            st.final()
+
+
+def test_deepgram_clean_close_before_closestream_still_an_error():
+    def handler(ws):
+        for msg in ws:
+            ws.close(1000)
+            return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert _until(lambda: st.error is not None)
+            with pytest.raises(RuntimeError, match="connection lost"):
+                st.push(np.zeros(640, dtype="float32"))
+            with pytest.raises(RuntimeError, match="connection lost"):
+                st.final()
+        finally:
+            st.close()

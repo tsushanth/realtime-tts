@@ -42,6 +42,7 @@ def _pcm16(x):
 
 class _Stream:
     FLUSH_WAIT_S = 3.0
+    CLEAN_CLOSE_ENDS_FLUSH = False   # Deepgram: normal close after CloseStream is a legitimate end of flush
 
     def __init__(self, url, headers):
         from websockets.sync.client import connect
@@ -49,12 +50,13 @@ class _Stream:
         self.closed, self.ready = threading.Event(), threading.Event()
         self._closing = False
         self._final_started = self._final_done = False
+        self._flush_sent = False
         self.lock = threading.Lock()
         self.ws = connect(url, additional_headers=headers, open_timeout=10, max_size=None)
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
-        lost = "closed"
+        lost, clean = "closed", False
         try:
             for raw in self.ws:
                 if isinstance(raw, (bytes, bytearray)):
@@ -65,10 +67,14 @@ class _Stream:
                     continue
                 with self.lock:
                     self.handle(msg)
+            # loop ended without an exception: websockets swallowed ConnectionClosedOK; confirm the code
+            clean = getattr(self.ws, "close_code", None) in (1000, 1001)
         except Exception as e:
             lost = type(e).__name__     # type only: message text could carry secrets
         finally:
             with self.lock:
+                if self.CLEAN_CLOSE_ENDS_FLUSH and self._flush_sent and clean and self.error is None:
+                    self._final_done = True     # server ended the flush with a normal close
                 if not self._closing and not (self._final_started and self._final_done) and self.error is None:
                     self.error = f"connection lost: {lost}"
             self.closed.set()
@@ -136,6 +142,8 @@ class _Stream:
 
 
 class _DGStream(_Stream):
+    CLEAN_CLOSE_ENDS_FLUSH = True
+
     def handle(self, m):
         if m.get("type") == "Error":
             self.error = f"deepgram error: {self._code(m.get('code'))}"
@@ -161,6 +169,7 @@ class _DGStream(_Stream):
         try:
             self._raise_if_error()
             self._begin_final()
+            self._flush_sent = True     # before the send, so a fast server close is seen as post-flush
             try:
                 self.ws.send(json.dumps({"type": "CloseStream"}))
             except Exception:
