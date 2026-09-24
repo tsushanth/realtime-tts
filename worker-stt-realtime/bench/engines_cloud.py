@@ -11,9 +11,26 @@ import numpy as np
 from engines import Engine
 
 
-def assert_allowed(clips, confirmed_path):
-    ok = set(open(confirmed_path).read().split()) if os.path.exists(confirmed_path) else set()
-    bad = sorted({c["call_id"] for c in clips if c.get("call_id") is not None and c["call_id"] not in ok})
+PUBLIC_SETS = {"clean", "tel", "call"}   # public/synthetic sets; anything else is treated as real call audio
+
+
+def _confirmed_ids(path):
+    if not os.path.exists(path):
+        return set()
+    with open(path) as f:
+        lines = [ln.strip() for ln in f]
+    return {ln for ln in lines if ln and not ln.startswith("#")}
+
+
+def assert_allowed(clips, confirmed_path, set_name):
+    """Fail closed: outside PUBLIC_SETS every clip needs a call_id exactly listed in confirmed_path."""
+    ok = _confirmed_ids(confirmed_path)
+    public = set_name in PUBLIC_SETS
+    missing = sum(1 for c in clips if not c.get("call_id") and not public)
+    bad = sorted({c["call_id"] for c in clips if c.get("call_id") and c["call_id"] not in ok})
+    if missing:
+        raise PermissionError(f"refusing third-party STT: {missing} clip(s) in set {set_name!r} have no call_id "
+                              f"(only sets {sorted(PUBLIC_SETS)} may omit it)")
     if bad:
         raise PermissionError(f"refusing third-party STT: {len(bad)} call id(s) not in {confirmed_path}: {bad[:5]}")
 
@@ -27,11 +44,13 @@ class _Stream:
         from websockets.sync.client import connect
         self.committed, self.partial, self.eos, self.error = [], "", False, None
         self.closed, self.ready = threading.Event(), threading.Event()
+        self._closing = False
         self.lock = threading.Lock()
         self.ws = connect(url, additional_headers=headers, open_timeout=10, max_size=None)
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
+        lost = "closed"
         try:
             for raw in self.ws:
                 if isinstance(raw, (bytes, bytearray)):
@@ -42,11 +61,36 @@ class _Stream:
                     continue
                 with self.lock:
                     self.handle(msg)
-        except Exception:
-            pass
+        except Exception as e:
+            lost = type(e).__name__     # type only: message text could carry secrets
         finally:
+            with self.lock:
+                if not self._closing and self.error is None:
+                    self.error = f"connection lost: {lost}"
             self.closed.set()
             self.ready.set()
+
+    def close(self):
+        """Idempotent; marks the close as expected so the reader does not report it as a loss."""
+        self._closing = True
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+
+    def _raise_if_error(self):
+        with self.lock:
+            err = self.error
+        if err:
+            raise RuntimeError(err)
+
+    def _send(self, data):
+        self._raise_if_error()
+        try:
+            self.ws.send(data)
+        except Exception as e:
+            self._raise_if_error()
+            raise RuntimeError(f"send failed: {type(e).__name__}") from None
 
     def text(self):
         with self.lock:
@@ -72,6 +116,9 @@ class _Stream:
 
 class _DGStream(_Stream):
     def handle(self, m):
+        if m.get("type") == "Error":
+            self.error = f"deepgram error: {m.get('code') or ''} {m.get('description') or ''}".strip()
+            return
         if m.get("type") != "TurnInfo":
             return
         ev, tr = m.get("event"), (m.get("transcript") or "").strip()
@@ -85,19 +132,21 @@ class _DGStream(_Stream):
             self.partial, self.eos = "", True
 
     def push(self, x):
-        self.ws.send(_pcm16(x))
+        self._send(_pcm16(x))
 
     def final(self):
+        self._raise_if_error()
+        self._closing = True     # server closes after CloseStream; that is expected
         try:
             self.ws.send(json.dumps({"type": "CloseStream"}))
         except Exception:
             pass
-        self._wait(self._turn_done, 3.0)
+        self._wait(lambda: self._turn_done() or self.error, 3.0)
         text = self.text()
-        try:
-            self.ws.close()
-        except Exception:
-            pass
+        err = self.error
+        self.close()
+        if err:
+            raise RuntimeError(err)
         return text
 
 
@@ -121,22 +170,23 @@ class _ELStream(_Stream):
             self.ready.set()
 
     def _chunk(self, x, commit):
-        self.ws.send(json.dumps({"message_type": "input_audio_chunk", "commit": commit, "sample_rate": 16000,
+        self._send(json.dumps({"message_type": "input_audio_chunk", "commit": commit, "sample_rate": 16000,
                                  "audio_base_64": base64.b64encode(_pcm16(x)).decode()}))
 
     def push(self, x):
         self._chunk(x, False)
 
     def final(self):
-        if not self._wait(self._turn_done, self.AUTO_COMMIT_WAIT_S):
-            self._chunk(np.zeros(1600, dtype="float32"), True)
-            self._wait(self._turn_done, 3.0)
-        text = self.text()
         try:
-            self.ws.close()
-        except Exception:
-            pass
-        return text
+            self._raise_if_error()
+            done = lambda: self._turn_done() or self.error
+            if not self._wait(done, self.AUTO_COMMIT_WAIT_S):
+                self._chunk(np.zeros(1600, dtype="float32"), True)
+                self._wait(done, 3.0)
+            self._raise_if_error()
+            return self.text()
+        finally:
+            self.close()
 
 
 class DeepgramFluxEngine(Engine):
@@ -163,5 +213,6 @@ class ElevenLabsRealtimeEngine(Engine):
     def new_stream(self):
         s = _ELStream(self.url, {"xi-api-key": self.key})
         if not s.ready.wait(5) or s.error:
+            s.close()
             raise RuntimeError(f"elevenlabs session failed: {s.error or 'no session_started within 5 s'}")
         return s

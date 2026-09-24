@@ -33,11 +33,11 @@ def _until(cond, secs=2.0):
 def test_gate_refuses_unconfirmed_calls_but_allows_public_clips(tmp_path):
     confirmed = tmp_path / "confirmed.txt"
     confirmed.write_text("a\n")
-    ec.assert_allowed([{"call_id": None}, {"call_id": "a"}], str(confirmed))
+    ec.assert_allowed([{"call_id": None}, {"call_id": "a"}], str(confirmed), "tel")
     with pytest.raises(PermissionError, match="b"):
-        ec.assert_allowed([{"call_id": "a"}, {"call_id": "b"}], str(confirmed))
+        ec.assert_allowed([{"call_id": "a"}, {"call_id": "b"}], str(confirmed), "real")
     with pytest.raises(PermissionError):
-        ec.assert_allowed([{"call_id": "a"}], str(tmp_path / "missing.txt"))
+        ec.assert_allowed([{"call_id": "a"}], str(tmp_path / "missing.txt"), "real")
 
 
 def test_deepgram_flux_turn_flow():
@@ -92,3 +92,200 @@ def test_elevenlabs_auth_error_raises_on_new_stream():
     with _serve(handler) as port:
         with pytest.raises(RuntimeError, match="bad key"):
             ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+
+
+def _conf(tmp_path, text):
+    p = tmp_path / "confirmed.txt"
+    p.write_text(text)
+    return str(p)
+
+
+def test_gate_fails_closed_on_missing_call_id_outside_public_sets(tmp_path):
+    c = _conf(tmp_path, "a\n")
+    for public in ("clean", "tel", "call"):
+        ec.assert_allowed([{"call_id": None}], c, public)
+    for other in ("real", "weird", ""):
+        with pytest.raises(PermissionError, match="no call_id"):
+            ec.assert_allowed([{"call_id": None, "ref": "SECRET WORDS"}], c, other)
+        with pytest.raises(PermissionError, match="no call_id") as ei:
+            ec.assert_allowed([{"call_id": "", "ref": "SECRET WORDS"}], c, other)
+        assert "SECRET" not in str(ei.value)
+    # missing confirmed file with only-None clips in "real": refused
+    with pytest.raises(PermissionError):
+        ec.assert_allowed([{"call_id": None}], str(tmp_path / "nope.txt"), "real")
+    # public set + unconfirmed non-None id still refused
+    with pytest.raises(PermissionError, match="zzz"):
+        ec.assert_allowed([{"call_id": "zzz"}], c, "tel")
+
+
+def test_gate_exact_match_and_file_parsing(tmp_path):
+    c = _conf(tmp_path, "# header\n\n  ab  \n#a\nx1\n")
+    ec.assert_allowed([{"call_id": "ab"}, {"call_id": "x1"}], c, "real")
+    with pytest.raises(PermissionError):
+        ec.assert_allowed([{"call_id": "a"}], c, "real")      # prefix of a confirmed id
+    with pytest.raises(PermissionError):
+        ec.assert_allowed([{"call_id": "#a"}], c, "real")     # comment line is not an id
+    with pytest.raises(PermissionError):
+        ec.assert_allowed([{"call_id": ""}], c, "real")       # empty id
+
+
+def test_is_third_party():
+    import engines
+    assert engines.is_third_party("dg-flux") and engines.is_third_party("el-scribe")
+    assert not any(engines.is_third_party(n) for n in ("dg-x", "el-", "moonshine-tiny", "fw-small", "zip-en-int8"))
+
+
+def test_rtbench_main_gates_before_building_engine(tmp_path, monkeypatch):
+    import json as _json
+    import soundfile as sf
+    import engines
+    import rtbench
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    (tmp_path / "real").mkdir()
+    sf.write(str(tmp_path / "real" / "c1.wav"), np.zeros(16000, dtype="float32"), 16000)
+    (tmp_path / "real" / "manifest.json").write_text(_json.dumps([{"id": "c1", "ref": "hi", "call_id": "unconfirmed"}]))
+    (tmp_path / "confirmed_calls.txt").write_text("other\n")
+    monkeypatch.setattr(rtbench, "DATA", str(tmp_path))
+
+    def boom(*a, **k):
+        raise AssertionError("engines.build called before the gate")
+    monkeypatch.setattr(engines, "build", boom)
+    for eng in ("dg-flux", "el-scribe"):
+        monkeypatch.setattr("sys.argv", ["rtbench", "--engine", eng, "--set", "real", "--out", str(tmp_path / "o.json")])
+        with pytest.raises(PermissionError):
+            rtbench.main()
+
+
+def test_elevenlabs_error_after_start_raises_on_push_and_final():
+    def handler(ws):
+        ws.send(json.dumps({"message_type": "session_started"}))
+        for _ in ws:
+            ws.send(json.dumps({"message_type": "quota_exceeded", "error": "out of credits"}))
+
+    with _serve(handler) as port:
+        st = ec.ElevenLabsRealtimeEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert _until(lambda: st.error is not None)
+            with pytest.raises(RuntimeError, match="out of credits"):
+                st.push(np.zeros(640, dtype="float32"))
+            with pytest.raises(RuntimeError, match="out of credits"):
+                st.final()
+        finally:
+            st.close()
+
+
+def test_deepgram_error_message_raises_on_push_and_final():
+    def handler(ws):
+        for msg in ws:
+            if isinstance(msg, bytes):
+                ws.send(json.dumps({"type": "Error", "code": "BAD_AUDIO", "description": "bad frame"}))
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert _until(lambda: st.error is not None)
+            with pytest.raises(RuntimeError, match="BAD_AUDIO bad frame"):
+                st.push(np.zeros(640, dtype="float32"))
+            with pytest.raises(RuntimeError, match="BAD_AUDIO"):
+                st.final()
+        finally:
+            st.close()
+
+
+def test_connection_loss_mid_stream_is_an_error():
+    def handler(ws):
+        for msg in ws:
+            ws.close()     # drop on first audio
+            return
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        try:
+            st.push(np.zeros(640, dtype="float32"))
+            assert _until(lambda: st.error is not None)
+            assert st.error.startswith("connection lost")
+            with pytest.raises(RuntimeError, match="connection lost"):
+                st.final()
+        finally:
+            st.close()
+
+
+def test_close_is_idempotent_and_not_reported_as_loss():
+    def handler(ws):
+        for _ in ws:
+            pass
+
+    with _serve(handler) as port:
+        st = ec.DeepgramFluxEngine(url=f"ws://127.0.0.1:{port}", key="k").new_stream()
+        st.close()
+        st.close()
+        assert _until(st.closed.is_set)
+        assert st.error is None
+
+
+class _FakeStream:
+    def __init__(self, fail=False):
+        self.closes, self.fail = 0, fail
+
+    def push(self, x):
+        if self.fail:
+            raise RuntimeError("boom")
+
+    def text(self):
+        return ""
+
+    def native_eos(self):
+        return False
+
+    def final(self):
+        return "hi"
+
+    def close(self):
+        self.closes += 1
+
+
+class _FakeEngine:
+    def __init__(self, fail=False):
+        self.streams, self.fail = [], fail
+
+    def new_stream(self):
+        self.streams.append(_FakeStream(self.fail))
+        return self.streams[-1]
+
+
+class _StubVAD:
+    def reset(self):
+        pass
+
+    def push(self, x):
+        return False
+
+    def silence_ms(self):
+        return 0.0
+
+
+def test_run_clip_closes_stream_when_it_raises():
+    import rtbench
+    eng = _FakeEngine(fail=True)
+    clip = {"audio": np.zeros(3200, dtype="float32"), "dur": 0.2, "ref": ""}
+    with pytest.raises(RuntimeError, match="boom"):
+        rtbench.run_clip(eng, _StubVAD(), clip, ["commit"], 0)
+    assert [s.closes for s in eng.streams] == [1]
+
+
+def test_rtbench_main_closes_warmup_and_clip_streams(tmp_path, monkeypatch):
+    import engines
+    import rtbench
+    eng = _FakeEngine()
+    monkeypatch.setattr(engines, "build", lambda *a, **k: eng)
+    monkeypatch.setattr(rtbench, "SilenceVAD", _StubVAD)
+    monkeypatch.setattr(rtbench, "CH", 0.001)
+    clip = {"id": "c", "ref": "hi", "call_id": None, "keyterms": [], "dur": 0.2,
+            "audio": np.zeros(3200, dtype="float32")}
+    monkeypatch.setattr(rtbench, "load", lambda *a, **k: [clip, dict(clip, id="d")])
+    monkeypatch.setattr("sys.argv", ["rtbench", "--engine", "fw-tiny-cpu", "--out", str(tmp_path / "o.json")])
+    rtbench.main()
+    assert len(eng.streams) == 3 and all(s.closes >= 1 for s in eng.streams)

@@ -87,8 +87,26 @@ class SilenceVAD:
         return 0.0 if self.sil_start is None else (self.t - self.sil_start) * 1000
 
 
+def _close(st):
+    """Release remote sessions (cloud streams bill while open); local streams have no close()."""
+    fn = getattr(st, "close", None)
+    if fn:
+        try:
+            fn()
+        except Exception:
+            pass
+
+
 def run_clip(eng, vad, clip, strategies, native_ms):
     st = eng.new_stream()
+    try:
+        return _run_stream(st, vad, clip, strategies, native_ms)
+    except BaseException:
+        _close(st)
+        raise
+
+
+def _run_stream(st, vad, clip, strategies, native_ms):
     vad.reset()
     a, dur = clip["audio"], clip["dur"]
     step = int(CH * 16000)
@@ -150,24 +168,34 @@ def main():
     ap.add_argument("--only-verified", action="store_true")
     a = ap.parse_args()
     import engines
-    eng = engines.build(a.engine, a.threads) if not a.native_ms else _native_engine(a.engine, a.threads, a.native_ms / 1000)
+    third = engines.is_third_party(a.engine)
+    if third:
+        # gate BEFORE building the engine (no key needed, no audio can leave, if refused)
+        import engines_cloud
+        clips = load(a.set, a.n, verified_only=a.only_verified)
+        _require_clips(clips, a.set, a.only_verified)
+        engines_cloud.assert_allowed(clips, os.path.join(DATA, "confirmed_calls.txt"), a.set)
+        eng = engines.build(a.engine, a.threads)
+    else:
+        eng = engines.build(a.engine, a.threads) if not a.native_ms else _native_engine(a.engine, a.threads, a.native_ms / 1000)
     rss_loaded = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     rss_loaded = rss_loaded / (1024 * 1024) if sys.platform == "darwin" else rss_loaded / 1024   # MB
     vad = SilenceVAD()
-    clips = load(a.set, a.n, verified_only=a.only_verified)
-    _require_clips(clips, a.set, a.only_verified)
-    if a.engine.startswith(("dg-", "el-")):
-        import engines_cloud
-        engines_cloud.assert_allowed(clips, os.path.join(DATA, "confirmed_calls.txt"))
-    strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or a.engine.startswith(("moonshine", "dg-", "el-")) else [])
+    if not third:
+        clips = load(a.set, a.n, verified_only=a.only_verified)
+        _require_clips(clips, a.set, a.only_verified)
+    strategies = ["commit", "vad300", "vad500", "vad700", "vad500+hint"] + (["native"] if a.native_ms or third or a.engine.startswith("moonshine") else [])
     # warm-up one short pass so first-call JIT / allocation does not pollute the numbers
-    run_clip(eng, vad, {"audio": clips[0]["audio"][:16000], "dur": 1.0, "ref": ""}, ["vad500"], 0)
+    _close(run_clip(eng, vad, {"audio": clips[0]["audio"][:16000], "dur": 1.0, "ref": ""}, ["vad500"], 0)[0])
     rows = []
     for k, c in enumerate(clips):
         st, fires, fp, cpu, alen, t0 = run_clip(eng, vad, c, strategies, a.native_ms)
         # the harness cannot call final() mid-stream on a shared stream, so final text per strategy is the
         # hypothesis at firing time + the cost of the closing call measured separately on the finished stream
-        tf0 = time.perf_counter(); final_text = st.final(); close_cost = time.perf_counter() - tf0
+        try:
+            tf0 = time.perf_counter(); final_text = st.final(); close_cost = time.perf_counter() - tf0
+        finally:
+            _close(st)
         ref = norm(c["ref"]); hyp = norm(final_text)
         wer_edits = jiwer.process_words(ref, hyp if hyp else "x")
         row = {"id": c["id"], "dur": c["dur"], "words": len(ref.split()), "wer_err": wer_edits.substitutions + wer_edits.deletions + wer_edits.insertions,
