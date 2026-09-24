@@ -32,18 +32,30 @@ def fetch_rows(env, limit):
     return r.json()
 
 
+def read_own_numbers(path):
+    with open(path) as f:
+        lines = [ln.strip() for ln in f]
+    return [ln for ln in lines if ln and not ln.startswith("#")]
+
+
 def download_call(row, sid, token, raw_dir):
     dest = os.path.join(raw_dir, row["id"] + ".wav")
     if os.path.exists(dest):
         return dest
     tmp = dest + ".src.wav"
-    with requests.get(recording_wav_url(row["recording_url"]), auth=(sid, token), stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(tmp, "wb") as f:
-            for chunk in r.iter_content(1 << 16):
-                f.write(chunk)
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-ac", "1", "-ar", "16000", dest], check=True)
-    os.remove(tmp)
+    part = dest + ".part.wav"
+    try:
+        with requests.get(recording_wav_url(row["recording_url"]), auth=(sid, token), stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_content(1 << 16):
+                    f.write(chunk)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-ac", "1", "-ar", "16000", part], check=True)
+        os.replace(part, dest)
+    finally:
+        for p in (tmp, part):
+            if os.path.exists(p):
+                os.remove(p)
     return dest
 
 
@@ -55,7 +67,7 @@ def cmd_screen(a):
         print(f"  {direction:8s} {masked:16s} {n}")
     own_path = os.path.join(DATA, "own_numbers.txt")
     if os.path.exists(own_path):
-        own = open(own_path).read().split()
+        own = read_own_numbers(own_path)
         print(f"{len(select_own_calls(rows, own))} of {len(rows)} match data/own_numbers.txt")
     else:
         print("data/own_numbers.txt not found: write your own phone numbers there, one per line")
@@ -66,7 +78,7 @@ def cmd_fetch(a):
     if not os.path.exists(own_path):
         raise SystemExit("data/own_numbers.txt is required (your own phone numbers, one per line)")
     rows = fetch_rows(load_env(a.calldesk_env), a.limit)
-    picked = select_own_calls(rows, open(own_path).read().split(), limit=a.max_calls)
+    picked = select_own_calls(rows, read_own_numbers(own_path), limit=a.max_calls)
     print(f"downloading {len(picked)} own calls ({len(rows) - len(picked)} excluded)")
     tw = load_env(a.twilio_env)
     raw_dir = os.path.join(DATA, "real_raw")
