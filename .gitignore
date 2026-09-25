@@ -19,3 +19,4 @@ training-data/parts/
 worker-stt-realtime/data/
 worker-stt-realtime/models/
 worker-stt-realtime/bench/results/real__*.json
+worker-stt-realtime/bench/results/pub__*.json
