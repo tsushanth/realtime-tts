@@ -268,3 +268,48 @@ def test_real_out_guard_unchanged():
         rtbench.check_out_name("real", "results/x.json")
     rtbench.check_out_name("real", "results/real__x.json")
     rtbench.check_out_name("pub_fleurs", "results/x.json")
+
+
+def test_normalize_peak():
+    x = (np.random.default_rng(0).normal(0, 0.003, 8000)).astype("float64")
+    y = public_sets.normalize_peak(x, peak=0.7)
+    assert y.dtype == np.float32 and abs(float(np.max(np.abs(y))) - 0.7) < 1e-6
+    z = np.zeros(100, dtype="float32")
+    assert np.array_equal(public_sets.normalize_peak(z), z)
+    with pytest.raises(ValueError):
+        public_sets.normalize_peak(np.array([0.1, np.nan], dtype="float32"))
+    with pytest.raises(ValueError):
+        public_sets.normalize_peak(np.array([0.1, np.inf], dtype="float32"))
+
+
+def test_derive_normalized_set(tmp_path):
+    tar, tsv = _fake_fleurs(tmp_path)
+    out = tmp_path / "o"
+    public_sets.build_fleurs(str(out), n=4, tar_path=tar, tsv_path=tsv)
+    before = {f: (out / "pub_fleurs" / f).read_bytes() for f in os.listdir(out / "pub_fleurs")}
+    info = public_sets.derive_normalized_set(str(out))
+    assert info["set"] == "pub_fleurs_norm" and info["n"] == 4
+    src = json.load(open(out / "pub_fleurs" / "manifest.json"))
+    dst = json.load(open(out / "pub_fleurs_norm" / "manifest.json"))
+    assert src == dst and all(m["source"] == "public" for m in dst)
+    for m in dst:
+        x, sr = sf.read(str(out / "pub_fleurs_norm" / (m["id"] + ".wav")), dtype="float32")
+        assert sr == 16000 and abs(float(np.max(np.abs(x))) - 0.7) < 1e-3
+    assert before == {f: (out / "pub_fleurs" / f).read_bytes() for f in os.listdir(out / "pub_fleurs")}
+
+
+def test_derive_errors(tmp_path):
+    with pytest.raises(FileNotFoundError, match="pub_fleurs"):
+        public_sets.derive_normalized_set(str(tmp_path))
+    tar, tsv = _fake_fleurs(tmp_path)
+    public_sets.build_fleurs(str(tmp_path / "o"), n=4, tar_path=tar, tsv_path=tsv)
+    with pytest.raises(ValueError, match="public"):
+        public_sets.derive_normalized_set(str(tmp_path / "o"), dst_set="real_x")
+    assert not (tmp_path / "o" / "real_x").exists()
+
+
+def test_build_fleurs_reports_peak_median(tmp_path):
+    tar, tsv = _fake_fleurs(tmp_path)
+    info = public_sets.build_fleurs(str(tmp_path / "o"), n=4, tar_path=tar, tsv_path=tsv)
+    for k in ("pub_fleurs", "pub_fleurs_tel"):
+        assert 0 < info[k]["peak_median"] <= 1.0

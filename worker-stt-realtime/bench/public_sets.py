@@ -43,7 +43,9 @@ def _stage_set(out_root, name, ids, refs, audios, extra=None):
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
-    return tmp, {"set": name, "n": len(ids), "hours": sum(len(x) for x in audios) / SR / 3600}
+    peaks = [float(np.max(np.abs(x))) if len(x) else 0.0 for x in audios]
+    return tmp, {"set": name, "n": len(ids), "hours": sum(len(x) for x in audios) / SR / 3600,
+                 "peak_median": float(np.median(peaks)) if peaks else 0.0}
 
 
 def _publish(out_root, name, tmp):
@@ -75,6 +77,9 @@ def _default_fleurs_files():
 
 
 def build_fleurs(out_root, n=50, seed=0, tar_path=None, tsv_path=None, allow_short=False):
+    """Builds pub_fleurs (RAW, un-normalised, very quiet source level: median peak ~0.007) and pub_fleurs_tel
+    (telephone-degraded). Use derive_normalized_set for a level-normalised clean variant. Each returned info
+    dict has peak_median so a level surprise is visible in the build output."""
     if tar_path is None or tsv_path is None:
         tar_path, tsv_path = _default_fleurs_files()
     by_text = {}   # dedupe by transcription: same sentence read by several speakers must not fill the sample
@@ -166,4 +171,34 @@ def build_earnings(out_root, n=50, seed=0, min_s=3.0, max_s=15.0, parquet_source
     _publish(out_root, "pub_earnings", tmp)
     info["distinct_file_ids"] = len({e["file_id"] for e in extra if "file_id" in e})
     print(f"pub_earnings: {info['n']} utterances from {info['distinct_file_ids']} distinct file_ids")
+    return info
+
+
+def normalize_peak(x, peak=0.7):
+    x = np.asarray(x, dtype="float32")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("normalize_peak: non-finite samples")
+    m = float(np.max(np.abs(x))) if len(x) else 0.0
+    return x if m == 0.0 else (x * np.float32(peak / m)).astype("float32")
+
+
+def derive_normalized_set(out_root, src_set="pub_fleurs", dst_set="pub_fleurs_norm", peak=0.7):
+    """Peak-normalise an already-built set into dst_set (same ids/refs/source). No network."""
+    from engines_cloud import is_public_set
+    if not (dst_set.startswith("pub_") and is_public_set(dst_set)):
+        raise ValueError(f"dst_set {dst_set!r} must be a public set name (pub_<name>, not pub_real*)")
+    sd = os.path.join(out_root, src_set)
+    mp = os.path.join(sd, "manifest.json")
+    if not os.path.exists(mp):
+        raise FileNotFoundError(f"source set {src_set!r} not built: {mp} missing")
+    with open(mp) as f:
+        man = json.load(f)
+    audios = []
+    for m in man:
+        x, sr = sf.read(os.path.join(sd, m["id"] + ".wav"), dtype="float32")
+        assert sr == SR
+        audios.append(normalize_peak(x, peak))
+    extra = [{k: v for k, v in m.items() if k not in ("id", "ref", "source")} for m in man]
+    tmp, info = _stage_set(out_root, dst_set, [m["id"] for m in man], [m["ref"] for m in man], audios, extra)
+    _publish(out_root, dst_set, tmp)
     return info
