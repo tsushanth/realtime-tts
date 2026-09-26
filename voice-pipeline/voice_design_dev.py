@@ -45,6 +45,7 @@ web_image = modal.Image.debian_slim(python_version="3.11").pip_install("fastapi=
 
 jobs = modal.Volume.from_name("voice-design-dev-jobs", create_if_missing=True)
 secret = modal.Secret.from_name("voice-design-dev")
+readaloud_secret = modal.Secret.from_name("voice-design-readaloud")
 
 MAX_DESCRIPTION_CHARS = 800
 MIN_DESCRIPTION_CHARS = 10
@@ -135,7 +136,7 @@ class VoiceDesignModel:
             raise
 
 
-@app.function(image=web_image, secrets=[secret], volumes={"/jobs": jobs}, timeout=60)
+@app.function(image=web_image, secrets=[secret, readaloud_secret], volumes={"/jobs": jobs}, timeout=60)
 @modal.asgi_app()
 def api():
     import hashlib
@@ -154,7 +155,13 @@ def api():
 
     def auth(request: Request) -> str:
         tok = request.headers.get("authorization", "").removeprefix("Bearer ")
-        if not tok or not hmac.compare_digest(tok.encode(), os.environ["VOICE_DESIGN_SECRET"].encode()):
+        if not tok:
+            raise HTTPException(401, "unauthorized")
+        # Accept either the dev secret or the new readaloud product secret
+        ok = hmac.compare_digest(tok.encode(), os.environ.get("VOICE_DESIGN_SECRET", "").encode())
+        if not ok and "VOICE_DESIGN_READALOUD_SECRET" in os.environ:
+            ok = hmac.compare_digest(tok.encode(), os.environ["VOICE_DESIGN_READALOUD_SECRET"].encode())
+        if not ok:
             raise HTTPException(401, "unauthorized")
         return tok
 
