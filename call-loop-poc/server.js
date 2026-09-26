@@ -5367,6 +5367,7 @@ export class CallSession {
       const finalize = updateCallLogByCallSid(this.callSid, {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
+        ...(this.sentiment ? { qa_sentiment: this.sentiment, qa_analyzed_at: this.sentimentUpdatedAt || new Date().toISOString() } : {}),
       }).catch((err) => console.error('[call-loop] call log finalize failed', err));
       const tenantId = this._tenantId;
       const answeredBy = this.collectedData?.answered_by;
