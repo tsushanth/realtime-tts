@@ -6,7 +6,7 @@ primary_region = "sjc"
 [env]
   ORT_INTRA_THREADS = "4"
   PORT = "8080"
-  MAX_CONNECTIONS = "4"
+  MAX_CONNECTIONS = "12"
   VOICES_DIR = "/voices"
   USAGE_REPORT_URL = "https://api.readaloudai.org/admin/usage/report"
 
@@ -60,5 +60,5 @@ primary_region = "sjc"
 # for that separate history and the re-verified numbers.
 
 [[vm]]
-  size = "shared-cpu-4x"
-  memory = "2gb"
+  size = "performance-2x"
+  memory = "4gb"

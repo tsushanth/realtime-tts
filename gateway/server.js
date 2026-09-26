@@ -17,13 +17,38 @@ import { WebSocketServer, WebSocket } from "ws";
 import http from "node:http";
 import https from "node:https";
 import { URL } from "node:url";
+import crypto from "node:crypto";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
 import * as keys from "./keys.js";
 import { handleVoiceApi } from "./voiceApiProxy.js";
 import { auditLog } from "./audit.js";
 
-// Best-effort caller IP for audit records — trusts XFF from Fly's proxy in front of
-// this gateway; fine for an audit trail (not used for any access-control decision).
+// Stripe self-serve webhook (see PUBLIC_DRAFT.md billing section)
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+
+function verifyStripeSignature(body, sigHeader, secret) {
+  if (!sigHeader || !secret) return false;
+  const ts = sigHeader.match(/t=(\d+)/)?.[1];
+  const sig = sigHeader.match(/v1=([a-f0-9]+)/)?.[1];
+  if (!ts || !sig) return false;
+  const payload = `${ts}.${body}`;
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+}
+
+const checkoutSessions = new Map(); // session_id -> { keyId, rawKey?, createdAt }
+const CHECKOUT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - CHECKOUT_SESSION_TTL_MS;
+  for (const [sid, entry] of checkoutSessions) {
+    if (entry.createdAt < cutoff) checkoutSessions.delete(sid);
+  }
+}, 60 * 60 * 1000).unref?.();
+
+function requireStripeWebhookSecret(body, sigHeader) {
+  if (!STRIPE_WEBHOOK_SECRET || !verifyStripeSignature(body, sigHeader, STRIPE_WEBHOOK_SECRET)) return false;
+  return true;
+}
 function clientIp(req) {
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length) return xff.split(",")[0].trim();
@@ -98,6 +123,68 @@ function warmRealtimeWorker() {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
+
+  // Self-serve Stripe webhook: on checkout.session.completed, enable billing for the key.
+  if (url.pathname === "/stripe/webhook" && req.method === "POST") {
+    const body = await readBody(req);
+    const sigHeader = req.headers["stripe-signature"] || "";
+    if (!requireStripeWebhookSecret(body, sigHeader)) {
+      auditLog("stripe_webhook", { result: "unauthorized", ip: clientIp(req) });
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    let event;
+    try { event = JSON.parse(body); } catch {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid json" }));
+      return;
+    }
+    if (event.type === "checkout.session.completed") {
+      const sess = event.data?.object || {};
+      const keyId = sess.client_reference_id || sess.metadata?.key_id;
+      const owner = sess.customer_email || sess.metadata?.email;
+      if (keyId) {
+        const ok = keys.setBillingEnabledById(keyId, true);
+        auditLog("stripe_webhook", { result: ok ? "enabled" : "not_found", keyId, customer: sess.customer, ip: clientIp(req) });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ billingEnabled: ok }));
+        return;
+      }
+      if (owner && sess.metadata?.create_key === "true") {
+        const { id: newId, key: rawKey } = keys.issueKey("stripe", owner);
+        keys.setBillingEnabledById(newId, true);
+        checkoutSessions.set(sess.id, { keyId: newId, rawKey, createdAt: Date.now() });
+        auditLog("stripe_webhook", { result: "issued", keyId: newId, owner, customer: sess.customer, ip: clientIp(req) });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ billingEnabled: true, keyId: newId }));
+        return;
+      }
+      auditLog("stripe_webhook", { result: "ignored", reason: "no_key_id_or_owner", session: sess.id, ip: clientIp(req) });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ billingEnabled: false, reason: "no_key_id_or_owner" }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ received: true }));
+    return;
+  }
+
+  // Retrieve a raw API key after a Stripe checkout completes (browser redirect -> success page calls this)
+  if (url.pathname === "/stripe/key" && req.method === "GET") {
+    const sessionId = url.searchParams.get("session_id");
+    const entry = checkoutSessions.get(sessionId);
+    if (!entry) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "session not found or expired" }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ keyId: entry.keyId, key: entry.rawKey }));
+    // One-time display — remove so it can't be fetched again
+    delete entry.rawKey;
+    return;
+  }
 
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });

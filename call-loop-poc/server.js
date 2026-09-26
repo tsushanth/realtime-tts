@@ -65,6 +65,13 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVD
 // but small relative to our actual per-turn budget, which is dominated by
 // the LLM leg (700-900ms) — worth it for a direct quality complaint.
 const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
+// Named ElevenLabs premade voices a sample/shopper call may select (per-call `voice`); never an arbitrary id.
+const SAMPLE_VOICES = {
+  george: 'JBFqnCBsd6RMkjVDRZzb', brian: 'nPczCjzI2devNBz1zQrb', daniel: 'onwK4e9ZLuTAKqWW03F9',
+  sarah: 'EXAVITQu4vr4xnSDxMaL', jessica: 'cgSgspJ2msm6clMCkdW9', rachel: '21m00Tcm4TlvDq8ikWAM',
+};
+const sampleVoiceId = (v) => (typeof v === 'string' ? SAMPLE_VOICES[v.trim().toLowerCase()] || null : null);
+const parseStability = (v) => (typeof v === 'number' && v >= 0.3 && v <= 1 ? v : null);
 if (TTS_BACKEND === 'elevenlabs' && !ELEVENLABS_API_KEY) {
   console.warn('[call-loop] TTS_BACKEND=elevenlabs but ELEVENLABS_API_KEY not set — TTS will fail');
 }
@@ -584,6 +591,7 @@ const shopperLanguages = new Map(); // place-test-call {language}: language the 
 // above.
 const shopperTtsOverrides = new Map();
 const shopperExpressiveDelivery = new Set();
+const shopperVoices = new Map(); // place-test-call {shopperVoice:{voice,stability}} for sample calls
 // Outreach sample calls (calldesktech scripts/generate-vertical-sample.mjs): per-call OVERRIDE of what
 // answers the shopper's call, so the callee is a fictional-business demo agent instead of whatever
 // tenant owns the dialed number. Registered by /place-test-call {shopper:true, sampleCallee:{...}}
@@ -638,7 +646,8 @@ function parseSampleCallee(raw) {
   const greeting = typeof raw.greeting === 'string' ? raw.greeting.trim() : '';
   if (systemPrompt.length < 20 || systemPrompt.length > 6000) return null;
   if (greeting.length < 1 || greeting.length > 400) return null;
-  return { systemPrompt, greeting };
+  const voice = sampleVoiceId(raw.voice) ? String(raw.voice).trim().toLowerCase() : null;
+  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability) };
 }
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
@@ -808,7 +817,7 @@ const TRANSCRIPTION_MODE_THRESHOLDS = { fast: '0.5', balanced: DEEPGRAM_EOT_THRE
 // endpointing/UtteranceEnd instead of semantic end-of-turn, so the transcription-mode knob maps to
 // endpointing milliseconds there.
 const NOVA3_ENDPOINTING_MS = { '0.5': 300, [DEEPGRAM_EOT_THRESHOLD]: 500, '0.75': 800 };
-function buildDeepgramUrl(isTwilio, eotThreshold, lang = null) {
+function buildDeepgramUrl(isTwilio, eotThreshold, lang = null, keywords = null) {
   if (lang?.dg.kind === 'nova3') {
     const enc = isTwilio ? 'encoding=mulaw&sample_rate=8000' : 'encoding=linear16&sample_rate=16000';
     return `wss://api.deepgram.com/v1/listen?model=nova-3&language=${lang.dg.code}&${enc}&interim_results=true` +
@@ -820,9 +829,10 @@ function buildDeepgramUrl(isTwilio, eotThreshold, lang = null) {
       ? `wss://api.deepgram.com/v2/listen?${p}&encoding=mulaw&sample_rate=8000`
       : `wss://api.deepgram.com/v2/listen?${p}&encoding=linear16&sample_rate=16000`;
   }
+  const kw = keywords || DEEPGRAM_KEYWORDS;
   const params =
     `model=flux-general-en&eot_threshold=${eotThreshold}&eot_timeout_ms=${DEEPGRAM_EOT_TIMEOUT_MS}` +
-    `&numerals=true${DEEPGRAM_KEYWORDS ? `&keyterm=${encodeURIComponent(DEEPGRAM_KEYWORDS)}` : ''}`;
+    `&numerals=true${kw ? `&keyterm=${encodeURIComponent(kw)}` : ''}`;
   return isTwilio
     ? `wss://api.deepgram.com/v2/listen?${params}&encoding=mulaw&sample_rate=8000`
     : `wss://api.deepgram.com/v2/listen?${params}&encoding=linear16&sample_rate=16000`;
@@ -960,17 +970,19 @@ app.post('/twilio/voice', async (req, res) => {
       ttsBackend: shopperOverride?.ttsBackend,
       ttsModel: shopperOverride?.ttsModel,
       expressiveDelivery: shopperExpressiveDelivery.has(callSid),
+      shopperVoice: shopperVoices.get(callSid),
       createdAt: Date.now(),
     });
     shopperTtsOverrides.delete(callSid);
     shopperExpressiveDelivery.delete(callSid);
+    shopperVoices.delete(callSid);
   } else if (callSid && !req.query.routeAs && matchSampleCallee(req.body.To, req.body.From)) {
     // Outreach sample callee (see sampleCalleeOverrides): one-shot, flow-less fictional-business agent.
     const o = matchSampleCallee(req.body.To, req.body.From);
     sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
-    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1275,7 +1287,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables, ttsBackend: shopperTtsBackend, ttsModel: shopperTtsModel, expressiveDelivery: shopperExpressive, sampleCallee: sampleCalleeRaw } = req.body || {};
+  const { toNumber, routeAs, record, shopper, direction, persona, speakFirst, demoFlow, language: shopperLanguage, variables: callVariables, ttsBackend: shopperTtsBackend, ttsModel: shopperTtsModel, expressiveDelivery: shopperExpressive, sampleCallee: sampleCalleeRaw, shopperVoice: shopperVoiceRaw } = req.body || {};
   const sampleCallee = sampleCalleeRaw === undefined ? null : parseSampleCallee(sampleCalleeRaw);
   if (sampleCalleeRaw !== undefined && (!shopper || !sampleCallee)) {
     return res.status(400).json({ error: 'sampleCallee requires shopper:true and {systemPrompt (20-6000 chars), greeting (1-400 chars)}' });
@@ -1386,6 +1398,10 @@ app.post('/place-test-call', express.json(), async (req, res) => {
       setTimeout(() => { const o = sampleCalleeOverrides.get(toNumber); if (o && o.expiresAt <= Date.now()) sampleCalleeOverrides.delete(toNumber); }, SAMPLE_CALLEE_TTL_MS + 1000).unref?.();
     }
     if (shopper && typeof persona === 'string' && persona.trim()) shopperPersonas.set(callBody.sid, persona.trim().slice(0, 2500));
+    if (shopper && sampleCallee && shopperVoiceRaw && sampleVoiceId(shopperVoiceRaw.voice)) {
+      shopperVoices.set(callBody.sid, { voice: String(shopperVoiceRaw.voice).trim().toLowerCase(), stability: parseStability(shopperVoiceRaw.stability) });
+      setTimeout(() => shopperVoices.delete(callBody.sid), 120_000).unref?.();
+    }
     if (shopper && speakFirst) shopperSpeakFirst.add(callBody.sid);
     if (shopper && typeof shopperLanguage === 'string') shopperLanguages.set(callBody.sid, shopperLanguage);
     // Test-only knobs for the shopper's OWN voice (see shopperTtsOverrides above) — same validation
@@ -1608,6 +1624,9 @@ twilioWss.on('connection', (twilioWs) => {
         systemPrompt: resolved.systemPrompt,
         greeting: resolved.greeting,
         ttsBackend: 'elevenlabs',
+        samplePlayback: true,
+        voice: resolved.voice,
+        stability: resolved.stability,
       }), false);
       const hangup = setTimeout(() => {
         console.log(`[call-loop] sample callee call ${callSid} hit max duration, hanging up`);
@@ -1635,6 +1654,7 @@ twilioWss.on('connection', (twilioWs) => {
         ttsBackend: resolved.ttsBackend || 'elevenlabs',
         ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
         ...(resolved.expressiveDelivery ? { expressiveDelivery: true } : {}),
+        ...(resolved.shopperVoice ? { samplePlayback: true, voice: resolved.shopperVoice.voice, stability: resolved.shopperVoice.stability } : {}),
         ...(resolved.language ? { language: resolved.language } : {}),
       }), false);
       // A caller who opens the conversation (e.g. the person who answers an outbound call): nudge a first turn.
@@ -1719,6 +1739,7 @@ export class CallSession {
     this.voice = TTS_VOICE;
     this.lang = null; // resolved language record for non-English agents (languages.js); null = English path
     this.elevenVoiceId = ELEVENLABS_VOICE_ID;
+    this.elevenStability = 0.5;
     this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.fishReferenceId = null; // set via lang.tts.referenceId — no global default, fish is language-only today
     this.minimaxVoiceId = MINIMAX_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
@@ -1846,6 +1867,7 @@ export class CallSession {
     // here so the call shows up the instant the session opens, even before any
     // context/flow arrives; close() removes it.
     this.id = randomUUID();
+    this._sttKeywords = null; // set from flow.globalSettings.sttKeywords; see onClientMessage
     activeSessions.set(this.id, this);
     this._connectDeepgram();
     // Real bug, reproduced twice: _ensureTtsSocket() used to open the Modal-
@@ -1895,10 +1917,11 @@ export class CallSession {
   // would just silently do nothing for whichever node isn't current at
   // connection time, which is exactly the kind of cosmetic/fake setting
   // this codebase's "compute, don't infer" discipline explicitly avoids.
-  _connectDeepgram(eotThreshold = DEEPGRAM_EOT_THRESHOLD) {
+  _connectDeepgram(eotThreshold = DEEPGRAM_EOT_THRESHOLD, keywords = null) {
     if (!DEEPGRAM_API_KEY) return;
+    const kw = keywords ?? this._sttKeywords;
     const isTwilio = this.clientWs instanceof TwilioCallAdapter;
-    const url = buildDeepgramUrl(isTwilio, eotThreshold, this.lang);
+    const url = buildDeepgramUrl(isTwilio, eotThreshold, this.lang, kw);
     const nova3 = this.lang?.dg.kind === 'nova3';
     this._deepgramEotThreshold = eotThreshold;
     const dg = new WebSocket(url, { headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` } });
@@ -2134,6 +2157,12 @@ export class CallSession {
       // Expressive delivery without a flow (the mystery-shopper caller has none; flows carry this in
       // globalSettings.expressiveDelivery instead — see the `bcs` block below). Same opt-in knob, just
       // reachable for a flow-less shopper session too (see shopperExpressiveDelivery above).
+      if (msg.samplePlayback === true) {
+        const vid = sampleVoiceId(msg.voice);
+        if (vid) this.elevenVoiceId = vid;
+        const st = parseStability(msg.stability);
+        if (st !== null) this.elevenStability = st;
+      }
       if (typeof msg.expressiveDelivery === 'boolean') {
         this.expressiveDelivery = msg.expressiveDelivery;
       }
@@ -2190,6 +2219,7 @@ export class CallSession {
           this.allowLanguageSwitching = true;
           this.switchableLanguages = bcs.switchableLanguages.filter((c) => typeof c === 'string' && c.trim()).map((c) => c.trim());
         }
+        this._sttKeywords = typeof bcs.sttKeywords === 'string' && bcs.sttKeywords.trim() ? bcs.sttKeywords.trim() : null;
         console.log(`[call-loop] flow set — ${this.flow.nodes.length} nodes, starting at "${this.currentNodeId}"`);
         this.send({ type: 'flow_state', currentNodeId: this.currentNodeId, nodeType: this.flowNodesById.get(this.currentNodeId)?.type, collectedData: this.collectedData });
         // Transcription Mode reconnect — this arrives essentially
@@ -2218,7 +2248,7 @@ export class CallSession {
           const th = TRANSCRIPTION_MODE_THRESHOLDS[this.flow.globalSettings?.transcriptionMode] || this._deepgramEotThreshold;
           console.log(`[call-loop] language ${lang.code} — reconnecting Deepgram (${lang.dg.kind}), tts ${this.ttsBackend}`);
           this.dgConnection?.close();
-          this._connectDeepgram(th);
+          this._connectDeepgram(th, this._sttKeywords);
         } else if (lang) {
           this._applyLanguage(lang);
         }
@@ -2226,7 +2256,7 @@ export class CallSession {
         if (!lang && requestedThreshold && requestedThreshold !== this._deepgramEotThreshold) {
           console.log(`[call-loop] transcription mode "${this.flow.globalSettings.transcriptionMode}" requested — reconnecting Deepgram (eot_threshold ${this._deepgramEotThreshold} -> ${requestedThreshold})`);
           this.dgConnection?.close();
-          this._connectDeepgram(requestedThreshold);
+          this._connectDeepgram(requestedThreshold, this._sttKeywords);
         }
       }
       if (typeof msg.greeting === 'string' && msg.greeting.trim()) {
@@ -4952,7 +4982,7 @@ export class CallSession {
           body: JSON.stringify({
             text,
             model_id: this.ttsModel || ELEVENLABS_MODEL,
-            voice_settings: { stability: 0.5, similarity_boost: 0.75, style },
+            voice_settings: { stability: this.elevenStability, similarity_boost: 0.75, style },
           }),
           signal,
         }
