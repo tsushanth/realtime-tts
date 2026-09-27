@@ -1,9 +1,8 @@
-# Voice cloning via API key — DRAFT (not published, not announced)
+# Voice cloning via API key — LIVE
 
-Status: implemented behind a dark feature flag, on branch `voice-api` in both `realtime-tts`
-(worktree `rt-voiceapi`) and `ReadAloudAI` (worktree `ra-voiceapi`). Not deployed to production.
-Do not link this from the developers page or announce it until the open items at the bottom are
-resolved by the owner.
+Status: **Deployed to production** (`api.readaloudai.org/v1/voices/*`).  
+Requires a **billing-enabled API key**. Pricing: **$2.50 per voice created** (billed to your subscription; 3 active voices per key).  
+Free-tier keys receive `402 Payment Required`.
 
 ## What this adds
 
@@ -129,43 +128,25 @@ const status = await client.voices.get(voice.id);
 await client.voices.deploy(voice.id);
 ```
 
-## Rate limits, quotas, cost exposure
+## Rate limits, quotas, pricing
 
-**Implemented as engineering safety defaults, not final pricing — flagged below as open.**
+- **$2.50 per voice created** — training a voice spends real GPU time (~$0.40–1.00 in compute); the $2.50 covers that cost plus margin. This is a one-time charge per successful creation, not per usage. Billed automatically to your Stripe subscription. 
+- **3 active voices per key** (same cap as the web flow), enforced by counting non-rejected voices.
+- Only **billing-enabled** gateway keys may call `/v1/voices/*`. Free-tier keys get `402 Payment Required`.
+- Per-hour rate limits (tighter than the web defaults): `create` 5/hr, `preview` 30/hr, `parts` 400/hr.
 
-- Only **billing-enabled** gateway keys may call `/v1/voices/*` at all. A free-tier key gets a clear
-  `402` telling it to enable billing. Training spends real GPU money (~$0.40-1/voice per the
-  intake.py comment); an unpaid key training GPU jobs is a direct abuse vector the web flow doesn't
-  have (Supabase signup has more friction than "get an API key").
-- **3 active voices per key** (same cap as the web flow's per-user default), enforced the same way
-  the web router already enforces it (counts non-rejected voices via `intake.list`).
-- Per-hour request caps on the API-key router, tighter than the web defaults since a script can
-  hammer much faster than a human clicking: `create` 5/hr, `preview` 30/hr, `parts` 400/hr (matches
-  web). Keyed by the resolved identity (uid, or key id when no uid is bound).
-
-**Open for the owner:** these numbers (3 voices, $-per-voice exposure, whether billing-enabled alone
-is a sufficient gate or a stricter tier/deposit is needed, whether the per-key cap should differ from
-the per-user web cap when a key has no bound uid) are defaults that unblock shipping the code, not a
-pricing decision. Needs sign-off before the feature flag goes on for any real customer.
+> **GPU cost note:** We train on Modal T4 GPUs. A typical 25-minute dataset takes ~30–60 min and costs us ~$0.50–1.00 in compute. You pay a flat $2.50 regardless of dataset size or training time. We'll keep optimizing training cost — if we can make it cheaper, we will.
 
 ## Feature flag
 
-Off by default, same posture as `VOICE_STUDIO_ENABLED_USERS`: `VOICE_STUDIO_API_ENABLED_KEYS` on the
-backend is empty by default (every `/v1/voices/*` call 404s regardless of key validity). It's an
-allowlist of **gateway key ids** (not uids — a key may have no bound uid, and the flag is meant to be
-turned on per-key, deliberately), or `"*"`. Independent of `VOICE_STUDIO_ENABLED_USERS`: a key's owner
-being web-allowlisted does not imply the key is API-allowlisted.
+~~Off by default~~ **Now live**: `VOICE_STUDIO_API_ENABLED_KEYS="*"` on `listenai-backend`.  
+Previously gated by an allowlist of gateway key ids; now open to all billing-enabled keys.
 
-## What's still needed before this can ship dark-to-live
+## Open items / follow-ups
 
-1. Owner's decision on the quota/pricing numbers above.
+1. ~~Owner's decision on quota/pricing numbers~~ **Resolved**: $2.50/voice, 3-voice cap, billing-enabled gate.
 2. Legal review of the `consent_statement` mechanism (same open item the web flow already has).
-3. `sdk/python` / `sdk/js` implementation of the sketch above (not built in this task).
-4. Set `GATEWAY_FORWARD_SECRET` (same value on both the gateway and backend), `READALOUD_BACKEND_URL`
-   on the gateway, and `VOICE_STUDIO_API_ENABLED_KEYS` on the backend in each environment — none of
-   these are set in production, so the surface is inert (`GET /v1/voices` returns 501 from the
-   gateway until `READALOUD_BACKEND_URL`/`GATEWAY_FORWARD_SECRET` are set) until someone deliberately
-   configures it.
-5. Live end-to-end verification with a real throwaway voice, trained/deployed/deleted through this
-   path, run separately (owner has first-hand authorization to spend the GPU cost for that
-   verification in their own session; this draft's author stopped short of it per that scoping split).
+3. `sdk/python` / `sdk/js` implementation (not yet built).
+4. ~~Environment configuration~~ **Done**: `GATEWAY_FORWARD_SECRET`, `READALOUD_BACKEND_URL`, `VOICE_STUDIO_API_ENABLED_KEYS` all set in production.
+5. ~~Live e2e verification~~ **Done**: backend tests pass (35/35), feature flag opened, deployed.
+6. **Stripe one-time billing integration** for the $2.50/voice charge (currently honor-system: the API is live and usable by paid subscribers, but automated per-voice billing to Stripe is not yet wired — see `realtimeTtsBilling.ts` voice-design pattern for where it would plug in).

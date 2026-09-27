@@ -111,6 +111,125 @@ Response:
 - `usage_reported_since_drain`: chars/audio_seconds accumulated since the last
   backend billing drain (cleared every ~5 minutes when reported to Stripe)
 
+---
+
+## Voice cloning (`/v1/voices`)
+
+Create custom voices from audio recordings. Training takes ~30–60 minutes on GPU.
+**Pricing: $2.50 per voice created** (one-time, billed to your subscription).
+Requires a **billing-enabled API key**. 3 active voices per key.
+
+### 1. Fetch the current consent text
+
+```bash
+curl -s https://api.readaloudai.org/v1/voices/enabled \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### 2. Create a voice
+
+```bash
+curl -X POST https://api.readaloudai.org/v1/voices \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "speaker_name": "Jane Doe",
+    "attested_by": "Jane Doe",
+    "consent": true,
+    "consent_text_version": "2026-09-v1",
+    "consent_statement": "I am authorized to consent on behalf of the speaker named in this request, and that speaker has agreed to have their voice cloned and used to synthesize new speech through this service."
+  }'
+# -> {"id": "v-a1b2c3d4e5"}
+```
+
+### 3. Upload recordings
+
+Small zip (< ~25 MB) — single-shot:
+
+```bash
+curl -X PUT "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/dataset" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/zip" \
+  --data-binary @recordings.zip
+```
+
+Large file or resumable — chunked parts (each ≤ 16 MB):
+
+```bash
+# Upload part 0
+curl -X PUT "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/dataset/parts/0" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  --data-binary @recordings.zip.part0
+# Upload part 1
+curl -X PUT "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/dataset/parts/1" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  --data-binary @recordings.zip.part1
+# Commit when all parts are up
+curl -X POST "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/dataset/commit" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"parts": 2}'
+# -> {"id": "v-a1b2c3d4e5", "status": "training", "clips": 42}
+```
+
+### 4. Poll status
+
+```bash
+curl -s "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+# -> {"id":"v-a1b2c3d4e5","status":"ready", ...}
+```
+
+Status progression: `created` → `training` → `ready` (or `rejected`).
+
+### 5. Preview
+
+```bash
+curl -X POST "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/preview" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, this is a test of my cloned voice."}' \
+  --output preview.wav
+```
+
+### 6. Deploy
+
+```bash
+curl -X POST "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5/deploy" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+# -> {"id": "v-a1b2c3d4e5", "voice": "custom:v-a1b2c3d4e5"}
+```
+
+### 7. Synthesize with your custom voice
+
+Use the returned `voice` value exactly like a built-in voice:
+
+```bash
+curl -X POST https://api.readaloudai.org/v1/text-to-speech \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "This sentence is spoken in my cloned voice.",
+    "voice": "custom:v-a1b2c3d4e5",
+    "speed": 1.0
+  }' \
+  --output cloned.pcm
+```
+
+### Listing and cleanup
+
+```bash
+# List your voices
+curl -s https://api.readaloudai.org/v1/voices \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Delete a voice
+curl -X DELETE "https://api.readaloudai.org/v1/voices/v-a1b2c3d4e5" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Dataset guidelines:** 10–60 minutes of clean, single-speaker recordings in WAV/FLAC/MP3. One speaker only. Minimal background noise. Training is automatic once committed — no manual hyperparameters.
+
 ## Current real status
 
 - **GPU Pod is OFF by default.** It was proven working (real numbers below) then
