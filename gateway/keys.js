@@ -149,6 +149,28 @@ export function checkAccess(key) {
 // must be rejected here (not mid-stream, and not by silently truncating the
 // text), so the client gets a clear error instead of a surprise cutoff or
 // unbilled overage.
+export function getSubscription(key) {
+  if (!key) return null;
+  const keys = load();
+  const entry = keys.find((k) => k.keyHash === hash(key) && !k.revoked);
+  if (!entry) return null;
+  const freeCharsUsed = entry.freeCharsUsed || 0;
+  return {
+    tier: entry.billingEnabled ? "paid" : "free",
+    billing_enabled: !!entry.billingEnabled,
+    free_chars_limit: FREE_TIER_CHARS,
+    free_chars_used: freeCharsUsed,
+    free_chars_remaining: entry.billingEnabled ? null : Math.max(0, FREE_TIER_CHARS - freeCharsUsed),
+    usage_reported_since_drain: {
+      chars: entry.usageCharsSinceLastReport || 0,
+      piper_chars: entry.usagePiperCharsSinceLastReport || 0,
+      audio_seconds: Math.round((entry.usageAudioSecondsSinceLastReport || 0) * 1000) / 1000,
+      realtime_audio_seconds: Math.round((entry.usageRealtimeAudioSecondsSinceLastReport || 0) * 1000) / 1000,
+    },
+    created_at: entry.created_at,
+  };
+}
+
 export function canAffordRequest(key, chars) {
   if (!key) return false;
   const keys = load();

@@ -77,6 +77,40 @@ Usage is reported by the worker asynchronously, exactly like the `/tts/authorize
 → direct-connect flow.
 ```
 
+## Subscription info (`GET /v1/user/subscription`)
+
+Programmatic quota check — call before a batch job to know if you have enough
+headroom, or after a failed call to understand why it was rejected:
+
+```bash
+curl -s https://api.readaloudai.org/v1/user/subscription \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Response:
+
+```json
+{
+  "tier": "free",
+  "billing_enabled": false,
+  "free_chars_limit": 10000,
+  "free_chars_used": 3500,
+  "free_chars_remaining": 6500,
+  "usage_reported_since_drain": {
+    "chars": 0,
+    "piper_chars": 0,
+    "audio_seconds": 0,
+    "realtime_audio_seconds": 0
+  },
+  "created_at": "2026-09-20T14:32:10.123Z"
+}
+```
+
+- `tier`: `"free"` or `"paid"` (billing-enabled key)
+- `free_chars_remaining`: `null` for paid keys (unlimited)
+- `usage_reported_since_drain`: chars/audio_seconds accumulated since the last
+  backend billing drain (cleared every ~5 minutes when reported to Stripe)
+
 ## Current real status
 
 - **GPU Pod is OFF by default.** It was proven working (real numbers below) then

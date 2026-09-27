@@ -410,6 +410,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // --- Subscription / Quota: GET /v1/user/subscription ---
+  // ElevenLabs parity. Returns the API key's current tier, usage, and remaining quota.
+  if (url.pathname === "/v1/user/subscription" && req.method === "GET") {
+    const auth = req.headers["authorization"] || "";
+    const key = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+    if (!keys.isValidKey(key)) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    const subscription = keys.getSubscription(key);
+    if (!subscription) {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "subscription lookup failed" }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(subscription));
+    return;
+  }
+
   // Speech-to-text: same checks as /tts/authorize; the client then POSTs audio to `url` + "/v1/stt"
   // with the token as a Bearer header (batch), or opens a WebSocket at `url` (realtime, mode:"realtime").
   // Usage is reported by the worker to /admin/usage/report, tagged with engine "stt" (batch) or "stt-realtime".
