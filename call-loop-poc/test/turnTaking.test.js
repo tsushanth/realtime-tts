@@ -223,11 +223,11 @@ describe('_maybeSpeakBackchannel gating', () => {
 });
 
 describe('Response Wait Time scheduling (_scheduleUserTurn)', () => {
-  // _scheduleUserTurn pulls in _maybeSwitchLanguage, shouldHoldForDigits and
-  // flow/history lookups that would need a much larger stub to exercise
-  // faithfully end-to-end; the piece with real regression value in
-  // isolation — the pending-timer swap — is tested directly below rather
-  // than forcing a full flow/history stub just to hit it.
+  // _scheduleUserTurn pulls in _maybeSwitchLanguage, _maybeNormalizePhoneNumber,
+  // shouldHoldForDigits and flow/history lookups that would need a much larger
+  // stub to exercise faithfully end-to-end; the piece with real regression value
+  // in isolation — the pending-timer swap — is tested directly below rather than
+  // forcing a full flow/history stub just to hit it.
   it('clears a previously pending response timer before scheduling a new one (replaces, never stacks, the wait)', () => {
     const oldTimer = setTimeout(() => {}, 100000);
     const stub = makeStub({
@@ -238,6 +238,9 @@ describe('Response Wait Time scheduling (_scheduleUserTurn)', () => {
       flowNodesById: null,
       lang: null,
       _maybeSwitchLanguage: vi.fn(),
+      // Runs before shouldHoldForDigits so the digit count is taken on normalized
+      // text; identity here is enough to exercise the timer path.
+      _maybeNormalizePhoneNumber: vi.fn((t) => t),
       _onUserTurnComplete: vi.fn(),
     });
     const clearSpy = vi.spyOn(global, 'clearTimeout');

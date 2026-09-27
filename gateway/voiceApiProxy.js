@@ -21,6 +21,7 @@ import http from "node:http";
 import https from "node:https";
 import { URL } from "node:url";
 import * as keys from "./keys.js";
+import { listBuiltInVoices, getBuiltInVoice, isBuiltInVoice, isCustomVoice } from "./voices.js";
 
 const BACKEND_URL = process.env.READALOUD_BACKEND_URL; // e.g. https://api-internal.readaloudai.org
 const GATEWAY_FORWARD_SECRET = process.env.GATEWAY_FORWARD_SECRET;
@@ -71,6 +72,71 @@ function forward(backendPath, method, headers, body) {
   });
 }
 
+/** Fetch the caller's custom voices from the backend. Returns [] on any failure (best-effort). */
+async function fetchCustomVoices(keyId, uid) {
+  try {
+    const upstream = await forward("/internal/voice-studio-api/", "GET", {
+      "x-gateway-admin-secret": GATEWAY_FORWARD_SECRET,
+      "x-gateway-key-id": keyId || "",
+      "x-gateway-uid": uid,
+    }, Buffer.alloc(0));
+    if (upstream.status !== 200) return [];
+    const parsed = JSON.parse(upstream.body.toString());
+    return Array.isArray(parsed.voices) ? parsed.voices : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch a single custom voice from the backend. Returns null on failure. */
+async function fetchCustomVoice(voiceId, keyId, uid) {
+  try {
+    const upstream = await forward("/internal/voice-studio-api/" + voiceId, "GET", {
+      "x-gateway-admin-secret": GATEWAY_FORWARD_SECRET,
+      "x-gateway-key-id": keyId || "",
+      "x-gateway-uid": uid,
+    }, Buffer.alloc(0));
+    if (upstream.status !== 200) return null;
+    return JSON.parse(upstream.body.toString());
+  } catch {
+    return null;
+  }
+}
+
+/** Map a backend custom-voice record to the ElevenLabs-style voice list item. */
+function customVoiceToListItem(v) {
+  return {
+    voice_id: v.voice || v.id,
+    name: v.speaker_name || v.id,
+    category: "cloned",
+    status: v.status,
+    created_at: v.created_at,
+  };
+}
+
+/** Map a backend custom-voice record to the ElevenLabs-style voice detail. */
+function customVoiceToDetail(v) {
+  return {
+    voice_id: v.voice || v.id,
+    name: v.speaker_name || v.id,
+    category: "cloned",
+    status: v.status,
+    created_at: v.created_at,
+    samples: v.stats ? { clips: v.stats.clips, minutes: v.stats.minutes } : undefined,
+    error: v.error,
+  };
+}
+
+/** True for read-only voice routes that should work on free-tier keys. */
+function isReadOnlyRoute(pathname) {
+  if (pathname === PREFIX) return true; // GET /v1/voices (list)
+  const rest = pathname.slice(PREFIX.length + 1); // strip "/v1/voices/"
+  if (!rest) return false;
+  // GET /v1/voices/:id  (detail) — no slashes after the id
+  if (!rest.includes("/")) return true;
+  return false;
+}
+
 // Handles one request if it's under /v1/voices; returns true if handled (caller should not continue
 // routing), false otherwise.
 export async function handleVoiceApi(req, res, url) {
@@ -89,10 +155,15 @@ export async function handleVoiceApi(req, res, url) {
     res.end(JSON.stringify({ error: "invalid or missing API key" }));
     return true;
   }
-  // Safety default (not the owner's final pricing decision - see VOICE_API_DRAFT.md): voice training
-  // spends real GPU money per job, so only billing-enabled keys may use this surface at all. A free-tier
-  // key gets a clear, actionable error rather than a silent 404 or a vague 401.
-  if (!keys.isBillingEnabled(key)) {
+
+  const id = keys.getIdForKey(key);
+  const uid = keys.getOwnerForKey(key) || "";
+
+  // Voice discovery (GET /v1/voices, GET /v1/voices/:id) works for ALL valid keys,
+  // including free-tier. Only mutations (create, upload, deploy, delete) require billing.
+  const readonly = req.method === "GET" && isReadOnlyRoute(url.pathname);
+
+  if (!readonly && !keys.isBillingEnabled(key)) {
     res.writeHead(402, { "content-type": "application/json" });
     res.end(JSON.stringify({
       error: "Voice cloning requires a billing-enabled API key (training spends real GPU cost per voice). Enable billing on this key in your dashboard.",
@@ -100,9 +171,48 @@ export async function handleVoiceApi(req, res, url) {
     return true;
   }
 
-  const id = keys.getIdForKey(key);
-  const uid = keys.getOwnerForKey(key) || "";
+  // --- GET /v1/voices  (list all voices) ---
+  if (url.pathname === PREFIX && req.method === "GET") {
+    const builtIn = listBuiltInVoices();
+    const custom = await fetchCustomVoices(id, uid);
+    const voices = [
+      ...builtIn.map((v) => ({ voice_id: v.voice_id, name: v.name, category: v.category, language: v.language, gender: v.gender, accent: v.accent })),
+      ...custom.map(customVoiceToListItem),
+    ];
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ voices }));
+    return true;
+  }
 
+  // --- GET /v1/voices/:id  (voice detail) ---
+  const detailMatch = url.pathname.match(new RegExp(`^${PREFIX}/([^/]+)$`));
+  if (detailMatch && req.method === "GET") {
+    const voiceId = detailMatch[1];
+    // Built-in voice
+    if (isBuiltInVoice(voiceId)) {
+      const v = getBuiltInVoice(voiceId);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(v));
+      return true;
+    }
+    // Custom voice — proxy to backend
+    if (isCustomVoice(voiceId)) {
+      const custom = await fetchCustomVoice(voiceId, id, uid);
+      if (!custom) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Voice not found." }));
+        return true;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(customVoiceToDetail(custom)));
+      return true;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "Voice not found." }));
+    return true;
+  }
+
+  // --- Everything else forwards to the backend ---
   let body;
   try {
     body = await readRawBody(req, MAX_BODY_BYTES);
