@@ -108,8 +108,10 @@ not deployed/no live number), dubbing MVP + hardening (real async job
 API, TTS/STT still stubbed pending credentials), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
 — but see the real-speech quality gap noted below), speech-to-speech MVP
-+ hardening (deployed live at `t-sushanth--voice-convert-dev-api.modal.run`,
-shared-secret Bearer auth — not yet wired into a product backend route), voice design
++ hardening (built and deployable: `modal deploy voice-pipeline/convert_job.py`
+restarts it on `t-sushanth--voice-convert-dev-api.modal.run` with Bearer
+CONVERT_SECRET auth — currently stopped to avoid GPU spend until there
+are real users), voice design
 MVP + hardening (Parler-TTS on Modal, real warm-latency numbers, not
 deployed), a 56→69 voice / 9→19 language mining batch (5 tier-A voices
 published live, 8 tier-B cataloged-only per this repo's existing
