@@ -28,6 +28,53 @@ Client-facing protocol:
   <- {"type":"chunk_meta","text":..,"gen_ms":..,"audio_s":..,"providers":[..]}
   <- <binary PCM16LE mono 24kHz>              # immediately follows chunk_meta
   <- {"type":"done"} | {"type":"cancelled"} | {"type":"error","message":".."}
+
+## One-shot HTTP TTS (`POST /v1/text-to-speech`)
+
+In addition to the WebSocket streaming protocol above, the gateway exposes a
+single-shot HTTP endpoint for clients that just want the audio without managing a
+WebSocket connection (ElevenLabs-style ergonomics):
+
+```bash
+curl -X POST https://api.readaloudai.org/v1/text-to-speech \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello world",
+    "voice": "af_heart",
+    "speed": 1.0,
+    "format": "pcm_24000",
+    "engine": "kokoro"
+  }' \
+  --output audio.pcm
+```
+
+- `text` (required): up to 5,000 characters.
+- `voice`: any Kokoro voice ID (`af_heart`, `am_adam`, …) or `custom:<id>` for
+  cloned voices. Defaults to `af_heart` (worker-side).
+- `speed`: 0.5–4.0. Default 1.0.
+- `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`.
+- `engine`: `kokoro` (default) or `piper`.
+
+The response is a chunked stream of raw audio in the requested format:
+- `Content-Type`: `audio/pcm` (PCM formats), `audio/basic` (μ-law), or
+  `audio/x-alaw-basic` (A-law).
+- `X-Sample-Rate`: 24000 or 8000.
+- `X-Audio-Format`: the format string.
+
+Errors are returned as JSON with the same status codes the worker uses:
+- `401` — invalid or missing API key
+- `402` — free tier exhausted or request too large for remaining allowance
+- `400` — bad JSON, missing text, invalid speed/format
+- `413` — text over 5,000 chars
+- `501` — selected engine not configured on this gateway
+- `502` — worker unreachable
+- `503` — worker at capacity (Piper only)
+
+The gateway validates the API key, checks quota, mints a short-lived session token,
+and proxies the request to the worker's existing `POST /v1/tts/stream` endpoint.
+Usage is reported by the worker asynchronously, exactly like the `/tts/authorize`
+→ direct-connect flow.
 ```
 
 ## Current real status

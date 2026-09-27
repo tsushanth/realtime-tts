@@ -304,6 +304,112 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // --- One-shot HTTP TTS: POST /v1/text-to-speech ---
+  // ElevenLabs parity endpoint. Validates the API key, checks billing/free-tier,
+  // then proxies to the selected worker's POST /v1/tts/stream and returns the
+  // audio stream directly. No two-step authorize+connect dance required.
+  if (url.pathname === "/v1/text-to-speech" && req.method === "POST") {
+    const body = await readBody(req);
+    let bodyObj;
+    try { bodyObj = JSON.parse(body); } catch {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON" }));
+      return;
+    }
+
+    const auth = req.headers["authorization"] || "";
+    const key = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+    if (!keys.isValidKey(key)) {
+      auditLog("auth_failure", { surface: "v1_text_to_speech", reason: "invalid_key", ip: clientIp(req) });
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid or missing API key" }));
+      return;
+    }
+    const access = keys.checkAccess(key);
+    if (!access.allowed) {
+      auditLog("auth_failure", { surface: "v1_text_to_speech", reason: "free_tier_exhausted", id: keys.getIdForKey(key), ip: clientIp(req) });
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Free tier exhausted for this key. Add a payment method in your dashboard to continue.",
+      }));
+      return;
+    }
+
+    const text = bodyObj.text;
+    if (typeof text !== "string" || !text.trim()) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "text must be a non-empty string" }));
+      return;
+    }
+    if (text.length > 5000) {
+      res.writeHead(413, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "text too long (max 5000 chars)" }));
+      return;
+    }
+
+    const engine = bodyObj.engine === "piper" ? "piper" : "kokoro";
+    const workerWsUrl = engine === "piper" ? PIPER_WORKER_URL : MODAL_WORKER_URL;
+    if (!workerWsUrl) {
+      res.writeHead(501, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: `${engine} engine not available` }));
+      return;
+    }
+
+    // Free-tier: reject requests that would overspend the remaining allowance
+    if (!access.billingEnabled && !keys.canAffordRequest(key, text.length)) {
+      res.writeHead(402, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "This request exceeds your remaining free-tier characters." }));
+      return;
+    }
+
+    // Derive HTTP URL from the WebSocket worker URL
+    const u = new URL(workerWsUrl);
+    u.protocol = u.protocol === "wss:" ? "https:" : u.protocol === "ws:" ? "http:" : u.protocol;
+    const workerHttpUrl = `${u.protocol}//${u.host}/v1/tts/stream`;
+
+    const id = keys.getIdForKey(key);
+    const uid = keys.getOwnerForKey(key);
+    const token = keys.createSessionToken(id, uid);
+
+    let upstream;
+    try {
+      upstream = await fetch(workerHttpUrl, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(bodyObj),
+      });
+    } catch (err) {
+      auditLog("tts_http_proxy_error", { id, engine, error: err.message, ip: clientIp(req) });
+      res.writeHead(502, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "TTS worker unavailable, please retry" }));
+      return;
+    }
+
+    const outHeaders = {
+      "content-type": upstream.headers.get("content-type") || "application/octet-stream",
+      "cache-control": "no-store",
+    };
+    const sr = upstream.headers.get("x-sample-rate");
+    const fmt = upstream.headers.get("x-audio-format");
+    if (sr) outHeaders["x-sample-rate"] = sr;
+    if (fmt) outHeaders["x-audio-format"] = fmt;
+
+    res.writeHead(upstream.status, outHeaders);
+
+    try {
+      const reader = upstream.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+      }
+      res.end();
+    } catch (err) {
+      res.end();
+    }
+    return;
+  }
+
   // Speech-to-text: same checks as /tts/authorize; the client then POSTs audio to `url` + "/v1/stt"
   // with the token as a Bearer header (batch), or opens a WebSocket at `url` (realtime, mode:"realtime").
   // Usage is reported by the worker to /admin/usage/report, tagged with engine "stt" (batch) or "stt-realtime".
