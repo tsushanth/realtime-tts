@@ -108,7 +108,8 @@ not deployed/no live number), dubbing MVP + hardening (real async job
 API, TTS/STT still stubbed pending credentials), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
 — but see the real-speech quality gap noted below), speech-to-speech MVP
-+ hardening (Seed-VC on Modal, real HTTP API, not deployed), voice design
++ hardening (deployed live at `t-sushanth--voice-convert-dev-api.modal.run`,
+shared-secret Bearer auth — not yet wired into a product backend route), voice design
 MVP + hardening (Parler-TTS on Modal, real warm-latency numbers, not
 deployed), a 56→69 voice / 9→19 language mining batch (5 tier-A voices
 published live, 8 tier-B cataloged-only per this repo's existing
