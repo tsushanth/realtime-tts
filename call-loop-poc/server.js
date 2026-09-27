@@ -535,7 +535,7 @@ const SHOPPER_SYSTEM_PROMPT =
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
 // What is actually said aloud: the model's silence marker and *action* notes are dropped.
-const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*([^*\n]{1,80})\*/g, (_m, inner) => (inner.trim().split(/\s+/).length >= 3 ? '' : inner)).replace(/\s{2,}/g, ' ').trim();
+const speakableText = (t) => t.replace(/\bNO_RESPONSE(_NEEDED)?\b\.?/gi, '').replace(/\*([^*\n]{1,80})\*/g, (_m, inner) => (inner.trim().split(/\s+/).length >= 3 ? '' : inner)).replace(/<\/?\w+(?:\s+[^>]*)?\/?>/g, '').replace(/\s{2,}/g, ' ').trim();
 const isStageDirection = (t) => /^\s*[\(\[][^\)\]]*[\)\]]\s*[.!]?\s*$/.test(t);
 
 // Expressive/emotion-aware delivery (opt-in, globalSettings.expressiveDelivery
@@ -583,6 +583,26 @@ const EXPRESSIVE_DELIVERY_INSTRUCTION =
   'Pick whichever tone best fits what you are actually saying (apologetic for a mistake/delay, upbeat for good news, ' +
   'empathetic when the caller is frustrated or upset, urgent for something time-sensitive, calm for routine information, ' +
   'neutral otherwise). This tag is never read aloud — it only controls delivery.';
+
+// Slot accuracy. Applies to every flow (node or plain prompt) because the rules
+// are only ever negative — never invent a value, never confirm an incomplete one —
+// so a flow that captures no slots is unaffected. DISABLE_SLOT_SAFETY=1 turns it off.
+// Declared before SLOT_SAFETY_INSTRUCTION (which interpolates it) and reused by
+// shouldHoldForDigits / _maybeNormalizePhoneNumber further down.
+const PHONE_DIGITS_TARGET = Number(process.env.PHONE_DIGITS_TARGET ?? 10);
+const SLOT_SAFETY_INSTRUCTION = process.env.DISABLE_SLOT_SAFETY === '1' ? '' :
+  '\n\nSlot accuracy — these rules override your own judgement and any urge to be helpful:' +
+  ' Never state a date, time, price, or any other detail the caller has not told you in this call.' +
+  ' If the caller was vague (for example "any time tomorrow afternoon"), either read their vagueness back' +
+  ' or propose one specific value and get an explicit yes before treating it as the booking.' +
+  ' When you read a phone number back, say it one digit at a time with a short pause between digits' +
+  ' ("four ... one ... five"), never in groups of three.' +
+  ` A complete US phone number has ${PHONE_DIGITS_TARGET} digits — count them before you confirm.` +
+  ` If you do not have all ${PHONE_DIGITS_TARGET} digits, say plainly that the number is incomplete and ask` +
+  ' for the missing digits. Never pad it, never guess a missing digit, and never reuse digits from an' +
+  ' earlier attempt. If the caller corrects you, discard your version completely and re-capture from scratch.' +
+  ' Only treat a value as confirmed after the caller has said yes to that exact value; silence, "okay",' +
+  ' or "go ahead" after you have changed something is not a yes to the new value.';
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
 const shopperPersonas = new Map();
 const shopperSpeakFirst = new Set();
@@ -772,7 +792,7 @@ function shouldHoldForDigits(lastAssistantText, callerText, phoneAskRe = PHONE_A
   if (!lastAssistantText || !phoneAskRe.test(lastAssistantText)) return false;
   const stripped = callerText.replace(/[^0-9a-z]/gi, '');
   const digits = (callerText.match(/\d/g) || []).length;
-  return digits >= 2 && stripped.length > 0 && digits / stripped.length >= 0.4 && digits < 7;
+  return digits >= 2 && stripped.length > 0 && digits / stripped.length >= 0.4 && digits < PHONE_DIGITS_TARGET;
 }
 const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) day)\b|\bbye\b/i;
 
@@ -2389,7 +2409,7 @@ export class CallSession {
       for (let i = 0; i < digits.length; i += k) parts.push(digits.slice(i, i + k));
       if (parts.length > 1 && new Set(parts).size === 1) { digits = parts[0]; break; }
     }
-    if (digits.length < 7) return userText; // too short to be a real phone number
+    if (digits.length < 2) return userText; // a lone digit is not a phone capture
     // Replace the phone part in the original text with cleaned digits
     // Heuristic: replace the longest span of digit-like tokens/digits in the original
     const originalDigitsRe = /(?:\d+(?:\s+\d+)*|(?:\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|won|wan|to|too|tree|free|ate|ait|even|why|y|dubble|tripple|double|triple|for|fore|fur|fife|sics|sevn|niner|nought|naught)\b(?:\s+|$))+)/gi;
@@ -2424,6 +2444,12 @@ export class CallSession {
     }
     if (this._pendingDigitText) { text = `${this._pendingDigitText} ${text}`; this._pendingDigitText = null; }
     const lastAssistant = [...this.history].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
+    // Normalize spoken digit words BEFORE the hold check. shouldHoldForDigits counts
+    // literal digits, and Deepgram routinely returns word-digits ("four ... one ... five")
+    // rather than numerals, so checking first made the hold a no-op for exactly the
+    // callers it exists for. Normalization is idempotent on already-numeric text, so the
+    // held fragment concatenated above is safe to run through it again.
+    text = this._maybeNormalizePhoneNumber(text, lastAssistant?.content);
     if (shouldHoldForDigits(lastAssistant?.content, text, this.lang?.phoneAskRe)) {
       console.log(`[call-loop] holding partial phone number "${text}" for the rest of the digits`);
       this._pendingDigitText = text;
@@ -2434,8 +2460,6 @@ export class CallSession {
       }, DIGIT_HOLD_MS);
       return;
     }
-    // Normalize spoken digit words to digits when the assistant just asked for a phone number.
-    text = this._maybeNormalizePhoneNumber(text, lastAssistant?.content);
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
     const resp = Number(this.flow?.globalSettings?.responsiveness);
     const globalWaitMs = Number.isFinite(resp) && resp >= 0 && resp <= 1 && this.flow?.globalSettings?.responsiveness != null ? Math.round((1 - resp) * 1500) : 0;
@@ -2788,7 +2812,7 @@ export class CallSession {
       return;
     }
 
-    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '') + (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
+    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '') + SLOT_SAFETY_INSTRUCTION + (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -3635,6 +3659,16 @@ export class CallSession {
     this._paymentAwaitingResume = false;
     if (extracted && typeof extracted === 'object') {
       Object.assign(this.collectedData, extracted);
+      // Phone-number validation: a US callback number must be 10 digits.
+      // If the extracted value is incomplete, discard it so the LLM sees
+      // it's still missing and re-asks on the next turn.
+      if (this.collectedData.callback_number != null) {
+        const digits = String(this.collectedData.callback_number).replace(/\D/g, '');
+        if (digits.length !== 10) {
+          console.warn(`[call-loop] callback_number rejected — "${this.collectedData.callback_number}" has ${digits.length} digits, expected 10`);
+          delete this.collectedData.callback_number;
+        }
+      }
     }
     let nextNode = this.flowNodesById.get(next_node_id);
     // Not found in the current (possibly subflow-local) scope — if we're
