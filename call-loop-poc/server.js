@@ -516,6 +516,14 @@ const SYSTEM_PROMPT =
 // against any business's booking flow (ours or a competitor's) without
 // knowing its exact question order in advance.
 const SHOPPER_SYSTEM_PROMPT =
+  'HARD RULE — Your phone number is ALWAYS five-five-five, zero-one-four-seven (555-0147). ' +
+  'When asked for a phone number or callback number, you MUST say: "five five five zero one four seven". ' +
+  'You must NEVER say any other number. You must NEVER add, remove, or change a digit. ' +
+  'You must NEVER "helpfully correct" the agent by offering a different number. ' +
+  'If the agent reads your number back incorrectly, simply say: "No, it is five five five zero one four seven." ' +
+  'If the agent reads it back correctly, simply say: "Yes, that is correct." ' +
+  'If the agent asks you to confirm or repeat the number, say ONLY: "five five five zero one four seven." ' +
+  'BAD EXAMPLE — Do NOT say: "It is 255-5014-7" or "Actually it is 555-0147-0555" or any other digits.\n\n' +
   'You are calling a business on the phone to book an appointment. You are NOT an assistant ' +
   'or an AI in this conversation — you are playing the role of a real customer named Alex ' +
   'Morgan. Your goal: book an appointment for tomorrow afternoon. Wait for the business to ' +
@@ -527,10 +535,6 @@ const SHOPPER_SYSTEM_PROMPT =
   'call will be ended automatically after your goodbye. Keep replies short ' +
   'and conversational, like a real phone call. Never break character, never mention you are ' +
   'an AI, a test, or a language model, even if asked directly — just answer as Alex would. ' +
-  'If asked for a phone number, always give the same number: five-five-five, zero-one-four-seven. ' +
-  'Say it as individual digits — "five five five zero one four seven". Never invent a different number. ' +
-  'If the agent reads your number back correctly, simply confirm it ("Yes, that\'s correct"). ' +
-  'Never challenge a correct readback or claim the number is wrong just to test the agent — behave like a real customer who simply wants to book an appointment. ' +
   'If asked to spell your name, spell it out clearly: A-L-E-X M-O-R-G-A-N.';
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
@@ -792,6 +796,26 @@ function shouldHoldForDigits(lastAssistantText, callerText, phoneAskRe = PHONE_A
   const stripped = callerText.replace(/[^0-9a-z]/gi, '');
   const digits = (callerText.match(/\d/g) || []).length;
   return digits >= 2 && stripped.length > 0 && digits / stripped.length >= 0.4 && digits < PHONE_DIGITS_TARGET;
+}
+
+// Shopper deterministic guard: if the shopper (AI test caller) generates any phone
+// number other than the canonical 555-0147, replace it before it reaches the agent.
+// This prevents LLM hallucinations from breaking the benchmark fairness.
+function normalizeShopperPhone(text) {
+  if (typeof text !== 'string') return text;
+  // Match common phone number patterns: groups of digits, spoken digits, hyphenated, etc.
+  // Must contain at least 7 digits to be considered a phone number.
+  const PHONE_RE = /(?:\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)\b[\s\-]*){7,}|(?:\d[\s\-]*){7,}/gi;
+  let match;
+  let result = text;
+  while ((match = PHONE_RE.exec(text)) !== null) {
+    const digits = match[0].replace(/\D/g, '');
+    if (digits.length >= 7 && digits !== '5550147') {
+      // Replace with canonical spoken form
+      result = result.replace(match[0], 'five five five zero one four seven');
+    }
+  }
+  return result;
 }
 const CLOSING_SHAPED_RE = /\b(goodbye|take care|have a (great|good|wonderful) day)\b|\bbye\b/i;
 
@@ -4891,6 +4915,16 @@ export class CallSession {
 
   _speak(text, turnId, turnStartedAt, tone = null) {
     if (this.turnState?.id === turnId) this.turnState.spokeText = true;
+    // Shopper deterministic guard: if the AI test caller is about to speak a phone
+    // number other than the canonical 555-0147, replace it before it reaches the agent.
+    // This prevents LLM hallucinations from breaking benchmark fairness.
+    if (this.isShopper && typeof text === 'string') {
+      const normalized = normalizeShopperPhone(text);
+      if (normalized !== text) {
+        console.log(`[call-loop] shopper phone guard: "${text.slice(0, 60)}..." → "${normalized.slice(0, 60)}..."`);
+        text = normalized;
+      }
+    }
     this.cost.addTtsChars(text.length);
     // Reserve this turn's "still speaking" slot immediately, synchronously —
     // not inside a possibly-deferred dispatch. On a session's first turn,
