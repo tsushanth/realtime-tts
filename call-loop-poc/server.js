@@ -3101,7 +3101,25 @@ export class CallSession {
 
         const toolUse = final.content.find((b) => b.type === 'tool_use' && b.name === 'transition_flow');
         if (toolUse && this.turnState?.id === turnId) {
-          this.turnState.transition = toolUse.input;
+          // Server-side guard: if this node is an extraction step, every required field must be
+          // present in collectedData before the transition is accepted. The model can call
+          // transition_flow prematurely (prompt leakage, ignored instructions) — this check
+          // prevents closing with incomplete data. (Mystery-shopper finding: Round 1 lost
+          // because callback_number was never collected but transition_flow was called anyway.)
+          const nodeExtract = node?.extract;
+          if (nodeExtract && Object.keys(nodeExtract).length > 0) {
+            const missing = Object.keys(nodeExtract).filter((f) => {
+              const v = this.collectedData[f];
+              return v === undefined || v === null || String(v).trim() === '';
+            });
+            if (missing.length > 0) {
+              console.warn(`[call-loop] transition_flow rejected for node "${node.id}" — missing fields: ${missing.join(', ')}`);
+            } else {
+              this.turnState.transition = toolUse.input;
+            }
+          } else {
+            this.turnState.transition = toolUse.input;
+          }
         } else if (!toolUse && this.turnState?.id === turnId && !forceTransition && this._claimsHandoff(node, assistantText)) {
           // The agent told the caller they are being transferred but never moved to the transfer step.
           const tt0 = tools.find((t) => t.name === 'transition_flow');
@@ -5363,7 +5381,8 @@ export class CallSession {
     if (this.callSid) {
       const transcript = this.history
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map((m) => ({ role: m.role, content: m.content }));
+        .map((m) => ({ role: m.role === 'user' && m.content.startsWith('[System note:') ? 'system_note_skipped' : m.role, content: m.content }))
+        .filter((m) => m.role !== 'system_note_skipped');
       const finalize = updateCallLogByCallSid(this.callSid, {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
