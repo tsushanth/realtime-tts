@@ -526,7 +526,9 @@ const SHOPPER_SYSTEM_PROMPT =
   '"you too, thanks" back-and-forth after that, even if the other party keeps talking; the ' +
   'call will be ended automatically after your goodbye. Keep replies short ' +
   'and conversational, like a real phone call. Never break character, never mention you are ' +
-  'an AI, a test, or a language model, even if asked directly — just answer as Alex would.';
+  'an AI, a test, or a language model, even if asked directly — just answer as Alex would. ' +
+  'If asked for a phone number, always give the same number: five-five-five, zero-one-four-seven. ' +
+  'Say it as individual digits — "five five five zero one four seven". Never invent a different number.';
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
 // What is actually said aloud: the model's silence marker and *action* notes are dropped.
@@ -2325,6 +2327,85 @@ export class CallSession {
   }
 
   // Response Wait Time (per-node tuning, params.responseWaitTimeMs) — real
+  // When the assistant just asked for a phone number, run pre-LLM normalization
+  // on spoken digit words. Deepgram's numerals=true is unreliable — it sometimes
+  // returns phonetic garbage like "even y" instead of "0". This normalization
+  // maps spoken digit words to digits BEFORE the LLM sees them, preventing the
+  // LLM from hallucinating garbled number readbacks.
+  // (Mystery-shopper finding: Round 3 lost because Deepgram returned "even y"
+  // for "zero" and the LLM parroted "555-even-why-1-4-7" back to the caller.)
+  _maybeNormalizePhoneNumber(userText, lastAssistantText) {
+    if (!lastAssistantText || !PHONE_ASK_RE.test(lastAssistantText)) return userText;
+    const WORD_TO_DIGIT = {
+      zero: '0', oh: '0', nought: '0', naught: '0',
+      one: '1', won: '1', wan: '1',
+      two: '2', to: '2', too: '2',
+      three: '3', tree: '3', free: '3',
+      four: '4', for: '4', fore: '4', fur: '4',
+      five: '5', fife: '5',
+      six: '6', sics: '6',
+      seven: '7', sevn: '7',
+      eight: '8', ate: '8', ait: '8',
+      nine: '9', niner: '9',
+      // STT artifacts when numerals=true partially fails
+      even: '0', y: '', why: '', double: '', triple: '', dubble: '', tripple: '',
+    };
+    // Step 1: strip connector/noise words
+    let cleaned = userText.replace(
+      /\b(?:and|or|then|also|just|like|kinda|kind\s+of|sort\s+of|actually|um|uh|hmm|let\s+me\s+see|oh\s+wait|i\s+mean|you\s+know|well)\b/gi,
+      ' ',
+    );
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    // Step 2: tokenize and map word-digits, leave unknowns as-is
+    const tokens = cleaned.split(/\s+/);
+    const digitTokens = [];
+    for (const tok of tokens) {
+      const lower = tok.toLowerCase().replace(/[^a-z0-9]/gi, '');
+      if (lower in WORD_TO_DIGIT) {
+        const mapped = WORD_TO_DIGIT[lower];
+        if (mapped) digitTokens.push(mapped);
+      } else if (/^\d+$/.test(lower)) {
+        digitTokens.push(lower);
+      }
+      // Unknown word → dropped (we're in a phone context; preserve only digits/digit-words)
+    }
+    // Step 3: extract longest contiguous digit sequence
+    let best = [];
+    let current = [];
+    for (const t of digitTokens) {
+      if (/^\d+$/.test(t)) { current.push(t); }
+      else { if (current.length > best.length) best = current; current = []; }
+    }
+    if (current.length > best.length) best = current;
+    let digits = best.join('');
+    if (!digits) return userText; // nothing extractable, return original
+    // Step 4: deduplicate repeated identical sequences (e.g. "5550147 5550147")
+    for (let k = Math.floor(digits.length / 2); k > 0; k--) {
+      if (digits.length % k !== 0) continue;
+      const parts = [];
+      for (let i = 0; i < digits.length; i += k) parts.push(digits.slice(i, i + k));
+      if (parts.length > 1 && new Set(parts).size === 1) { digits = parts[0]; break; }
+    }
+    if (digits.length < 7) return userText; // too short to be a real phone number
+    // Replace the phone part in the original text with cleaned digits
+    // Heuristic: replace the longest span of digit-like tokens/digits in the original
+    const originalDigitsRe = /(?:\d+(?:\s+\d+)*|(?:\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|won|wan|to|too|tree|free|ate|ait|even|why|y|dubble|tripple|double|triple|for|fore|fur|fife|sics|sevn|niner|nought|naught)\b(?:\s+|$))+)/gi;
+    let bestMatch = '';
+    let bestLen = 0;
+    let m;
+    while ((m = originalDigitsRe.exec(userText)) !== null) {
+      const cleanMatch = m[0].replace(/\D/g, '').length;
+      if (cleanMatch > bestLen) { bestLen = cleanMatch; bestMatch = m[0]; }
+    }
+    if (bestMatch) {
+      const formatted = digits.split('').join(' '); // "5 5 5 0 1 4 7"
+      const result = userText.replace(bestMatch, formatted);
+      console.log(`[call-loop] phone normalization: "${userText.slice(0, 80)}..." → replaced "${bestMatch.slice(0, 40)}" with "${formatted}"`);
+      return result;
+    }
+    return userText;
+  }
+
   // delay inserted between Deepgram's EndOfTurn firing and actually
   // generating a reply, so a caller who pauses mid-thought (which can
   // trip semantic endpointing into firing early) has a window to keep
@@ -2350,6 +2431,8 @@ export class CallSession {
       }, DIGIT_HOLD_MS);
       return;
     }
+    // Normalize spoken digit words to digits when the assistant just asked for a phone number.
+    text = this._maybeNormalizePhoneNumber(text, lastAssistant?.content);
     const node = this.flow ? this.flowNodesById?.get(this.currentNodeId) : null;
     const resp = Number(this.flow?.globalSettings?.responsiveness);
     const globalWaitMs = Number.isFinite(resp) && resp >= 0 && resp <= 1 && this.flow?.globalSettings?.responsiveness != null ? Math.round((1 - resp) * 1500) : 0;
