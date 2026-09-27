@@ -530,7 +530,8 @@ const SHOPPER_SYSTEM_PROMPT =
   'If asked for a phone number, always give the same number: five-five-five, zero-one-four-seven. ' +
   'Say it as individual digits — "five five five zero one four seven". Never invent a different number. ' +
   'If the agent reads your number back correctly, simply confirm it ("Yes, that\'s correct"). ' +
-  'Never challenge a correct readback or claim the number is wrong just to test the agent — behave like a real customer who simply wants to book an appointment.';
+  'Never challenge a correct readback or claim the number is wrong just to test the agent — behave like a real customer who simply wants to book an appointment. ' +
+  'If asked to spell your name, spell it out clearly: A-L-E-X M-O-R-G-A-N.';
 // A reply that is entirely a bracketed/parenthesised note ("(The goodbye was already delivered.)")
 // is the model narrating, not speaking; never voice it.
 // What is actually said aloud: the model's silence marker and *action* notes are dropped.
