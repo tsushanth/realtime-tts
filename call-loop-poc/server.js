@@ -3667,6 +3667,12 @@ export class CallSession {
         if (digits.length !== 10) {
           console.warn(`[call-loop] callback_number rejected — "${this.collectedData.callback_number}" has ${digits.length} digits, expected 10`);
           delete this.collectedData.callback_number;
+          // Inject a system note so the LLM sees the rejection on its next turn
+          // and re-asks rather than remembering the bad value from its own prior text.
+          this.history.push({
+            role: 'user',
+            content: `[System note: the callback number was rejected as incomplete (${digits.length} digits, expected 10). The caller must be asked again for the full 10-digit phone number including area code. Do not reuse the previously captured number.]`,
+          });
         }
       }
     }
