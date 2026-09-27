@@ -597,10 +597,9 @@ const SLOT_SAFETY_INSTRUCTION = process.env.DISABLE_SLOT_SAFETY === '1' ? '' :
   ' or propose one specific value and get an explicit yes before treating it as the booking.' +
   ' When you read a phone number back, say it one digit at a time with a short pause between digits' +
   ' ("four ... one ... five"), never in groups of three.' +
-  ` A complete US phone number has ${PHONE_DIGITS_TARGET} digits — count them before you confirm.` +
-  ` If you do not have all ${PHONE_DIGITS_TARGET} digits, say plainly that the number is incomplete and ask` +
-  ' for the missing digits. Never pad it, never guess a missing digit, and never reuse digits from an' +
-  ' earlier attempt. If the caller corrects you, discard your version completely and re-capture from scratch.' +
+  ' If the caller gives a number with fewer digits than expected, ask ONE soft clarification like' +
+  ' "Just to confirm — is that the full number including area code?" If they confirm or repeat the' +
+  ' same number, accept it and move on. Never argue, demand a different format, or block progress.' +
   ' Only treat a value as confirmed after the caller has said yes to that exact value; silence, "okay",' +
   ' or "go ahead" after you have changed something is not a yes to the new value.';
 // Optional per-call persona (place-test-call {persona}); keyed by the shopper's own CallSid.
@@ -3665,13 +3664,11 @@ export class CallSession {
       if (this.collectedData.callback_number != null) {
         const digits = String(this.collectedData.callback_number).replace(/\D/g, '');
         if (digits.length !== 10) {
-          console.warn(`[call-loop] callback_number rejected — "${this.collectedData.callback_number}" has ${digits.length} digits, expected 10`);
-          delete this.collectedData.callback_number;
-          // Inject a system note so the LLM sees the rejection on its next turn
-          // and re-asks rather than remembering the bad value from its own prior text.
+          console.warn(`[call-loop] callback_number advisory — "${this.collectedData.callback_number}" has ${digits.length} digits, expected 10. Asking once, then accepting caller's confirmation.`);
+          // Inject a single soft clarification, then accept whatever the caller confirms.
           this.history.push({
             role: 'user',
-            content: `[System note: the callback number was rejected as incomplete (${digits.length} digits, expected 10). The caller must be asked again for the full 10-digit phone number including area code. Do not reuse the previously captured number.]`,
+            content: `[System note: the callback number captured is "${this.collectedData.callback_number}" (${digits.length} digits). Ask ONE soft clarification like "Just to confirm — is that the full number including area code?" If the caller says yes or repeats the same number, accept it and move on. Never argue or demand a different format.]`,
           });
         }
       }
