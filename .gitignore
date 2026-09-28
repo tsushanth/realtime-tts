@@ -19,3 +19,6 @@ training-data/parts/
 worker-stt-realtime/data/
 worker-stt-realtime/models/
 worker-stt-realtime/bench/results/real__*.json
+
+# Harness cycle output reports - regenerated each run, not review artifacts
+harness/reports/*.md
