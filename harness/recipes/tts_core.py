@@ -102,9 +102,18 @@ class TTSCoreRecipe:
         if report_path:
             entry["report_path"] = report_path
         tried[candidate_id] = entry
-        with open(TRIED_PATH, "w") as f:
-            json.dump(tried, f, indent=2, sort_keys=True)
-            f.write("\n")
+        # Atomic write: temp file + os.replace so an interrupted process
+        # (kill, OOM, Ctrl-C) never leaves a partially-written JSON.
+        import tempfile
+        dir_name = os.path.dirname(TRIED_PATH)
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=dir_name, suffix=".json", delete=False
+        ) as tmp:
+            json.dump(tried, tmp, indent=2, sort_keys=True)
+            tmp.write("\n")
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp.name, TRIED_PATH)
 
     def train(self, candidate: Candidate, workdir: str) -> TrainedModel:
         """actual_cost_usd is wall-clock from just before .spawn() until the
