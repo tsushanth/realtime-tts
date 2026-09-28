@@ -95,8 +95,9 @@ not safe to ship. **Not ready for app-store review or any real user.**
 Merged to `main` already, live where noted: concurrency per-key fairness
 fix (`worker-piper-fly`), compliance audit-logging groundwork, phone
 agent MVP + hardening (Twilio orchestration, real LLM via OpenRouter,
-not deployed/no live number), dubbing MVP + hardening (real async job
-API, TTS/STT still stubbed pending credentials), audio isolation MVP +
+**deployed live at `call-loop-poc.fly.dev` with number `+12245061194`, active**), dubbing MVP + hardening (real async job
+API deployed to `dubbing-worker.fly.dev` with real STT (`stt-worker` Modal) and real TTS
+(gateway) wired up — **need a valid `TTS_GATEWAY_API_KEY` for end-to-end tests, the test key is rejected**), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
 — but see the real-speech quality gap noted below), speech-to-speech MVP
 + hardening (backend-managed per-user Modal deploy, live at `/convert-voice`
