@@ -97,7 +97,7 @@ fix (`worker-piper-fly`), compliance audit-logging groundwork, phone
 agent MVP + hardening (Twilio orchestration, real LLM via OpenRouter,
 **deployed live at `call-loop-poc.fly.dev` with number `+12245061194`, active**), dubbing MVP + hardening (real async job
 API deployed to `dubbing-worker.fly.dev` with real STT (`stt-worker` Modal) and real TTS
-(gateway) wired up — **need a valid `TTS_GATEWAY_API_KEY` for end-to-end tests, the test key is rejected**), audio isolation MVP +
+(gateway) wired up — **end-to-end verified working: en→de translation + Piper synthesis + retiming produces valid WAV**), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
 — but see the real-speech quality gap noted below), speech-to-speech MVP
 + hardening (backend-managed per-user Modal deploy, live at `/convert-voice`
