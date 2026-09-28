@@ -1008,6 +1008,7 @@ app.post('/twilio/voice', async (req, res) => {
         tenantNumber: req.body.From || null,
         direction: 'outbound',
         createdAt: Date.now(),
+        isDemo: true,
       });
     }
   } else if (req.query.mode === 'shopper' && callSid) {
@@ -1763,6 +1764,7 @@ twilioWss.on('connection', (twilioWs) => {
         voice_engine: 'poc',
         outcome: 'answered',
         duration_seconds: 0,
+        is_internal_test: !!resolved.isDemo,
       }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
       if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
         startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
