@@ -76,8 +76,8 @@ class PiperGatewayTTS(TTSBackend):
         http_url = auth["http_url"]
         req = urllib.request.Request(
             http_url,
-            data=json.dumps({"text": text, "voice": f"custom:{voice['id']}", "token": auth["token"]}).encode(),
-            headers={"content-type": "application/json"},
+            data=json.dumps({"text": text, "voice": f"custom:{voice['id']}"}).encode(),
+            headers={"content-type": "application/json", "Authorization": f"Bearer {auth['token']}"},
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=60) as r:
