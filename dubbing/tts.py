@@ -82,8 +82,14 @@ class PiperGatewayTTS(TTSBackend):
         )
         with urllib.request.urlopen(req, timeout=60) as r:
             audio_bytes = r.read()
-        with open(out_wav_path, "wb") as f:
-            f.write(audio_bytes)
+            sample_rate = int(r.headers.get("X-Sample-Rate", "24000"))
+        # The worker returns raw PCM16LE mono; wrap it in a WAV RIFF container so ffprobe can
+        # read duration and downstream retiming works.
+        with wave.open(out_wav_path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sample_rate)
+            w.writeframes(audio_bytes)
         return voice["id"]
 
 
