@@ -44,7 +44,7 @@ gpu_image = (
 web_image = modal.Image.debian_slim(python_version="3.11").pip_install("fastapi==0.109.0")
 
 jobs = modal.Volume.from_name("voice-design-dev-jobs", create_if_missing=True)
-secret = modal.Secret.from_name("voice-design-dev")
+secret = modal.Secret.from_name("voice-design-20260927")
 readaloud_secret = modal.Secret.from_name("voice-design-readaloud")
 
 MAX_DESCRIPTION_CHARS = 800
@@ -57,9 +57,10 @@ MODEL_ID = "parler-tts/parler-tts-mini-v1"
 
 # Rate limiting: fixed-window, per-token, applied only to POST /designs (the GPU-spawning,
 # billable action) - GET polling is free and unlimited since callers legitimately poll their own
-# job repeatedly. Default is deliberately low: this is a dev/preview GPU path, not a production
-# throughput target. Override per-deployment with VOICE_DESIGN_RATE_LIMIT_PER_HOUR.
-RATE_LIMIT_PER_HOUR = int(_os.environ.get("VOICE_DESIGN_RATE_LIMIT_PER_HOUR", "10"))
+# job repeatedly. The backend (ReadAloudAI) applies its own per-user rate limit (12/hour), so
+# this Modal-side limit just needs to be high enough that the backend is the bottleneck, not us.
+# Default is 10_000/hour per key — the backend only exceeds this at 834 concurrent users.
+RATE_LIMIT_PER_HOUR = int(_os.environ.get("VOICE_DESIGN_RATE_LIMIT_PER_HOUR", "10000"))
 
 
 @app.cls(
