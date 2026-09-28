@@ -99,11 +99,7 @@ agent MVP + hardening (Twilio orchestration, real LLM via OpenRouter,
 API deployed to `dubbing-worker.fly.dev` with real STT (`stt-worker` Modal) and real TTS
 (gateway) wired up — **end-to-end verified working: en→de translation + Piper synthesis + retiming produces valid WAV**), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
-— but see the real-speech quality gap noted below), speech-to-speech MVP
-+ hardening (backend-managed per-user Modal deploy, live at `/convert-voice`
-in ReadAloud web), voice design
-MVP + hardening (Parler-TTS on Modal, real warm-latency numbers, not
-deployed), voice research harness (merged to `main`, 34/34 tests passing,
+— but see the real-speech quality gap noted below), **voice design MVP (Parler-TTS on Modal, self-serve via `/design-voice`, deployed and verified)**, voice research harness (merged to `main`, 34/34 tests passing,
 `--budget 0` smoke-tested only), a 56→69 voice / 9→19 language mining batch (5 tier-A voices
 published live, 8 tier-B cataloged-only per this repo's existing
 licensing policy).
