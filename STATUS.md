@@ -1,4 +1,4 @@
-# Status (as of 2026-09-22)
+# Status (as of 2026-09-27)
 
 Snapshot of where things stand across the two active efforts, for anyone
 (human or agent) picking this up cold. See `docs/superpowers/specs/` and
@@ -26,7 +26,7 @@ have real (if unshipped) MVPs. Music generation was explicitly decided
 against — wrong buyer, wrong competency, breaks the no-GPU-serving
 economics.
 
-## Voice research harness — built, not yet merged
+## Voice research harness — merged to main
 
 **What it is:** an on-demand CLI (`python3 -m harness.run_cycle --recipe
 tts-core --budget 30`) that discovers untried model-size candidates,
@@ -35,20 +35,11 @@ writes a report — infrastructure for repeatable research, not a one-off
 investigation each time. Spec: `docs/superpowers/specs/2026-09-22-voice-research-harness-design.md`.
 Plan: `docs/superpowers/plans/2026-09-22-voice-research-harness.md`.
 
-**State:** all 7 plan tasks built, individually reviewed, and a final
-whole-branch review + one fix wave completed. 34/34 tests passing. Branch
-`harness-implementation` (worktree `worktrees/harness-implementation`),
-off `main` @ `b6c0f29`, currently at `e150e38`.
+**State: merged to `main` at `8c4e331`.** Branch `harness-implementation`
+was a no-ff merge (plus one pre-merge atomic-write fix for
+`record_tried()`). 34/34 tests passing.
 
-**Pending:**
-- The merge/PR/keep decision for this branch was never made — still open.
-- One known, deliberately-surfaced-not-silently-parked gap: `record_tried()`
-  (in `harness/recipes/tts_core.py`) does a non-atomic file write. An
-  interrupted process (kill, OOM, Ctrl-C mid-cycle) could corrupt
-  `tts_core_tried.json`, causing the next cycle to silently retrain
-  already-completed candidates at real GPU cost. Bounded by the per-cycle
-  budget cap (can't cause unbounded overspend), but real. Standard fix is
-  small (temp-file + `os.replace`) and hasn't been applied yet.
+**Still open:**
 - `TTSCoreRecipe.evaluate()`'s `_run_eval_pipeline()` is `NotImplementedError`
   by design — training and reporting work end-to-end, but a real
   `--budget 30` run would train real candidates and get real cost numbers,
@@ -108,12 +99,11 @@ not deployed/no live number), dubbing MVP + hardening (real async job
 API, TTS/STT still stubbed pending credentials), audio isolation MVP +
 hardening (deployed live at `demucs-isolation-dev.fly.dev`, gateway-wired
 — but see the real-speech quality gap noted below), speech-to-speech MVP
-+ hardening (built and deployable: `modal deploy voice-pipeline/convert_job.py`
-restarts it on `t-sushanth--voice-convert-dev-api.modal.run` with Bearer
-CONVERT_SECRET auth — currently stopped to avoid GPU spend until there
-are real users), voice design
++ hardening (backend-managed per-user Modal deploy, live at `/convert-voice`
+in ReadAloud web), voice design
 MVP + hardening (Parler-TTS on Modal, real warm-latency numbers, not
-deployed), a 56→69 voice / 9→19 language mining batch (5 tier-A voices
+deployed), voice research harness (merged to `main`, 34/34 tests passing,
+`--budget 0` smoke-tested only), a 56→69 voice / 9→19 language mining batch (5 tier-A voices
 published live, 8 tier-B cataloged-only per this repo's existing
 licensing policy).
 
