@@ -59,7 +59,11 @@ def _bounded_generate(chunk_iter, timeout_s: float):
     The pilot's confirmed runaway-generation failure mode (RTF>1, unreliable
     stop-token behavior) manifested as slow or stalled yields, which this
     check is designed to catch; true complete hangs would require thread-based
-    or async-cancellation mechanisms outside the scope of this wrapper."""
+    or async-cancellation mechanisms outside the scope of this wrapper.
+
+    NOTE: raising here abandons the generator but does NOT cancel the
+    underlying vLLM request -- it keeps generating on the GPU (competing with
+    later requests) until it hits its own stop token or max length."""
     deadline = time.time() + timeout_s
     for chunk in chunk_iter:
         if time.time() > deadline:
@@ -69,9 +73,13 @@ def _bounded_generate(chunk_iter, timeout_s: float):
 
 def load_engine_for_checkpoint(checkpoint_dir: str):
     """Constructs a fresh OrpheusModel for one voice's checkpoint, applying
-    the AsyncEngineArgs max_model_len patch first. One engine instance per
-    warm container; a new voice request on a cold container calls this once
-    in @modal.enter()-equivalent setup (wired in Task 6's Modal wrapper)."""
+    the AsyncEngineArgs max_model_len patch first. Called lazily from
+    main.py's OrpheusCloneEngine.synthesize_for_voice on the first request
+    for a voice (not in @modal.enter(), since the voice isn't known until a
+    request arrives); that cache holds at most one engine per container.
+
+    Regression-guarded by tests/test_serve.py::test_load_engine_* -- do not
+    add tokenizer=/max_model_len= kwargs or move the patch target."""
     import functools
 
     import torch
