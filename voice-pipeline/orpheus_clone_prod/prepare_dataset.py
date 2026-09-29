@@ -10,9 +10,13 @@ real-call eval used for draft references.
 """
 import io
 import json
+import logging
 import os
+import shutil
 import wave
 import zipfile
+
+logger = logging.getLogger(__name__)
 
 
 class DatasetTooSmallError(Exception):
@@ -58,13 +62,20 @@ def prepare_dataset(zip_bytes: bytes, dataset_dir: str, voice_tag: str, min_clip
                     dst.write(src.read())
                 extracted.append(out_path)
     except zipfile.BadZipFile:
+        shutil.rmtree(clips_dir, ignore_errors=True)
         raise DatasetTooSmallError("uploaded file is not a valid zip archive")
 
     rows = []
     for path in extracted:
         if path.lower().endswith(".wav") and not _is_valid_wav(path):
             continue  # corrupt/unreadable clip, skip rather than fail the whole upload
-        text = transcribe_clip(path)
+        try:
+            text = transcribe_clip(path)
+        except Exception as e:
+            # Catch any exception during transcription (corrupt/unreadable files of any format).
+            # Log and skip that clip; continue with the rest.
+            logger.warning(f"Failed to transcribe {path}: {e}, skipping")
+            continue
         if not text:
             continue  # unusable clip (silence, noise): no transcript, no training row
         rows.append({
@@ -73,6 +84,7 @@ def prepare_dataset(zip_bytes: bytes, dataset_dir: str, voice_tag: str, min_clip
         })
 
     if len(rows) < min_clips:
+        shutil.rmtree(clips_dir, ignore_errors=True)
         raise DatasetTooSmallError(
             f"only {len(rows)} usable clips after extraction and transcription, need at least {min_clips}"
         )

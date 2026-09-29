@@ -1,4 +1,5 @@
 import io
+import os
 import wave
 import zipfile
 
@@ -67,3 +68,46 @@ def test_prepare_dataset_rejects_clips_that_transcribe_empty(tmp_path, monkeypat
     zip_bytes = _zip_of({"silent.wav": _silent_wav_bytes()})
     with pytest.raises(DatasetTooSmallError):
         prepare_dataset(zip_bytes, str(tmp_path), voice_tag="testvoice", min_clips=1)
+
+
+def test_prepare_dataset_skips_corrupt_non_wav_files(tmp_path, monkeypatch):
+    # Corrupt MP3 or FLAC files should be skipped gracefully, not crash the batch.
+    # This tests the fix for the issue where only WAV files had validation.
+    def mock_transcribe(path):
+        if "corrupt" in path:
+            raise ValueError(f"Failed to decode audio file: {path}")
+        return "a valid transcript"
+
+    monkeypatch.setattr(
+        "orpheus_clone_prod.prepare_dataset.transcribe_clip",
+        mock_transcribe,
+    )
+    zip_bytes = _zip_of({
+        "good1.wav": _silent_wav_bytes(),
+        "good2.wav": _silent_wav_bytes(),
+        "corrupt.mp3": b"not actually an mp3 file",
+        "corrupt.flac": b"not actually a flac file",
+    })
+    rows = prepare_dataset(zip_bytes, str(tmp_path), voice_tag="testvoice", min_clips=2)
+    assert len(rows) == 2
+    assert all(r["text"].startswith("testvoice: ") for r in rows)
+    assert all(r["audio"].startswith("clips/") for r in rows)
+
+
+def test_prepare_dataset_cleans_up_clips_on_error(tmp_path, monkeypatch):
+    # When DatasetTooSmallError is raised, the clips directory should be cleaned up
+    # so that a retry doesn't have orphaned files from the failed attempt.
+    monkeypatch.setattr(
+        "orpheus_clone_prod.prepare_dataset.transcribe_clip",
+        lambda path: "a valid transcript",
+    )
+    zip_bytes = _zip_of({
+        "clip1.wav": _silent_wav_bytes(),
+    })
+    clips_dir = os.path.join(str(tmp_path), "clips")
+
+    with pytest.raises(DatasetTooSmallError):
+        prepare_dataset(zip_bytes, str(tmp_path), voice_tag="testvoice", min_clips=5)
+
+    # After the error, clips_dir should be removed or empty
+    assert not os.path.exists(clips_dir) or len(os.listdir(clips_dir)) == 0
