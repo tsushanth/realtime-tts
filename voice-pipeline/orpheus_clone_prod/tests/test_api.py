@@ -265,19 +265,22 @@ def test_spawn_failure_rollback_is_committed(tmp_path, monkeypatch):
 # --- /v1/orpheus-tts -----------------------------------------------------------
 
 class _FakeRemoteMethod:
-    def __init__(self, behavior, calls):
+    def __init__(self, vid, behavior, calls):
+        self._vid = vid
         self._behavior = behavior
         self._calls = calls
 
-    def remote(self, voice, text):
-        self._calls.append((voice, text))
-        return self._behavior(voice, text)
+    def remote(self, text):
+        self._calls.append((self._vid, text))
+        return self._behavior(self._vid, text)
 
 
 def _fake_engine_cls(behavior, calls):
+    # Mirrors main.OrpheusCloneEngine's shape: parameterized by vid
+    # (modal.parameter), one method taking only the text.
     class FakeEngine:
-        def __init__(self):
-            self.synthesize_for_voice = _FakeRemoteMethod(behavior, calls)
+        def __init__(self, *, vid):
+            self.synthesize_text = _FakeRemoteMethod(vid, behavior, calls)
 
     return FakeEngine
 
@@ -295,48 +298,94 @@ def _tts_client(tmp_path, monkeypatch, behavior):
     return client
 
 
+def _ready_voice(tmp_path, client):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=AUTH).json()["id"]
+    VoiceRecordStore(root=str(tmp_path)).write_status(vid, "ready")
+    return vid
+
+
 def test_tts_returns_audio_bytes_from_engine(tmp_path, monkeypatch):
-    client = _tts_client(tmp_path, monkeypatch, lambda voice, text: [b"\x01\x02", b"\x03\x04"])
-    resp = client.post("/v1/orpheus-tts", json={"voice": "custom-fast:v-abc1234567", "text": "hi"}, headers=AUTH)
+    client = _tts_client(tmp_path, monkeypatch, lambda vid, text: [b"\x01\x02", b"\x03\x04"])
+    vid = _ready_voice(tmp_path, client)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"}, headers=AUTH)
     assert resp.status_code == 200
     assert resp.content == b"\x01\x02\x03\x04"
     assert resp.headers["content-type"] == "audio/pcm"
-    assert client.engine_calls == [("custom-fast:v-abc1234567", "hi")]
+    # The engine is instantiated with the bare vid as its class parameter.
+    assert client.engine_calls == [(vid, "hi")]
 
 
 def test_tts_requires_auth(tmp_path, monkeypatch):
-    client = _tts_client(tmp_path, monkeypatch, lambda voice, text: [b"x"])
-    resp = client.post("/v1/orpheus-tts", json={"voice": "custom-fast:v-abc1234567", "text": "hi"})
+    client = _tts_client(tmp_path, monkeypatch, lambda vid, text: [b"x"])
+    vid = _ready_voice(tmp_path, client)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"})
     assert resp.status_code == 401
     assert client.engine_calls == []
 
 
 def test_tts_requires_text(tmp_path, monkeypatch):
-    client = _tts_client(tmp_path, monkeypatch, lambda voice, text: [b"x"])
-    resp = client.post("/v1/orpheus-tts", json={"voice": "custom-fast:v-abc1234567", "text": ""}, headers=AUTH)
+    client = _tts_client(tmp_path, monkeypatch, lambda vid, text: [b"x"])
+    vid = _ready_voice(tmp_path, client)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": ""}, headers=AUTH)
     assert resp.status_code == 400
     assert client.engine_calls == []
 
 
-def test_tts_unknown_voice_maps_to_400(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "voice",
+    [
+        "tara",  # not a custom-fast voice
+        "custom-fast:",  # empty id
+        "custom-fast:../etc",  # malformed id
+        "custom-fast:v-ABC1234567",  # malformed (uppercase)
+        "custom-fast:v-abc1234567",  # well-formed but unknown
+    ],
+)
+def test_tts_invalid_or_unknown_voice_rejected_before_gpu(tmp_path, monkeypatch, voice):
+    client = _tts_client(tmp_path, monkeypatch, lambda vid, text: [b"x"])
+    resp = client.post("/v1/orpheus-tts", json={"voice": voice, "text": "hi"}, headers=AUTH)
+    assert resp.status_code == 400
+    assert client.engine_calls == []  # resolved in the web container; never reached the GPU
+
+
+@pytest.mark.parametrize("status", ["awaiting_dataset", "training", "failed"])
+def test_tts_not_ready_voice_rejected_before_gpu(tmp_path, monkeypatch, status):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    client = _tts_client(tmp_path, monkeypatch, lambda vid, text: [b"x"])
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=AUTH).json()["id"]
+    if status != "awaiting_dataset":
+        VoiceRecordStore(root=str(tmp_path)).write_status(vid, status)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"}, headers=AUTH)
+    assert resp.status_code == 400
+    assert client.engine_calls == []
+
+
+def test_tts_engine_unknown_voice_error_still_maps_to_400(tmp_path, monkeypatch):
+    # The engine container re-checks in @modal.enter() (race / direct caller)
+    # and raises UnknownVoiceError from the method; the API maps it to 400.
     from orpheus_clone_prod.serve import UnknownVoiceError
 
-    def raise_unknown(voice, text):
+    def raise_unknown(vid, text):
         raise UnknownVoiceError("voice not ready")
 
     client = _tts_client(tmp_path, monkeypatch, raise_unknown)
-    resp = client.post("/v1/orpheus-tts", json={"voice": "custom-fast:v-abc1234567", "text": "hi"}, headers=AUTH)
+    vid = _ready_voice(tmp_path, client)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"}, headers=AUTH)
     assert resp.status_code == 400
 
 
 def test_tts_generation_timeout_maps_to_503(tmp_path, monkeypatch):
     from orpheus_clone_prod.serve import GenerationTimeoutError
 
-    def raise_timeout(voice, text):
+    def raise_timeout(vid, text):
         raise GenerationTimeoutError("too slow")
 
     client = _tts_client(tmp_path, monkeypatch, raise_timeout)
-    resp = client.post("/v1/orpheus-tts", json={"voice": "custom-fast:v-abc1234567", "text": "hi"}, headers=AUTH)
+    vid = _ready_voice(tmp_path, client)
+    resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"}, headers=AUTH)
     assert resp.status_code == 503
 
 

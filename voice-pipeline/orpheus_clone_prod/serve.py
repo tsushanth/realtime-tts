@@ -73,10 +73,10 @@ def _bounded_generate(chunk_iter, timeout_s: float):
 
 def load_engine_for_checkpoint(checkpoint_dir: str):
     """Constructs a fresh OrpheusModel for one voice's checkpoint, applying
-    the AsyncEngineArgs max_model_len patch first. Called lazily from
-    main.py's OrpheusCloneEngine.synthesize_for_voice on the first request
-    for a voice (not in @modal.enter(), since the voice isn't known until a
-    request arrives); that cache holds at most one engine per container.
+    the AsyncEngineArgs max_model_len patch first. Called once from
+    main.py's OrpheusCloneEngine @modal.enter(): that class is parameterized
+    by vid, so each GPU container serves exactly one voice and never swaps
+    engines (vLLM 0.7.3 doesn't reliably free GPU memory on engine delete).
 
     Regression-guarded by tests/test_serve.py::test_load_engine_* -- do not
     add tokenizer=/max_model_len= kwargs or move the patch target."""

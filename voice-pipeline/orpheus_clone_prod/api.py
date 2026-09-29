@@ -184,9 +184,12 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
             raise HTTPException(400, "text is required")
         if not isinstance(voice, str):
             raise HTTPException(400, "voice must be a string")
-        # Ownership check up front, before paying for a GPU call. Malformed or
-        # unknown voices fall through to the engine, whose resolve_voice_dir
-        # is the single authority on "unknown or not ready" (-> 400 below).
+        from orpheus_clone_prod.serve import GenerationTimeoutError, UnknownVoiceError, resolve_voice_dir
+
+        # Everything is resolved here in the web container, before paying for
+        # a GPU call: ownership (403) first, then resolve_voice_dir -- the
+        # single authority on malformed/unknown/not-ready (400). The engine
+        # class is parameterized by vid (one voice per GPU container).
         if voice.startswith(CUSTOM_FAST_PREFIX):
             vid = voice[len(CUSTOM_FAST_PREFIX):]
             if VOICE_ID_RE.match(vid):
@@ -194,13 +197,16 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
                 status = store.read_status(vid)
                 if status is not None:
                     check_owner(request, status)
-
-        from orpheus_clone_prod.serve import GenerationTimeoutError, UnknownVoiceError
+        try:
+            resolve_voice_dir(voice, store)
+        except UnknownVoiceError:
+            raise HTTPException(400, f"unknown or not-ready voice: {voice!r}")
+        vid = voice[len(CUSTOM_FAST_PREFIX):]
 
         engine_cls = _get_engine_cls()
         try:
             # .remote() blocks; run it off the event loop.
-            chunks = await run_in_threadpool(lambda: engine_cls().synthesize_for_voice.remote(voice, text))
+            chunks = await run_in_threadpool(lambda: engine_cls(vid=vid).synthesize_text.remote(text))
         except UnknownVoiceError:
             raise HTTPException(400, f"unknown or not-ready voice: {voice!r}")
         except GenerationTimeoutError:

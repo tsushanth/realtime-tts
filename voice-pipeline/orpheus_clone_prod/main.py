@@ -18,7 +18,7 @@ import logging
 
 import modal
 
-from orpheus_clone_prod.serve import load_engine_for_checkpoint, resolve_voice_dir, synthesize
+from orpheus_clone_prod.serve import UnknownVoiceError, load_engine_for_checkpoint, resolve_voice_dir, synthesize
 from orpheus_clone_prod.storage import VoiceRecordStore
 from orpheus_clone_prod.train_job import run_training_job
 
@@ -93,36 +93,49 @@ def run_training_job_modal(vid: str):
 
 @app.cls(image=serve_image, gpu="A10G", timeout=300, scaledown_window=300, volumes={CHECKPOINT_ROOT: checkpoint_volume}, secrets=[hf_secret])
 class OrpheusCloneEngine:
+    """One voice per container. `vid` is a Modal class parameter, so each
+    distinct voice gets its own container pool: Modal routes
+    OrpheusCloneEngine(vid=X) calls only to containers started for X, and
+    starts a new container for a voice with no warm one.
+
+    Why: vLLM reserves ~90% of GPU memory per engine, and deleting a vLLM
+    0.7.3 engine does not reliably free it (background threads hold refs),
+    so swapping voices inside one warm container risked OOM. The cost is a
+    cold start whenever a voice has no warm container.
+
+    A voice's checkpoint never changes once ready (the API only commits
+    from awaiting_dataset/failed), so caching the engine for the life of
+    the container is safe. Deleted voices are rejected in the web container
+    before .remote(), so there is no per-request Volume reload here.
+
+    Callers: resolve/validate the voice in the web container first (api.py
+    does, via serve.resolve_voice_dir), then OrpheusCloneEngine(vid=vid).
+    """
+
+    vid: str = modal.parameter()
+
     @modal.enter()
     def _init(self):
-        # checkpoint_dir -> loaded OrpheusModel. Capped at ONE entry: vLLM
-        # reserves ~90% of GPU memory per engine by default, so a second
-        # engine can't fit alongside the first on an A10G. Consequence: only
-        # one voice is "hot" per container; switching voices in a warm
-        # container pays a full engine reload. Accepted tradeoff for now.
-        # Engines are loaded lazily on first request for a voice (not in
-        # this @modal.enter), since the voice isn't known until then.
-        self._models = {}
+        self._model = None
+        self._init_error = None
+        store = VoiceRecordStore(root=CHECKPOINT_ROOT)
+        try:
+            # Same single authority as the web container; guards a race or a
+            # direct caller passing an unready/malformed vid.
+            checkpoint_dir = resolve_voice_dir(f"custom-fast:{self.vid}", store)
+        except UnknownVoiceError as e:
+            # Don't crash the container (Modal would retry startup); fail
+            # each call with UnknownVoiceError -> 400 at the API instead.
+            logger.warning(f"engine container for {self.vid!r} has no usable checkpoint: {e}")
+            self._init_error = e
+            return
+        self._model = load_engine_for_checkpoint(checkpoint_dir)
 
     @modal.method()
-    def synthesize_for_voice(self, voice: str, text: str):
-        # See newly-ready / newly-deleted voices instead of this warm
-        # container's startup snapshot. reload() can fail if files on the
-        # volume are held open; don't fail synthesis over it.
-        try:
-            checkpoint_volume.reload()
-        except Exception as e:
-            logger.warning(f"checkpoint_volume.reload() failed, using cached view: {e}")
-        store = VoiceRecordStore(root=CHECKPOINT_ROOT)
-        checkpoint_dir = resolve_voice_dir(voice, store)  # raises UnknownVoiceError -> caller maps to 400
-        if checkpoint_dir not in self._models:
-            # Evict any other voice's engine first (see _init). Rely on GC to
-            # release GPU memory; no manual CUDA management here.
-            for other in list(self._models):
-                del self._models[other]
-            self._models[checkpoint_dir] = load_engine_for_checkpoint(checkpoint_dir)
-        vid = voice.split(":", 1)[1]
-        return list(synthesize(self._models[checkpoint_dir], text, voice_tag=vid))
+    def synthesize_text(self, text: str):
+        if self._model is None:
+            raise UnknownVoiceError(str(self._init_error or f"voice not ready: {self.vid!r}"))
+        return list(synthesize(self._model, text, voice_tag=self.vid))
 
 
 @app.function(image=web_image, secrets=[api_secret], volumes={CHECKPOINT_ROOT: checkpoint_volume}, timeout=120)
