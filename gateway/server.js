@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { runpodConfigured, handleClientOverRunpod } from "./runpod-adapter.js";
 import * as keys from "./keys.js";
 import { handleVoiceApi } from "./voiceApiProxy.js";
+import { handleOrpheusVoiceApi } from "./orpheusApiProxy.js";
 import { auditLog } from "./audit.js";
 
 // Stripe self-serve webhook (see PUBLIC_DRAFT.md billing section)
@@ -261,6 +262,12 @@ const server = http.createServer(async (req, res) => {
   // See voiceApiProxy.js and ../VOICE_API_DRAFT.md.
   if (url.pathname.startsWith("/v1/voices")) {
     if (await handleVoiceApi(req, res, url)) return;
+  }
+
+  // Orpheus streaming voice cloning: same API-key gateway pattern as /v1/voices above, forwarded to
+  // the ReadAloudAI backend's /internal/orpheus-clone-api router. See orpheusApiProxy.js.
+  if (url.pathname.startsWith("/v1/orpheus-voices") || url.pathname.startsWith("/v1/orpheus-tts")) {
+    if (await handleOrpheusVoiceApi(req, res, url)) return;
   }
 
   if (url.pathname === "/tts/authorize" && req.method === "POST") {
