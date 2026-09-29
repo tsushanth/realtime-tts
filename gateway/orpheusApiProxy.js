@@ -41,8 +41,9 @@ export function readRawBody(req, maxBytes) {
   });
 }
 
-// Large enough for a single-shot dataset zip; this feature has no chunked-parts route.
-const MAX_BODY_BYTES = 32 * 1024 * 1024;
+// Large enough for a single-shot dataset zip (the documented 8-20 min recommendation can exceed
+// 32MB at higher sample rates/bit depths); this feature has no chunked-parts route.
+const MAX_BODY_BYTES = 100 * 1024 * 1024;
 
 export function forward(backendPath, method, headers, body) {
   return new Promise((resolve, reject) => {
@@ -67,8 +68,10 @@ export function forward(backendPath, method, headers, body) {
 // (caller should not continue routing), false otherwise.
 export async function handleOrpheusVoiceApi(req, res, url) {
   let prefix;
-  if (url.pathname.startsWith(VOICES_PREFIX)) prefix = VOICES_PREFIX;
-  else if (url.pathname.startsWith(TTS_PREFIX)) prefix = TTS_PREFIX;
+  // Exact match or a "/" boundary, so e.g. /v1/orpheus-voicesX is not treated as ours.
+  const under = (p) => url.pathname === p || url.pathname.startsWith(p + "/");
+  if (under(VOICES_PREFIX)) prefix = VOICES_PREFIX;
+  else if (under(TTS_PREFIX)) prefix = TTS_PREFIX;
   else return false;
 
   if (!orpheusApiConfigured()) {

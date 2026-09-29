@@ -157,4 +157,12 @@ test("unrelated path is not handled", async () => {
   assert.equal(handled, false);
 });
 
+test("prefix look-alikes are not handled (slash-boundary match)", async () => {
+  for (const p of ["/v1/orpheus-voicesX", "/v1/orpheus-voices-evil/v-deadbeef00", "/v1/orpheus-ttsfoo"]) {
+    const { req, res, url } = fakeReqRes("GET", p);
+    const handled = await handleOrpheusVoiceApi(req, res, url);
+    assert.equal(handled, false, p);
+  }
+});
+
 test.after(() => backend.close());
