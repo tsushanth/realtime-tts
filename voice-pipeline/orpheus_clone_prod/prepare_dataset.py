@@ -43,7 +43,21 @@ def load_transcription_model():
         try:
             from faster_whisper import WhisperModel
 
-            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+            # CPU, not CUDA: faster-whisper's GPU backend (ctranslate2) needs
+            # its own cuBLAS/cuDNN .so files discoverable via LD_LIBRARY_PATH
+            # -- torch's wheel-bundled CUDA libs (installed for the LoRA
+            # training step) do NOT satisfy this, and the train_image never
+            # provided nvidia-cublas-cu12/nvidia-cudnn-cu12. That caused
+            # "Library libcublas.so.12 is not found or cannot be loaded" on
+            # every real deployment, load_transcription_model() to raise
+            # TranscriptionUnavailableError, and (before that error path
+            # existed) silent per-clip failures. The training container
+            # already reserves a GPU for the LoRA step, so paying CPU cost
+            # for the transcription pass (one-time, not on the training hot
+            # path) is a legitimate trade for not depending on a second,
+            # separately-provisioned CUDA runtime. int8 is the recommended
+            # compute_type for CPU inference with faster-whisper.
+            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
         except Exception as e:
             raise TranscriptionUnavailableError(f"transcription service unavailable: {e}") from e
     return _WHISPER_MODEL
