@@ -39,7 +39,15 @@ def resolve_voice_dir(voice: str, store: VoiceRecordStore) -> str:
     if not VOICE_ID_RE.match(vid):
         raise UnknownVoiceError(f"malformed voice id: {vid!r}")
     status = store.read_status(vid)
-    if status is None or status.get("status") != "ready":
+    # "warming" means the checkpoint is already fully saved (train_job.py
+    # writes "warming" only after save_checkpoint_dir succeeds) -- it is not
+    # yet reported "ready" to the customer because the post-training warm-up
+    # synthesis call hasn't finished, but the checkpoint itself is completely
+    # loadable. That warm-up call resolves through this exact function, so it
+    # must succeed during "warming", not just "ready". A real customer
+    # request that happens to land during this same narrow window correctly
+    # succeeds too, rather than being rejected for no real reason.
+    if status is None or status.get("status") not in ("ready", "warming"):
         raise UnknownVoiceError(f"voice not ready: {vid!r}")
     if store.is_delete_requested(vid):
         # A delete was requested; never serve it even if a training job's

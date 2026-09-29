@@ -54,10 +54,74 @@ def test_run_training_job_writes_training_then_ready_on_success(tmp_path, monkey
     run_training_job("v-abc1234567", root=str(tmp_path))
 
     # The API already committed "training" before spawning; the job must not
-    # rewrite the manifest at startup (see train_job.py docstring).
-    assert seen_statuses == ["ready"]
+    # rewrite the manifest at startup (see train_job.py docstring). It passes
+    # through "warming" (no warm_up hook given here, so nothing runs during
+    # it) before its final "ready" write.
+    assert seen_statuses == ["warming", "ready"]
     final = store.read_status("v-abc1234567")
     assert final["status"] == "ready"
+
+
+def test_run_training_job_calls_warm_up_before_marking_ready(tmp_path, monkeypatch):
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+
+    calls = []
+    monkeypatch.setattr("orpheus_clone_prod.train_job.VoiceRecordStore", lambda root: store)
+    monkeypatch.setattr("orpheus_clone_prod.train_job._load_zip_bytes", lambda vid, root: b"fake-zip-bytes")
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job.prepare_dataset",
+        lambda zip_bytes, dataset_dir, voice_tag, min_clips=20: [
+            {"text": f"{voice_tag}: hello", "audio": "clips/a.wav"}
+        ] * 20,
+    )
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._run_lora_finetune_and_merge",
+        lambda rows, dataset_dir, voice_tag: os.makedirs(f"{dataset_dir}/fake_merged", exist_ok=True) or f"{dataset_dir}/fake_merged",
+    )
+
+    def warm_up(vid):
+        calls.append(vid)
+        # The voice must be "warming" (checkpoint already saved, not yet
+        # "ready") while warm_up runs -- this is the whole point: the
+        # customer's first real request should never race a still-loading
+        # engine.
+        assert store.read_status(vid)["status"] == "warming"
+
+    run_training_job("v-abc1234567", root=str(tmp_path), warm_up=warm_up)
+
+    assert calls == ["v-abc1234567"]
+    assert store.read_status("v-abc1234567")["status"] == "ready"
+
+
+def test_run_training_job_still_marks_ready_if_warm_up_fails(tmp_path, monkeypatch):
+    """A warm-up failure must never turn a successful training run into a
+    failed voice -- the customer just pays the cold-start cost themselves on
+    their first request, same as if warm-up didn't exist."""
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+
+    monkeypatch.setattr("orpheus_clone_prod.train_job.VoiceRecordStore", lambda root: store)
+    monkeypatch.setattr("orpheus_clone_prod.train_job._load_zip_bytes", lambda vid, root: b"fake-zip-bytes")
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job.prepare_dataset",
+        lambda zip_bytes, dataset_dir, voice_tag, min_clips=20: [
+            {"text": f"{voice_tag}: hello", "audio": "clips/a.wav"}
+        ] * 20,
+    )
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._run_lora_finetune_and_merge",
+        lambda rows, dataset_dir, voice_tag: os.makedirs(f"{dataset_dir}/fake_merged", exist_ok=True) or f"{dataset_dir}/fake_merged",
+    )
+
+    def failing_warm_up(vid):
+        raise RuntimeError("cold-start warm-up call failed")
+
+    run_training_job("v-abc1234567", root=str(tmp_path), warm_up=failing_warm_up)
+
+    final = store.read_status("v-abc1234567")
+    assert final["status"] == "ready"
+    assert "error" not in final
 
 
 def test_run_training_job_preserves_original_error_when_status_write_fails(tmp_path, monkeypatch):

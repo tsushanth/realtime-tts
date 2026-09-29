@@ -60,7 +60,7 @@ def test_run_training_job_modal_completes_delete_requested_late_after_final_comm
     monkeypatch.setattr(main, "CHECKPOINT_ROOT", str(tmp_path))
     monkeypatch.setattr(main, "checkpoint_volume", fake_volume)
 
-    def fake_run_training_job(vid, root, reload_store=None):
+    def fake_run_training_job(vid, root, reload_store=None, warm_up=None):
         # Represents the state at the point of the second reload check: the
         # underlying job already ran to its own success exit point (its own
         # _deleted_mid_run check saw no delete yet) and wrote "ready" -- then
@@ -84,6 +84,71 @@ def test_run_training_job_modal_completes_delete_requested_late_after_final_comm
     assert fake_volume.commits >= 2  # the trailing commit, plus the deferred-delete commit
     assert store.read_status(vid) is None
     assert not __import__("os").path.exists(store.checkpoint_dir(vid))
+
+
+# --- warm_up must commit before calling the engine container ---------------
+# Found via a real deploy: without this ordering, the checkpoint and the
+# "warming" status write are only local to the training container when
+# warm_up's OrpheusCloneEngine(...).remote() call spins up a separate engine
+# container. That container mounts its own view of the Volume, sees nothing,
+# permanently caches an UnknownVoiceError for its lifetime, and Modal then
+# routes the customer's real first request to that same poisoned warm
+# container. Symptoms observed live: "warming" never appeared in status
+# polling (nothing was externally visible until the run's single trailing
+# commit, well after warm_up already ran) and the customer's immediate
+# post-ready synthesis call 400'd.
+
+def test_warm_up_commits_before_calling_engine_container(tmp_path, monkeypatch):
+    from orpheus_clone_prod import main
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    vid = "v-abc1234567"
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create(vid, {"speaker_name": "Jane"})
+    store.write_status(vid, "training")
+
+    events = []
+
+    class _OrderedFakeVolume(_FakeVolume):
+        def commit(self):
+            events.append("commit")
+            super().commit()
+
+    fake_volume = _OrderedFakeVolume()
+    monkeypatch.setattr(main, "CHECKPOINT_ROOT", str(tmp_path))
+    monkeypatch.setattr(main, "checkpoint_volume", fake_volume)
+
+    captured = {}
+
+    class _FakeRemote:
+        def remote(self, text):
+            events.append("engine_call")
+            return [b"\x00\x00"]
+
+    class _FakeEngine:
+        def __init__(self, vid):
+            self.synthesize_text = _FakeRemote()
+
+    monkeypatch.setattr(main, "OrpheusCloneEngine", _FakeEngine)
+
+    def fake_run_training_job(vid, root, reload_store=None, warm_up=None):
+        captured["warm_up"] = warm_up
+        store.write_status(vid, "warming", clip_count=20, trained_at=0.0)
+        # Real call site (train_job.py): warm_up runs here, before the
+        # trailing "ready" write and before run_training_job_modal's own
+        # finally-block commit.
+        warm_up(vid)
+        store.write_status(vid, "ready")
+
+    monkeypatch.setattr(main, "run_training_job", fake_run_training_job)
+
+    main.run_training_job_modal.local(vid)
+
+    assert captured.get("warm_up") is not None, "run_training_job was not given a warm_up callback"
+    assert events[:2] == ["commit", "engine_call"], (
+        "warm_up must commit the checkpoint volume before calling the engine "
+        "container, or a fresh engine container won't see the checkpoint yet"
+    )
 
 
 class _TwoViewVolume:
@@ -212,28 +277,23 @@ def test_delete_during_save_checkpoint_survives_jobs_ready_commit_and_deletes_vo
 
     monkeypatch.setattr(VoiceRecordStore, "save_checkpoint_dir", save_with_delete_arriving_midway)
 
-    after_job_commit = []
-
-    def snapshot(vol):
-        if not after_job_commit:
-            with open(manifest_path) as f:
-                after_job_commit.append((json.load(f), committed_store.is_delete_requested(vid)))
-
-    volume.after_commit.append(snapshot)
-
     main.run_training_job_modal.local(vid)
 
     # The pre-save check really did run before the delete arrived (initial
     # reload + train_job's reload), so it could not have caught it.
     assert reloads_before_save == [2]
-    # (a) The job's commit overwrote the manifest: status "ready", and the
-    # manifest-based flag is gone -- the old mechanism would have lost it.
-    manifest_after, marker_after = after_job_commit[0]
-    assert manifest_after["status"] == "ready"
-    assert "delete_requested" not in manifest_after
-    # (b) ...but the marker file survived the same commit...
-    assert marker_after is True
-    # ...and the post-commit check completed the deletion in committed state.
+    # run_training_job now re-checks the marker (after a reload) a second
+    # time, after the warm-up step and before its own final "ready" write --
+    # this scenario's delete (mid-save_checkpoint_dir) arrives in time for
+    # THAT check to catch it, one step earlier than the round-3 fix's
+    # post-final-commit check (main.py) was designed to. That's a genuine
+    # narrowing of the race, not a regression: the voice is deleted locally
+    # before "ready" is ever written at all, so it never reaches committed
+    # state as "ready" even transiently -- there is nothing for the
+    # manifest-clobber scenario this test originally targeted to happen to.
+    # The still-real, narrower residual window (a delete landing after this
+    # job's own final commit) is covered separately by
+    # test_run_training_job_modal_completes_delete_requested_late_after_final_commit.
     assert not os.path.exists(os.path.join(str(committed), vid))
     assert committed_store.read_status(vid) is None
     assert api.get(f"/v1/orpheus-voices/{vid}", headers=auth).status_code == 404

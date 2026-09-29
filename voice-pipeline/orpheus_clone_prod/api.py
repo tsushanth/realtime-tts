@@ -42,6 +42,12 @@ OWNER_HEADER = "x-owner"
 # merged/ dir and, on failure, mark a working voice "failed"; committing a
 # "training" voice would spawn a duplicate job.
 COMMITTABLE_STATUSES = ("awaiting_dataset", "failed")
+# A training job holds its own Volume snapshot through both of these statuses
+# (it writes "warming" itself, after saving the checkpoint but before its
+# post-warm-up "ready" write) -- the soft-delete-marker path applies to both,
+# not just "training", or a delete arriving during warm-up would take the
+# immediate-hard-delete branch and race the job's own in-flight commit.
+IN_FLIGHT_TRAINING_STATUSES = ("training", "warming")
 
 
 def _noop() -> None:
@@ -95,7 +101,7 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
         API's marker commit landed). Once status is no longer "training", no
         training job will write this voice again, so it is safe to finish
         the deletion here. Returns True if the voice was deleted."""
-        if status.get("status") == "training" or not store.is_delete_requested(vid):
+        if status.get("status") in IN_FLIGHT_TRAINING_STATUSES or not store.is_delete_requested(vid):
             return False
         store.delete(vid)
         commit_store()
@@ -184,13 +190,16 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
         # No read-side completion here: the non-training branch below
         # deletes (and returns 200) anyway.
         status = load_owned_voice(vid, request, complete_pending=False)
-        if status.get("status") == "training":
+        current_status = status.get("status")
+        if current_status in IN_FLIGHT_TRAINING_STATUSES:
             # The training container holds its own Volume snapshot and commits
-            # it when it finishes; deleting now could be undone by that
-            # commit, resurrecting the voice and its consent record. Instead,
-            # record the request as a separate marker file (NOT a
-            # manifest.json field): the training job writes manifest.json
-            # from its own stale snapshot, and Modal Volumes are
+            # it when it finishes (including through the post-checkpoint
+            # "warming" stage, where it runs a warm-up synthesis before its
+            # final "ready" write -- see train_job.py); deleting now could be
+            # undone by that commit, resurrecting the voice and its consent
+            # record. Instead, record the request as a separate marker file
+            # (NOT a manifest.json field): the training job writes
+            # manifest.json from its own stale snapshot, and Modal Volumes are
             # last-write-wins per file, so a manifest flag could be silently
             # overwritten by the job's final "ready" write. The job never
             # writes the marker file, so whatever the timing, the request
@@ -199,7 +208,7 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
             # (complete_pending_delete) -- completes the deletion. Remaining
             # limitation: a training container that is force-killed or
             # crashes before reaching its checks leaves the voice at
-            # "training" with the marker set until a (not yet built)
+            # "training"/"warming" with the marker set until a (not yet built)
             # stuck-job sweep or manual cleanup removes it.
             store.request_delete(vid)
             commit_store()
@@ -207,7 +216,7 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
                 status_code=202,
                 content={
                     "id": vid,
-                    "status": "training",
+                    "status": current_status,
                     "delete_requested": True,
                     "message": (
                         "deletion will complete once the current training run finishes "

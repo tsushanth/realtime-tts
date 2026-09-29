@@ -79,10 +79,35 @@ def run_training_job_modal(vid: str):
     # A warm container reused for a later spawn would otherwise see a stale
     # snapshot (missing this voice's manifest/upload.zip).
     checkpoint_volume.reload()
+
+    def warm_up(vid: str) -> None:
+        # Spends the cold-container/vLLM-load cost now, while the customer is
+        # still polling "training"/"warming" (they're already waiting through
+        # 30-90 minutes of training; ~90s more here is free), so their first
+        # real synthesize call lands on an already-warm container instead.
+        # This is a REMOTE call to the serving container (a different image/
+        # process), not a local import, so this training container never
+        # needs vllm/orpheus-speech installed.
+        #
+        # MUST commit before calling out: the engine container spawned by
+        # .remote() mounts its own view of the Volume and only sees committed
+        # data. Without this commit, the checkpoint and the "warming" status
+        # write are still only local to this training container, so the
+        # engine's resolve_voice_dir() sees nothing, its @modal.enter() caches
+        # a permanent UnknownVoiceError for this container's lifetime, and
+        # Modal then routes the customer's real first request to that same
+        # poisoned warm container -- turning this optimization into an outage.
+        # (Found via a real deploy: status skipped "warming" entirely because
+        # nothing was visible externally until the run's *final* commit, and
+        # the immediate post-ready synthesis call 400'd from the poisoned
+        # container.)
+        checkpoint_volume.commit()
+        OrpheusCloneEngine(vid=vid).synthesize_text.remote("Warming up.")
+
     try:
         # reload_store lets the job re-check, before saving the checkpoint,
         # that the voice wasn't deleted mid-run (see train_job.py).
-        run_training_job(vid, root=CHECKPOINT_ROOT, reload_store=checkpoint_volume.reload)
+        run_training_job(vid, root=CHECKPOINT_ROOT, reload_store=checkpoint_volume.reload, warm_up=warm_up)
     finally:
         # Commit on failure too, so the "failed" status (and its error) is
         # visible to the API instead of the voice sitting at "training".

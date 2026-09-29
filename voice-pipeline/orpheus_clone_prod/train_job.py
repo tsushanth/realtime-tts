@@ -96,10 +96,22 @@ def _deleted_mid_run(vid: str, store: VoiceRecordStore, reload_store) -> bool:
     return False
 
 
-def run_training_job(vid: str, root: str, reload_store=None) -> None:
+def run_training_job(vid: str, root: str, reload_store=None, warm_up=None) -> None:
     """reload_store: callable that makes the latest committed Volume state
     visible in this container (main.py passes checkpoint_volume.reload).
-    None in unit tests / non-Volume roots."""
+    None in unit tests / non-Volume roots.
+
+    warm_up: optional callable(vid) invoked after the checkpoint is saved but
+    BEFORE status flips to "ready" -- this is the self-serve flow's own
+    cold-start hiding: training already takes 30-90 minutes that the customer
+    is already waiting through, so spending the ~90s cold-container/vLLM-load
+    cost here (while the voice is "warming", not yet reported as usable) means
+    the customer's first real synthesize call lands on an already-warm
+    container instead of paying that cost themselves. A warm_up failure is
+    logged and swallowed, not raised -- if warming fails, the voice still
+    becomes ready and the customer just pays the cold cost on their first
+    request, same as if this feature didn't exist; it must never turn a
+    successful training run into a "failed" voice."""
     store = VoiceRecordStore(root=root)
     try:
         dataset_dir = store.dataset_dir(vid)
@@ -109,7 +121,15 @@ def run_training_job(vid: str, root: str, reload_store=None) -> None:
         if _deleted_mid_run(vid, store, reload_store):
             return
         store.save_checkpoint_dir(vid, merged_dir)
-        store.write_status(vid, "ready", clip_count=len(rows), trained_at=time.time())
+        store.write_status(vid, "warming", clip_count=len(rows), trained_at=time.time())
+        if warm_up is not None:
+            try:
+                warm_up(vid)
+            except Exception as e:
+                logger.warning(f"warm-up synthesis failed for {vid}, marking ready anyway: {e}")
+        if _deleted_mid_run(vid, store, reload_store):
+            return
+        store.write_status(vid, "ready")
     except Exception as e:
         try:
             if _deleted_mid_run(vid, store, reload_store):

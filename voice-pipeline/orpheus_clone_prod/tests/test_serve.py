@@ -54,6 +54,18 @@ def test_resolve_voice_dir_returns_checkpoint_path_when_ready(tmp_path):
     assert result == store.checkpoint_dir("v-abc1234567")
 
 
+def test_resolve_voice_dir_returns_checkpoint_path_when_warming(tmp_path):
+    """"warming" means train_job.py already saved the checkpoint and is
+    running its post-training warm-up synthesis call before reporting
+    "ready" -- that warm-up call resolves through this exact function, so it
+    must succeed now, not just once status is "ready"."""
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+    store.write_status("v-abc1234567", "warming")
+    result = resolve_voice_dir("custom-fast:v-abc1234567", store)
+    assert result == store.checkpoint_dir("v-abc1234567")
+
+
 def test_resolve_voice_dir_returns_independent_paths_for_different_voices(tmp_path):
     """Verify that resolve_voice_dir is a pure function across sequential calls.
 
