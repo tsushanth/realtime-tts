@@ -45,9 +45,21 @@ def resolve_voice_dir(voice: str, store: VoiceRecordStore) -> str:
 
 
 def _bounded_generate(chunk_iter, timeout_s: float):
-    """Wraps a chunk generator with a wall-clock deadline -- reproduces and
-    bounds the pilot's own confirmed runaway-generation failure mode (RTF>1,
-    unreliable stop-token behavior) instead of letting a request hang."""
+    """Bounds elapsed time between yields from the wrapped generator.
+
+    Raises GenerationTimeoutError if no chunk is yielded within timeout_s.
+
+    LIMITATION: Does NOT interrupt a call that blocks entirely inside a single
+    next() with no yield at all (a true hang, as opposed to a slow-but-yielding
+    generation). The deadline check only runs once a chunk actually arrives. The
+    real backstop against a fully-blocked generation is the outer Modal
+    function-level timeout, configured where this engine is wired into a
+    deployable Modal app (Task 6), not this in-process check alone.
+
+    The pilot's confirmed runaway-generation failure mode (RTF>1, unreliable
+    stop-token behavior) manifested as slow or stalled yields, which this
+    check is designed to catch; true complete hangs would require thread-based
+    or async-cancellation mechanisms outside the scope of this wrapper."""
     deadline = time.time() + timeout_s
     for chunk in chunk_iter:
         if time.time() > deadline:
