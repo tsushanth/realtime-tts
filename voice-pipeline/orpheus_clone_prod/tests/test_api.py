@@ -46,6 +46,20 @@ def test_create_voice_rejects_missing_consent(client):
     assert resp.status_code == 400
 
 
+def test_create_voice_rejects_empty_consent_statement(client):
+    bad = dict(CONSENT_BODY)
+    bad["consent_statement"] = ""
+    resp = client.post("/v1/orpheus-voices", json=bad, headers=AUTH)
+    assert resp.status_code == 400
+
+
+def test_create_voice_rejects_explicit_consent_false(client):
+    bad = dict(CONSENT_BODY)
+    bad["consent"] = False
+    resp = client.post("/v1/orpheus-voices", json=bad, headers=AUTH)
+    assert resp.status_code == 400
+
+
 def test_poll_unknown_voice_returns_404(client):
     resp = client.get("/v1/orpheus-voices/v-0000000000", headers=AUTH)
     assert resp.status_code == 404
@@ -99,3 +113,4 @@ def test_spawn_failure_rolls_back_to_awaiting_dataset_and_returns_503(tmp_path, 
 
     status = client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH).json()
     assert status["status"] == "awaiting_dataset"  # rolled back, not stuck in "training"
+    assert status["dataset_uploaded"] is True  # dataset_uploaded flag survives rollback
