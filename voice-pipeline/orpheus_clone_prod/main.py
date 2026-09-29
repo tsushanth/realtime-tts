@@ -90,6 +90,25 @@ def run_training_job_modal(vid: str):
         # local copy, so this commit propagates the deletion.
         checkpoint_volume.commit()
 
+    # Narrow (not close -- there's no lock) the remaining resurrection
+    # window: run_training_job's own delete_requested/record-exists check
+    # (train_job.py's _deleted_mid_run) runs BEFORE save_checkpoint_dir
+    # copies the merged checkpoint and before the commit() above uploads it
+    # -- a window that can be minutes long on a multi-GB checkpoint. If a
+    # DELETE lands during that window, this container's local view still
+    # shows the voice as "ready" even though the API's delete-request commit
+    # may since have landed. Reload once more (only reached on the success
+    # path -- an exception above propagates before this line) and, if a
+    # delete arrived in that window, complete it now instead of leaving the
+    # voice resurrected or permanently stuck.
+    checkpoint_volume.reload()
+    store = VoiceRecordStore(root=CHECKPOINT_ROOT)
+    record = store.read_status(vid)
+    if record is not None and record.get("delete_requested"):
+        logger.warning(f"voice {vid} had a delete requested during the final checkpoint commit; completing deletion now")
+        store.delete(vid)
+        checkpoint_volume.commit()
+
 
 @app.cls(image=serve_image, gpu="A10G", timeout=300, scaledown_window=300, volumes={CHECKPOINT_ROOT: checkpoint_volume}, secrets=[hf_secret])
 class OrpheusCloneEngine:

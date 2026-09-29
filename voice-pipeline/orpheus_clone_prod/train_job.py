@@ -11,12 +11,22 @@ Runs in the transformers==4.46.3-pinned training image (see Global
 Constraints) -- a DIFFERENT image than serve.py's vllm==0.7.3/
 transformers==4.48.2 image. Never share these images.
 
-Delete-during-training: the API rejects DELETE while status=="training"
-(409), but as defense in depth this job re-checks, right before writing its
-final status, that the voice record still exists in the latest committed
-Volume state. If it was deleted mid-run, the job removes its own local copy
-of the voice dir (so main.py's trailing commit propagates the deletion
-instead of resurrecting it) and returns without writing anything.
+Delete-during-training: the API does NOT reject DELETE while
+status=="training" -- it records a soft delete_requested flag on the voice
+and returns 202 (see api.py's delete_voice). This job is what actually acts
+on that flag: right before writing its final status, it re-checks whether
+the voice record still exists and whether delete_requested was set in the
+latest committed Volume state. If either is true, the job removes its own
+local copy of the voice dir (so main.py's trailing commit propagates the
+deletion instead of resurrecting it) and returns/re-raises without writing
+a final status. main.py's run_training_job_modal does one more
+reload+recheck+commit after its own trailing commit, narrowing (but not
+closing -- there is no lock) the window between this job's check and that
+commit landing. A training container that is forcibly killed or crashes
+before reaching either of these checks leaves the voice stuck at
+"training"+delete_requested with no automatic path to deletion; that
+requires manual cleanup (a "sweep stuck jobs" mechanism is acknowledged
+follow-up scope, not implemented here).
 
 This job deliberately does NOT rewrite manifest.json at startup (the API
 already committed status="training" before spawning). A startup rewrite

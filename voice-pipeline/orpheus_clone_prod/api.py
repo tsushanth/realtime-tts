@@ -180,7 +180,12 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
                     "id": vid,
                     "status": "training",
                     "delete_requested": True,
-                    "message": "deletion will complete once training finishes or is detected as stopped",
+                    "message": (
+                        "deletion will complete once the current training run finishes "
+                        "(successfully or with an error); a training run that is forcibly "
+                        "killed or crashes without reaching that point will require manual "
+                        "cleanup"
+                    ),
                 },
             )
         store.delete(vid)

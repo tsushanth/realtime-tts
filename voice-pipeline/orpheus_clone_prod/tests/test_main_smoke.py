@@ -19,6 +19,72 @@ def test_main_module_imports_without_error():
     assert hasattr(module, "OrpheusCloneEngine")
 
 
+# --- run_training_job_modal: narrowed post-commit resurrection window ------
+# A DELETE can arrive after train_job.py's own last delete_requested check
+# (which runs before save_checkpoint_dir/the trailing commit) but before
+# that commit actually lands. run_training_job_modal now reloads and
+# re-checks once more after its own commit to catch exactly that "late"
+# delete. These tests call the underlying plain function via Modal's
+# .local() (as opposed to .remote()/.spawn()), matching this file's existing
+# pattern of exercising container-local logic without a real Modal deploy.
+
+class _FakeVolume:
+    """Stands in for the Modal Volume: reload()/commit() are no-ops here
+    because the test uses a real on-disk VoiceRecordStore directly (a plain
+    tmp_path root has no separate "committed" vs. "local" view), but calls
+    are recorded so the test can assert the second reload+recheck actually
+    happened."""
+
+    def __init__(self):
+        self.reloads = 0
+        self.commits = 0
+
+    def reload(self):
+        self.reloads += 1
+
+    def commit(self):
+        self.commits += 1
+
+
+def test_run_training_job_modal_completes_delete_requested_late_after_final_commit(tmp_path, monkeypatch):
+    from orpheus_clone_prod import main
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    vid = "v-abc1234567"
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create(vid, {"speaker_name": "Jane"})
+    store.write_status(vid, "training")
+
+    fake_volume = _FakeVolume()
+    monkeypatch.setattr(main, "CHECKPOINT_ROOT", str(tmp_path))
+    monkeypatch.setattr(main, "checkpoint_volume", fake_volume)
+
+    def fake_run_training_job(vid, root, reload_store=None):
+        # Represents the state at the point of the second reload check: the
+        # underlying job already ran to its own success exit point (its own
+        # _deleted_mid_run check saw no delete yet) and wrote "ready" -- then
+        # a delete_requested arrived "late", i.e. is only visible on the
+        # NEXT reload, which is exactly what run_training_job_modal's own
+        # second reload+recheck exists to catch.
+        store.write_status(vid, "ready", clip_count=20, trained_at=0.0)
+
+        def _apply_late_delete_on_next_reload():
+            store.write_status(vid, "ready", clip_count=20, trained_at=0.0, delete_requested=True)
+
+        # Piggyback on the fake volume's reload() so the "late" delete only
+        # becomes visible starting with run_training_job_modal's own final
+        # reload call, not any earlier one.
+        fake_volume.reload = _apply_late_delete_on_next_reload
+
+    monkeypatch.setattr(main, "run_training_job", fake_run_training_job)
+
+    main.run_training_job_modal.local(vid)
+
+    assert fake_volume.commits >= 2  # the trailing commit, plus the deferred-delete commit
+    assert store.read_status(vid) is None
+    assert not __import__("os").path.exists(store.checkpoint_dir(vid))
+
+
 # --- OrpheusCloneEngine: one voice per container (modal.parameter) ---------------
 # These check wiring and the container-local enter/method logic with the GPU
 # engine stubbed out. They do NOT prove Modal's per-parameter container
