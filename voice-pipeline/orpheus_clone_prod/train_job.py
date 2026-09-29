@@ -45,5 +45,8 @@ def run_training_job(vid: str, root: str) -> None:
         store.save_checkpoint_dir(vid, merged_dir)
         store.write_status(vid, "ready", clip_count=len(rows), trained_at=time.time())
     except Exception as e:
-        store.write_status(vid, "failed", error=str(e))
+        try:
+            store.write_status(vid, "failed", error=str(e))
+        except Exception:
+            pass  # don't let a failure to record status mask the real error
         raise

@@ -56,3 +56,35 @@ def test_run_training_job_writes_training_then_ready_on_success(tmp_path, monkey
     assert seen_statuses == ["training", "ready"]
     final = store.read_status("v-abc1234567")
     assert final["status"] == "ready"
+
+
+def test_run_training_job_preserves_original_error_when_status_write_fails(tmp_path, monkeypatch):
+    """Regression test: if write_status(vid, "failed", ...) itself raises,
+    the original exception should propagate, not the status-write failure."""
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+
+    # Make the initial "training" status write succeed, but the "failed" status
+    # write fail by having write_status raise when status == "failed"
+    orig_write_status = store.write_status
+    def selective_write_status(vid, status, **fields):
+        if status == "failed":
+            raise ValueError("Voice record 'v-abc1234567' does not exist. Call create() first.")
+        return orig_write_status(vid, status, **fields)
+
+    monkeypatch.setattr("orpheus_clone_prod.train_job.VoiceRecordStore", lambda root: store)
+    monkeypatch.setattr(store, "write_status", selective_write_status)
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._load_zip_bytes",
+        lambda vid, root: b"fake-zip-bytes",
+    )
+    # Make prepare_dataset raise to trigger the exception handler
+    original_error_msg = "Dataset preparation failed: invalid audio format"
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job.prepare_dataset",
+        lambda zip_bytes, dataset_dir, voice_tag, min_clips=20: (_ for _ in ()).throw(RuntimeError(original_error_msg)),
+    )
+
+    # The original RuntimeError should propagate, not the ValueError from write_status
+    with pytest.raises(RuntimeError, match=original_error_msg):
+        run_training_job("v-abc1234567", root=str(tmp_path))
