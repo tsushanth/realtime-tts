@@ -82,14 +82,21 @@ VAL_PROMPTS = [
 ]
 
 
-@app.function(
-    gpu="A10G",
-    timeout=4 * 3600,
-    volumes={"/data": dataset_volume, "/checkpoints": checkpoint_volume},
-    secrets=[hf_secret],
-)
-def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
-    import json
+def run_pilot_for_voice(rows: list[dict], dataset_dir: str, voice_tag: str, epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32) -> str:
+    """Extracted from run_pilot()'s body: SNAC-tokenize `rows` (already
+    {"text", "audio"} pairs, audio paths relative to dataset_dir), LoRA
+    fine-tune, merge, and return the local path to the merged checkpoint
+    directory. Everything from "=== Loading SNAC codec ===" through
+    "=== Merging LoRA into base weights ===" in the original run_pilot()
+    moves here unchanged, reading `rows` as a parameter instead of loading
+    /data/dataset_manifest.jsonl, and using `voice_tag` instead of the
+    module-level VOICE_TAG constant everywhere it appears (prompt tagging,
+    output directory naming). Returns the merged checkpoint's local path
+    (e.g. f"{dataset_dir}/{voice_tag}_merged") instead of writing straight
+    to /checkpoints and calling checkpoint_volume.commit() -- the caller
+    (train_job.py's _run_lora_finetune_and_merge, or run_pilot() itself for
+    the pilot's own use) owns persistence.
+    """
     import os
     import time
 
@@ -109,9 +116,6 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
         TrainingArguments,
     )
 
-    print("=== Loading dataset manifest ===", flush=True)
-    manifest_path = "/data/dataset_manifest.jsonl"
-    rows = [json.loads(l) for l in open(manifest_path)]
     print(f"{len(rows)} text/audio pairs", flush=True)
 
     print("=== Loading SNAC codec (24kHz) ===", flush=True)
@@ -162,7 +166,7 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
     t0 = time.time()
     for i, row in enumerate(rows):
         text_ids = tokenizer(row["text"], add_special_tokens=False).input_ids
-        audio_ids = encode_audio_to_tokens(os.path.join("/data", row["audio"]))
+        audio_ids = encode_audio_to_tokens(os.path.join(dataset_dir, row["audio"]))
         # Exact sequence layout from canopylabs' notebook: human turn wraps
         # the text, ai turn wraps the speech codes.
         input_ids = (
@@ -225,19 +229,47 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
 
     print("=== Merging LoRA into base weights ===", flush=True)
     merged = model.merge_and_unload()
-    out_dir = f"/checkpoints/{VOICE_TAG}_merged"
+    out_dir = f"{dataset_dir}/{voice_tag}_merged"
     merged.save_pretrained(out_dir)
     tokenizer.save_pretrained(out_dir)
-    checkpoint_volume.commit()
     print(f"Merged model saved to {out_dir}", flush=True)
+    return out_dir
+
+
+@app.function(
+    gpu="A10G",
+    timeout=4 * 3600,
+    volumes={"/data": dataset_volume, "/checkpoints": checkpoint_volume},
+    secrets=[hf_secret],
+)
+def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
+    import json
+    import shutil
+    import time
+
+    print("=== Loading dataset manifest ===", flush=True)
+    manifest_path = "/data/dataset_manifest.jsonl"
+    rows = [json.loads(l) for l in open(manifest_path)]
+
+    merged_dir = run_pilot_for_voice(
+        rows, dataset_dir="/data", voice_tag=VOICE_TAG,
+        epochs=epochs, lora_r=lora_r, lora_alpha=lora_alpha,
+    )
+
+    out_dir = f"/checkpoints/{VOICE_TAG}_merged"
+    shutil.copytree(merged_dir, out_dir)
+    checkpoint_volume.commit()
 
     print("=== Validation: sample generation + latency ===", flush=True)
     # Reload as a plain causal LM for a quick greedy sanity check (not the
     # vLLM streaming path used in prod -- that's the next wiring step once
     # this proves the voice is cloned and where TTFB roughly lands).
-    from transformers import TextIteratorStreamer
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
     import threading
 
+    tokenizer = AutoTokenizer.from_pretrained(out_dir)
+    merged = AutoModelForCausalLM.from_pretrained(out_dir, torch_dtype=torch.bfloat16)
     merged.eval().cuda()
     results = []
     for prompt in VAL_PROMPTS:
