@@ -88,3 +88,25 @@ def test_mark_dataset_uploaded_preserves_existing_status(store):
     assert manifest["status"] == "training", "Status should remain 'training', not reset to 'awaiting_dataset'"
     assert manifest["dataset_uploaded"] is True, "dataset_uploaded flag should be True"
     assert manifest["clip_count"] == 42, "Other fields should be preserved"
+
+
+def test_save_checkpoint_dir_replaces_existing_merged_dir(tmp_path):
+    # A second save (e.g. retrain) onto an existing non-empty merged/ must not
+    # fail with ENOTEMPTY -- that previously marked a working voice "failed".
+    store = VoiceRecordStore(root=str(tmp_path / "root"))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+    first = tmp_path / "first"
+    first.mkdir()
+    (first / "model.safetensors").write_bytes(b"old")
+    (first / "old_only.json").write_text("{}")
+    store.save_checkpoint_dir("v-abc1234567", str(first))
+
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / "model.safetensors").write_bytes(b"new")
+    store.save_checkpoint_dir("v-abc1234567", str(second))
+
+    merged = store.checkpoint_dir("v-abc1234567")
+    assert open(os.path.join(merged, "model.safetensors"), "rb").read() == b"new"
+    assert not os.path.exists(os.path.join(merged, "old_only.json"))
+    assert not os.path.exists(merged + ".staging")

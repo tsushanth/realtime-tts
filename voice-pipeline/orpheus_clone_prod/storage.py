@@ -82,6 +82,12 @@ class VoiceRecordStore:
         if os.path.exists(staging):
             shutil.rmtree(staging)
         shutil.copytree(local_dir, staging)
+        # os.rename onto an existing non-empty dir fails with ENOTEMPTY, which
+        # would mark an otherwise-successful retrain "failed". Clear any old
+        # merged/ first. (The API only allows commit from awaiting_dataset/
+        # failed, so this is defensive -- there's a brief window with no
+        # merged/, but status is "training" then, so nothing serves it.)
+        shutil.rmtree(dest, ignore_errors=True)
         os.rename(staging, dest)  # atomic: merged/ never appears half-written
 
     def dataset_dir(self, vid: str) -> str:
