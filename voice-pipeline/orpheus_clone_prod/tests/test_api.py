@@ -97,6 +97,33 @@ def test_delete_removes_the_voice(client):
     assert client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 404
 
 
+def test_delete_rejected_with_409_while_training(client):
+    vid = _create_and_upload(client)
+    assert client.post(f"/v1/orpheus-voices/{vid}/dataset/commit", headers=AUTH).status_code == 200
+    resp = client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH)
+    assert resp.status_code == 409
+    assert "while it is training" in resp.json()["detail"]
+    poll = client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH)
+    assert poll.status_code == 200
+    assert poll.json()["status"] == "training"
+
+
+@pytest.mark.parametrize("status", ["awaiting_dataset", "ready", "failed"])
+def test_delete_allowed_for_non_training_statuses(tmp_path, monkeypatch, status):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
+    client = TestClient(create_app(root=str(tmp_path), spawn_training=lambda vid, root: None))
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=AUTH).json()["id"]
+    store = VoiceRecordStore(root=str(tmp_path))
+    if status != "awaiting_dataset":
+        store.write_status(vid, status)
+    resp = client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH)
+    assert resp.status_code == 200
+    assert store.read_status(vid) is None
+    assert client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 404
+
+
 def test_spawn_failure_rolls_back_to_awaiting_dataset_and_returns_503(tmp_path, monkeypatch):
     monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
 
@@ -205,8 +232,15 @@ def test_store_hooks_reload_before_reads_and_commit_after_writes(tmp_path, monke
     client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH)
     assert events == ["reload"]
 
+    # Still training: delete is refused (409) and must not commit anything.
     events.clear()
-    client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH)
+    assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 409
+    assert events == ["reload"]
+
+    from orpheus_clone_prod.storage import VoiceRecordStore
+    VoiceRecordStore(root=str(tmp_path)).write_status(vid, "ready")
+    events.clear()
+    assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 200
     assert events == ["reload", "commit"]
 
 

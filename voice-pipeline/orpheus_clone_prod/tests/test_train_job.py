@@ -53,7 +53,9 @@ def test_run_training_job_writes_training_then_ready_on_success(tmp_path, monkey
 
     run_training_job("v-abc1234567", root=str(tmp_path))
 
-    assert seen_statuses == ["training", "ready"]
+    # The API already committed "training" before spawning; the job must not
+    # rewrite the manifest at startup (see train_job.py docstring).
+    assert seen_statuses == ["ready"]
     final = store.read_status("v-abc1234567")
     assert final["status"] == "ready"
 
@@ -88,3 +90,78 @@ def test_run_training_job_preserves_original_error_when_status_write_fails(tmp_p
     # The original RuntimeError should propagate, not the ValueError from write_status
     with pytest.raises(RuntimeError, match=original_error_msg):
         run_training_job("v-abc1234567", root=str(tmp_path))
+
+
+def _stub_training(monkeypatch):
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._load_zip_bytes",
+        lambda vid, root: b"fake-zip-bytes",
+    )
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job.prepare_dataset",
+        lambda zip_bytes, dataset_dir, voice_tag, min_clips=20: [
+            {"text": f"{voice_tag}: hello", "audio": "clips/a.wav"}
+        ] * 20,
+    )
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._run_lora_finetune_and_merge",
+        lambda rows, dataset_dir, voice_tag: os.makedirs(f"{dataset_dir}/fake_merged", exist_ok=True) or f"{dataset_dir}/fake_merged",
+    )
+
+
+def test_run_training_job_does_not_resurrect_voice_deleted_mid_run(tmp_path, monkeypatch):
+    """A voice deleted (by the web container) while training must not come
+    back: no manifest, no merged/ checkpoint, no leftover voice dir for the
+    trailing Volume commit to push, and no exception."""
+    vid = "v-abc1234567"
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create(vid, {"speaker_name": "Jane"})
+    store.write_status(vid, "training")
+    _stub_training(monkeypatch)
+
+    reloads = []
+
+    def reload_sees_remote_delete():
+        # Simulates the web container's committed delete becoming visible
+        # in this container on reload().
+        reloads.append(1)
+        VoiceRecordStore(root=str(tmp_path)).delete(vid)
+
+    run_training_job(vid, root=str(tmp_path), reload_store=reload_sees_remote_delete)
+
+    assert reloads == [1]
+    assert store.read_status(vid) is None
+    assert not os.path.exists(store.checkpoint_dir(vid))
+    assert not os.path.exists(os.path.join(str(tmp_path), vid))
+
+
+def test_run_training_job_failure_after_delete_does_not_resurrect_or_raise(tmp_path, monkeypatch):
+    vid = "v-abc1234567"
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create(vid, {"speaker_name": "Jane"})
+    store.write_status(vid, "training")
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job._load_zip_bytes",
+        lambda vid, root: b"",  # empty zip -> prepare_dataset raises
+    )
+
+    run_training_job(vid, root=str(tmp_path), reload_store=lambda: store.delete(vid))
+
+    assert store.read_status(vid) is None
+    assert not os.path.exists(os.path.join(str(tmp_path), vid))
+
+
+def test_run_training_job_reload_failure_falls_back_to_local_view(tmp_path, monkeypatch):
+    vid = "v-abc1234567"
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create(vid, {"speaker_name": "Jane"})
+    store.write_status(vid, "training")
+    _stub_training(monkeypatch)
+
+    def failing_reload():
+        raise RuntimeError("there are open files preventing the operation")
+
+    run_training_job(vid, root=str(tmp_path), reload_store=failing_reload)
+
+    assert store.read_status(vid)["status"] == "ready"
+    assert os.path.isdir(store.checkpoint_dir(vid))

@@ -161,7 +161,15 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
     @app.delete("/v1/orpheus-voices/{vid}")
     async def delete_voice(vid: str, request: Request):
         auth(request)
-        load_owned_voice(vid, request)
+        status = load_owned_voice(vid, request)
+        if status.get("status") == "training":
+            # The training container holds its own Volume snapshot and commits
+            # it when it finishes; a delete now could be undone by that
+            # commit, resurrecting the voice and its consent record.
+            raise HTTPException(
+                409,
+                "cannot delete a voice while it is training; wait for training to finish or fail, then delete",
+            )
         store.delete(vid)
         commit_store()
         return {"id": vid, "deleted": True}

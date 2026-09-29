@@ -80,10 +80,14 @@ def run_training_job_modal(vid: str):
     # snapshot (missing this voice's manifest/upload.zip).
     checkpoint_volume.reload()
     try:
-        run_training_job(vid, root=CHECKPOINT_ROOT)
+        # reload_store lets the job re-check, just before its final write,
+        # that the voice wasn't deleted mid-run (see train_job.py).
+        run_training_job(vid, root=CHECKPOINT_ROOT, reload_store=checkpoint_volume.reload)
     finally:
         # Commit on failure too, so the "failed" status (and its error) is
         # visible to the API instead of the voice sitting at "training".
+        # If the voice was deleted mid-run, the job has already removed its
+        # local copy, so this commit propagates the deletion.
         checkpoint_volume.commit()
 
 
