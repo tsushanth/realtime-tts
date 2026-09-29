@@ -97,15 +97,20 @@ def test_delete_removes_the_voice(client):
     assert client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 404
 
 
-def test_delete_rejected_with_409_while_training(client):
+def test_delete_while_training_returns_202_and_sets_delete_requested(client):
     vid = _create_and_upload(client)
     assert client.post(f"/v1/orpheus-voices/{vid}/dataset/commit", headers=AUTH).status_code == 200
     resp = client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH)
-    assert resp.status_code == 409
-    assert "while it is training" in resp.json()["detail"]
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["id"] == vid
+    assert body["status"] == "training"
+    assert body["delete_requested"] is True
+    # Not actually deleted yet -- still "training" immediately after the request.
     poll = client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH)
     assert poll.status_code == 200
     assert poll.json()["status"] == "training"
+    assert poll.json()["delete_requested"] is True
 
 
 @pytest.mark.parametrize("status", ["awaiting_dataset", "ready", "failed"])
@@ -232,10 +237,11 @@ def test_store_hooks_reload_before_reads_and_commit_after_writes(tmp_path, monke
     client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH)
     assert events == ["reload"]
 
-    # Still training: delete is refused (409) and must not commit anything.
+    # Still training: delete is deferred (202) but still writes/commits the
+    # delete_requested flag.
     events.clear()
-    assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 409
-    assert events == ["reload"]
+    assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 202
+    assert events == ["reload", "commit"]
 
     from orpheus_clone_prod.storage import VoiceRecordStore
     VoiceRecordStore(root=str(tmp_path)).write_status(vid, "ready")

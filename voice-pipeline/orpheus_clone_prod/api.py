@@ -28,7 +28,7 @@ import re
 import secrets
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from orpheus_clone_prod.storage import VoiceRecordStore
@@ -165,10 +165,23 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
         if status.get("status") == "training":
             # The training container holds its own Volume snapshot and commits
             # it when it finishes; a delete now could be undone by that
-            # commit, resurrecting the voice and its consent record.
-            raise HTTPException(
-                409,
-                "cannot delete a voice while it is training; wait for training to finish or fail, then delete",
+            # commit, resurrecting the voice and its consent record. Instead
+            # of rejecting forever (a container that's force-killed or hangs
+            # without reaching its own exception handler would otherwise
+            # wedge the voice as undeletable), record the request as a soft
+            # flag: run_training_job checks it at its own terminal point
+            # (success or failure) and completes the deletion then, since by
+            # that point there's no longer a race with an in-flight write.
+            store.write_status(vid, "training", delete_requested=True)
+            commit_store()
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "id": vid,
+                    "status": "training",
+                    "delete_requested": True,
+                    "message": "deletion will complete once training finishes or is detected as stopped",
+                },
             )
         store.delete(vid)
         commit_store()

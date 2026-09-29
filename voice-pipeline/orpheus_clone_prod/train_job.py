@@ -52,19 +52,29 @@ def _run_lora_finetune_and_merge(rows: list[dict], dataset_dir: str, voice_tag: 
 
 def _deleted_mid_run(vid: str, store: VoiceRecordStore, reload_store) -> bool:
     """Reload the latest committed Volume state and report whether the voice
-    record is gone. If it is, drop this container's local copy of the voice
-    dir so a later commit propagates the deletion rather than undoing it.
-    A failed reload (e.g. open files) falls back to the local view."""
+    should be discarded rather than given its final status write -- either
+    because the record is gone outright, or because a delete was requested
+    while training was in flight (delete_requested, set by the API's soft
+    delete-during-training path). Either way this is the safe point to
+    actually complete that deletion: training has reached its own terminal
+    point (success or failure), so there's no longer a race with an
+    in-flight training write. A failed reload (e.g. open files) falls back
+    to the local view."""
     if reload_store is not None:
         try:
             reload_store()
         except Exception as e:
             logger.warning(f"volume reload before final write failed for {vid}, using local view: {e}")
-    if store.read_status(vid) is not None:
-        return False
-    logger.warning(f"voice {vid} was deleted while training; discarding training output")
-    store.delete(vid)
-    return True
+    record = store.read_status(vid)
+    if record is None:
+        logger.warning(f"voice {vid} was deleted while training; discarding training output")
+        store.delete(vid)
+        return True
+    if record.get("delete_requested"):
+        logger.warning(f"voice {vid} had a delete requested while training; completing deletion now")
+        store.delete(vid)
+        return True
+    return False
 
 
 def run_training_job(vid: str, root: str, reload_store=None) -> None:
