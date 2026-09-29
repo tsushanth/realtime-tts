@@ -69,3 +69,22 @@ def test_delete_removes_the_whole_voice_directory(store, tmp_path):
     store.create("v-abc1234567", {"speaker_name": "Jane"})
     store.delete("v-abc1234567")
     assert not (tmp_path / "v-abc1234567").exists()
+
+
+def test_write_status_on_unknown_vid_raises_valueerror(store):
+    """Fix #2: write_status should raise ValueError on unknown vid instead of fabricating a manifest."""
+    with pytest.raises(ValueError, match="Voice record .* does not exist"):
+        store.write_status("v-doesnotexist", "training")
+
+
+def test_mark_dataset_uploaded_preserves_existing_status(store):
+    """Fix #1: mark_dataset_uploaded should preserve existing status, not reset to awaiting_dataset."""
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+    # Move status to "training"
+    store.write_status("v-abc1234567", "training", clip_count=42)
+    # Call mark_dataset_uploaded and confirm status is still "training"
+    store.mark_dataset_uploaded("v-abc1234567")
+    manifest = store.read_status("v-abc1234567")
+    assert manifest["status"] == "training", "Status should remain 'training', not reset to 'awaiting_dataset'"
+    assert manifest["dataset_uploaded"] is True, "dataset_uploaded flag should be True"
+    assert manifest["clip_count"] == 42, "Other fields should be preserved"

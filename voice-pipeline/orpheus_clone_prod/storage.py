@@ -49,10 +49,21 @@ class VoiceRecordStore:
         os.rename(tmp_path, path)
 
     def mark_dataset_uploaded(self, vid: str) -> None:
-        self.write_status(vid, "awaiting_dataset", dataset_uploaded=True)
+        """Mark dataset as uploaded. Preserves existing status if already set."""
+        manifest = self.read_status(vid)
+        if manifest is None:
+            # Voice record does not exist yet; default to awaiting_dataset
+            manifest = {"status": "awaiting_dataset", "created_at": time.time()}
+        # Preserve current status, only add dataset_uploaded flag
+        manifest["dataset_uploaded"] = True
+        manifest["updated_at"] = time.time()
+        self._write_manifest(vid, manifest)
 
     def write_status(self, vid: str, status: str, **fields) -> None:
-        manifest = self.read_status(vid) or {}
+        """Write status to a voice record. Voice record must exist (created via create())."""
+        manifest = self.read_status(vid)
+        if manifest is None:
+            raise ValueError(f"Voice record '{vid}' does not exist. Call create() first.")
         manifest["status"] = status
         manifest.update(fields)
         manifest["updated_at"] = time.time()
