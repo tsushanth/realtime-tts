@@ -73,6 +73,7 @@ app = modal.App("orpheus-clone-pilot", image=image)
 
 dataset_volume = modal.Volume.from_name("orpheus-clone-pilot-data", create_if_missing=True)
 checkpoint_volume = modal.Volume.from_name("orpheus-clone-pilot-checkpoints", create_if_missing=True)
+hf_secret = modal.Secret.from_name("hf-token")  # canopylabs/orpheus-tts-0.1-pretrained is gated
 
 VAL_PROMPTS = [
     f"{VOICE_TAG}: Thanks for calling, how can I help you today?",
@@ -85,11 +86,14 @@ VAL_PROMPTS = [
     gpu="A10G",
     timeout=4 * 3600,
     volumes={"/data": dataset_volume, "/checkpoints": checkpoint_volume},
+    secrets=[hf_secret],
 )
 def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
     import json
     import os
     import time
+
+    hf_token = os.environ["HF_TOKEN"]
 
     import numpy as np
     import soundfile as sf
@@ -113,7 +117,7 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
     print("=== Loading SNAC codec (24kHz) ===", flush=True)
     snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().cuda()
 
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, token=hf_token)
 
     def encode_audio_to_tokens(wav_path: str) -> list[int]:
         """SNAC-encode one clip and interleave the 3 hierarchical code levels
@@ -188,7 +192,7 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
 
     print("=== Loading base model + attaching LoRA ===", flush=True)
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+        BASE_MODEL, torch_dtype=torch.bfloat16, attn_implementation="sdpa", token=hf_token
     )
     lora_cfg = LoraConfig(
         r=lora_r,
@@ -277,8 +281,8 @@ def run_pilot(epochs: int = 3, lora_r: int = 16, lora_alpha: int = 32):
 
 
 @app.local_entrypoint()
-def main(dataset_dir: str = "", epochs: int = 3):
-    if dataset_dir:
+def main(dataset_dir: str = "", epochs: int = 3, skip_upload: bool = False):
+    if dataset_dir and not skip_upload:
         print(f"Uploading {dataset_dir} to the orpheus-clone-pilot-data volume...")
         with dataset_volume.batch_upload(force=True) as batch:
             batch.put_directory(dataset_dir, "/")
