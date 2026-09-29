@@ -107,7 +107,12 @@ export async function handleOrpheusVoiceApi(req, res, url) {
     return true;
   }
 
-  const backendPath = "/internal/orpheus-clone-api" + url.pathname.slice(prefix.length) + url.search;
+  // TTS has no sub-resource path shape (unlike voices, which has /:id, /:id/dataset, etc.), so it
+  // must be pinned to the backend's dedicated /tts route rather than the mount root — otherwise a
+  // bare POST to either prefix collides on the same backendPath.
+  const backendPath = prefix === TTS_PREFIX
+    ? "/internal/orpheus-clone-api/tts" + url.search
+    : "/internal/orpheus-clone-api" + url.pathname.slice(prefix.length) + url.search;
   let upstream;
   try {
     upstream = await forward(backendPath, req.method, {

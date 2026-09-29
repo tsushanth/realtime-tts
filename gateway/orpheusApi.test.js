@@ -106,17 +106,43 @@ test("billing-enabled key -> GET /v1/orpheus-voices/:id forwarded under orpheus-
   assert.equal(lastReq.headers["x-gateway-key-id"], id);
 });
 
-test("billing-enabled key -> /v1/orpheus-tts forwarded under orpheus-clone-api", async () => {
+test("billing-enabled key -> POST /v1/orpheus-tts forwarded to dedicated /tts backend route", async () => {
   const { id, key } = keys.issueKey("paid-orpheus-key-3");
   keys.setBillingEnabledById(id, true);
-  const { req, res, url } = fakeReqRes("POST", "/v1/orpheus-tts/synthesize", {
+  const { req, res, url } = fakeReqRes("POST", "/v1/orpheus-tts", {
     authorization: `Bearer ${key}`,
     body: JSON.stringify({ text: "hello" }),
   });
   await handleOrpheusVoiceApi(req, res, url);
   assert.equal(res.statusCode, 200);
-  assert.equal(lastReq.url, "/internal/orpheus-clone-api/synthesize");
+  assert.equal(lastReq.url, "/internal/orpheus-clone-api/tts");
   assert.equal(lastReq.headers["x-gateway-key-id"], id);
+});
+
+test("bare POST /v1/orpheus-voices and /v1/orpheus-tts do not collide on the same backend path", async () => {
+  const { id: voicesId, key: voicesKey } = keys.issueKey("paid-orpheus-key-4");
+  keys.setBillingEnabledById(voicesId, true);
+  {
+    const { req, res, url } = fakeReqRes("POST", "/v1/orpheus-voices", {
+      authorization: `Bearer ${voicesKey}`,
+      body: JSON.stringify({ speaker_name: "Another Speaker" }),
+    });
+    await handleOrpheusVoiceApi(req, res, url);
+    assert.equal(res.statusCode, 200);
+    assert.equal(lastReq.url, "/internal/orpheus-clone-api");
+  }
+
+  const { id: ttsId, key: ttsKey } = keys.issueKey("paid-orpheus-key-5");
+  keys.setBillingEnabledById(ttsId, true);
+  {
+    const { req, res, url } = fakeReqRes("POST", "/v1/orpheus-tts", {
+      authorization: `Bearer ${ttsKey}`,
+      body: JSON.stringify({ text: "hello" }),
+    });
+    await handleOrpheusVoiceApi(req, res, url);
+    assert.equal(res.statusCode, 200);
+    assert.equal(lastReq.url, "/internal/orpheus-clone-api/tts");
+  }
 });
 
 test("non-matching path is not handled", async () => {
