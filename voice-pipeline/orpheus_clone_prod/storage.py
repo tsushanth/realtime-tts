@@ -7,6 +7,8 @@ Layout under `root` (a Modal Volume mount in production, a tmp dir in tests):
   {vid}/dataset/         - uploaded audio, staged before training consumes it
   {vid}/merged/          - the final HF-format checkpoint, only ever visible
                            once fully written (see save_checkpoint_dir)
+  {vid}/delete_requested - empty marker: a DELETE arrived while training
+                           (see request_delete); never written by training
 
 Modal Volumes are not a real object store with atomic per-key overwrite like
 S3 -- a killed container mid-write must never leave a directory that
@@ -20,6 +22,9 @@ import os
 import shutil
 import time
 
+# Marker file whose existence means "the customer asked to delete this voice
+# while it was training". See VoiceRecordStore.request_delete.
+DELETE_MARKER = "delete_requested"
 
 class VoiceRecordStore:
     def __init__(self, root: str):
@@ -89,6 +94,27 @@ class VoiceRecordStore:
         # merged/, but status is "training" then, so nothing serves it.)
         shutil.rmtree(dest, ignore_errors=True)
         os.rename(staging, dest)  # atomic: merged/ never appears half-written
+
+    def _delete_marker_path(self, vid: str) -> str:
+        return os.path.join(self._dir(vid), DELETE_MARKER)
+
+    def request_delete(self, vid: str) -> None:
+        """Record that deletion was requested while a training job owns the
+        voice. This is a SEPARATE file from manifest.json on purpose: the
+        training job writes manifest.json (final "ready"/"failed") from its
+        own stale snapshot, and Modal Volumes resolve concurrent writes to the
+        same file last-write-wins, so a flag inside the manifest could be
+        silently overwritten. The training job never writes this file, so no
+        commit of its can clobber it. Existence is the signal; content is
+        irrelevant."""
+        path = self._delete_marker_path(vid)
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write("")
+        os.rename(tmp_path, path)
+
+    def is_delete_requested(self, vid: str) -> bool:
+        return os.path.exists(self._delete_marker_path(vid))
 
     def dataset_dir(self, vid: str) -> str:
         path = os.path.join(self._dir(vid), "dataset")

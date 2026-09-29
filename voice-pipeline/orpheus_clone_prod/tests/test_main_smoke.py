@@ -9,6 +9,7 @@ and has caught real mistakes elsewhere in this codebase (e.g. the
 running serve_benchmark.py).
 """
 import importlib
+import os
 
 
 def test_main_module_imports_without_error():
@@ -20,7 +21,7 @@ def test_main_module_imports_without_error():
 
 
 # --- run_training_job_modal: narrowed post-commit resurrection window ------
-# A DELETE can arrive after train_job.py's own last delete_requested check
+# A DELETE can arrive after train_job.py's own last delete-request check
 # (which runs before save_checkpoint_dir/the trailing commit) but before
 # that commit actually lands. run_training_job_modal now reloads and
 # re-checks once more after its own commit to catch exactly that "late"
@@ -63,13 +64,13 @@ def test_run_training_job_modal_completes_delete_requested_late_after_final_comm
         # Represents the state at the point of the second reload check: the
         # underlying job already ran to its own success exit point (its own
         # _deleted_mid_run check saw no delete yet) and wrote "ready" -- then
-        # a delete_requested arrived "late", i.e. is only visible on the
+        # a delete request (marker file) arrived "late", i.e. is only visible on the
         # NEXT reload, which is exactly what run_training_job_modal's own
         # second reload+recheck exists to catch.
         store.write_status(vid, "ready", clip_count=20, trained_at=0.0)
 
         def _apply_late_delete_on_next_reload():
-            store.write_status(vid, "ready", clip_count=20, trained_at=0.0, delete_requested=True)
+            store.request_delete(vid)
 
         # Piggyback on the fake volume's reload() so the "late" delete only
         # becomes visible starting with run_training_job_modal's own final
@@ -83,6 +84,159 @@ def test_run_training_job_modal_completes_delete_requested_late_after_final_comm
     assert fake_volume.commits >= 2  # the trailing commit, plus the deferred-delete commit
     assert store.read_status(vid) is None
     assert not __import__("os").path.exists(store.checkpoint_dir(vid))
+
+
+class _TwoViewVolume:
+    """A fake Modal Volume with a real split between the COMMITTED state
+    (what other containers see) and THIS container's LOCAL mount, modelling
+    the semantics the resurrection race depends on:
+
+    - reload(): pull the committed state into the local view (voice dirs
+      gone from committed are removed locally).
+    - commit(): push every file in the local view to committed, overwriting
+      the committed copy of that same file (last-write-wins per file, as
+      Modal documents for concurrent same-file writes). Files that exist only
+      in committed -- i.e. written by another container that this container
+      never wrote -- are left alone. A voice dir this container had seen and
+      then removed locally is removed from committed.
+
+    The API side of the test writes straight into the committed dir (an API
+    write+commit in one step)."""
+
+    def __init__(self, committed, local):
+        self.committed = committed
+        self.local = local
+        self.reloads = 0
+        self.commits = 0
+        self.after_commit = []  # callbacks(volume) run after each commit
+        self._seen = set()
+
+    def reload(self):
+        import shutil
+        self.reloads += 1
+        for vid in os.listdir(self.local):
+            if not os.path.exists(os.path.join(self.committed, vid)):
+                shutil.rmtree(os.path.join(self.local, vid))
+        for dirpath, _dirs, files in os.walk(self.committed):
+            rel = os.path.relpath(dirpath, self.committed)
+            os.makedirs(os.path.join(self.local, rel), exist_ok=True)
+            for f in files:
+                shutil.copy2(os.path.join(dirpath, f), os.path.join(self.local, rel, f))
+        self._seen = set(os.listdir(self.local))
+
+    def commit(self):
+        import shutil
+        self.commits += 1
+        for vid in self._seen - set(os.listdir(self.local)):
+            shutil.rmtree(os.path.join(self.committed, vid), ignore_errors=True)
+        for dirpath, _dirs, files in os.walk(self.local):
+            rel = os.path.relpath(dirpath, self.local)
+            os.makedirs(os.path.join(self.committed, rel), exist_ok=True)
+            for f in files:
+                shutil.copy2(os.path.join(dirpath, f), os.path.join(self.committed, rel, f))
+        self._seen = set(os.listdir(self.local))
+        for cb in self.after_commit:
+            cb(self)
+
+
+def test_delete_during_save_checkpoint_survives_jobs_ready_commit_and_deletes_voice(tmp_path, monkeypatch):
+    """The scenario round 2 did not cover: a DELETE arrives while the job is
+    inside save_checkpoint_dir -- AFTER train_job's own pre-save check saw no
+    delete, BEFORE the job writes "ready" and commits. The job's "ready"
+    manifest comes from its stale local snapshot and its commit lands after
+    the API's, so under last-write-wins it overwrites the committed
+    manifest.json. This test proves (a) that clobber really happens in this
+    fake (a manifest-based delete_requested flag, written the way the
+    previous round's API did, is gone after the job's commit), and (b) the
+    marker file survives that same commit, and the job's post-commit check
+    finds it and deletes the voice instead of leaving it "ready"."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from orpheus_clone_prod import main
+    from orpheus_clone_prod.api import create_app
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
+    committed = tmp_path / "committed"
+    local = tmp_path / "local"
+    committed.mkdir()
+    local.mkdir()
+    volume = _TwoViewVolume(str(committed), str(local))
+    monkeypatch.setattr(main, "CHECKPOINT_ROOT", str(local))
+    monkeypatch.setattr(main, "checkpoint_volume", volume)
+
+    # API container: writes land directly in the committed state.
+    auth = {"Authorization": "Bearer test-secret"}
+    api = TestClient(create_app(root=str(committed), spawn_training=lambda vid, root: None))
+    vid = api.post("/v1/orpheus-voices", headers=auth, json={
+        "speaker_name": "Jane", "attested_by": "Jane", "consent": True,
+        "consent_text_version": "v1", "consent_statement": "ok",
+    }).json()["id"]
+    api.put(f"/v1/orpheus-voices/{vid}/dataset", headers={**auth, "content-type": "application/zip"}, content=b"z")
+    assert api.post(f"/v1/orpheus-voices/{vid}/dataset/commit", headers=auth).status_code == 200
+    committed_store = VoiceRecordStore(root=str(committed))
+    manifest_path = os.path.join(str(committed), vid, "manifest.json")
+
+    # Stub the GPU work; the merged checkpoint has a real file so its
+    # (non-)arrival in committed state is observable.
+    monkeypatch.setattr("orpheus_clone_prod.train_job._load_zip_bytes", lambda vid, root: b"zip")
+    monkeypatch.setattr(
+        "orpheus_clone_prod.train_job.prepare_dataset",
+        lambda zip_bytes, dataset_dir, voice_tag, min_clips=20: [{"text": "t", "audio": "a.wav"}] * 20,
+    )
+
+    def fake_finetune(rows, dataset_dir, voice_tag):
+        out = os.path.join(dataset_dir, "fake_merged")
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, "model.safetensors"), "w") as f:
+            f.write("weights")
+        return out
+
+    monkeypatch.setattr("orpheus_clone_prod.train_job._run_lora_finetune_and_merge", fake_finetune)
+
+    reloads_before_save = []
+    real_save = VoiceRecordStore.save_checkpoint_dir
+
+    def save_with_delete_arriving_midway(self, v, local_dir):
+        # By now train_job's pre-save check has already run (and passed).
+        reloads_before_save.append(volume.reloads)
+        real_save(self, v, local_dir)
+        # The customer's DELETE lands mid-copy: the API reloads, sees
+        # "training", and records the request.
+        assert api.delete(f"/v1/orpheus-voices/{v}", headers=auth).status_code == 202
+        # Also record the request the way the PREVIOUS round's API did (a
+        # manifest field), to show the job's commit clobbers that.
+        committed_store.write_status(v, "training", delete_requested=True)
+
+    monkeypatch.setattr(VoiceRecordStore, "save_checkpoint_dir", save_with_delete_arriving_midway)
+
+    after_job_commit = []
+
+    def snapshot(vol):
+        if not after_job_commit:
+            with open(manifest_path) as f:
+                after_job_commit.append((json.load(f), committed_store.is_delete_requested(vid)))
+
+    volume.after_commit.append(snapshot)
+
+    main.run_training_job_modal.local(vid)
+
+    # The pre-save check really did run before the delete arrived (initial
+    # reload + train_job's reload), so it could not have caught it.
+    assert reloads_before_save == [2]
+    # (a) The job's commit overwrote the manifest: status "ready", and the
+    # manifest-based flag is gone -- the old mechanism would have lost it.
+    manifest_after, marker_after = after_job_commit[0]
+    assert manifest_after["status"] == "ready"
+    assert "delete_requested" not in manifest_after
+    # (b) ...but the marker file survived the same commit...
+    assert marker_after is True
+    # ...and the post-commit check completed the deletion in committed state.
+    assert not os.path.exists(os.path.join(str(committed), vid))
+    assert committed_store.read_status(vid) is None
+    assert api.get(f"/v1/orpheus-voices/{vid}", headers=auth).status_code == 404
 
 
 # --- OrpheusCloneEngine: one voice per container (modal.parameter) ---------------

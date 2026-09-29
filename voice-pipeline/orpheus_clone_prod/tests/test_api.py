@@ -238,7 +238,7 @@ def test_store_hooks_reload_before_reads_and_commit_after_writes(tmp_path, monke
     assert events == ["reload"]
 
     # Still training: delete is deferred (202) but still writes/commits the
-    # delete_requested flag.
+    # delete_requested marker file.
     events.clear()
     assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 202
     assert events == ["reload", "commit"]
@@ -484,3 +484,61 @@ def test_create_prefers_explicit_body_owner_over_x_owner_header(client):
     poll_resp = client.get(f"/v1/orpheus-voices/{vid}", headers={**AUTH, "X-Owner": "body-owner"})
     assert poll_resp.status_code == 200
     assert poll_resp.json()["owner"] == "body-owner"
+
+
+def test_delete_while_training_writes_marker_file_not_manifest_field(tmp_path, monkeypatch):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
+    client = TestClient(create_app(root=str(tmp_path), spawn_training=lambda vid, root: None))
+    vid = _create_and_upload(client)
+    assert client.post(f"/v1/orpheus-voices/{vid}/dataset/commit", headers=AUTH).status_code == 200
+    assert client.delete(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 202
+    store = VoiceRecordStore(root=str(tmp_path))
+    assert store.is_delete_requested(vid)
+    assert "delete_requested" not in store.read_status(vid)
+
+
+@pytest.mark.parametrize("final_status", ["ready", "failed"])
+def test_pending_delete_is_completed_on_next_read_once_training_is_over(tmp_path, monkeypatch, final_status):
+    """Backstop: the delete marker became visible only after the training
+    job's own post-commit check, so the job committed a terminal status and
+    left. The next API read of the voice must finish the deletion, not
+    report (or serve) the voice."""
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
+    commits = []
+    client = TestClient(create_app(
+        root=str(tmp_path), spawn_training=lambda vid, root: None,
+        get_engine_cls=lambda: pytest.fail("must not reach the GPU"),
+        store_commit=lambda: commits.append(1),
+    ))
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=AUTH).json()["id"]
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.write_status(vid, final_status)
+    store.request_delete(vid)
+    commits.clear()
+
+    if final_status == "ready":
+        resp = client.post("/v1/orpheus-tts", json={"voice": f"custom-fast:{vid}", "text": "hi"}, headers=AUTH)
+        assert resp.status_code == 400
+    else:
+        assert client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH).status_code == 404
+    assert commits == [1]
+    assert not __import__("os").path.exists(__import__("os").path.join(str(tmp_path), vid))
+
+
+def test_pending_delete_is_not_completed_while_still_training(tmp_path, monkeypatch):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    monkeypatch.setenv("ORPHEUS_CLONE_SECRET", "test-secret")
+    client = TestClient(create_app(root=str(tmp_path), spawn_training=lambda vid, root: None))
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=AUTH).json()["id"]
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.write_status(vid, "training")
+    store.request_delete(vid)
+    poll = client.get(f"/v1/orpheus-voices/{vid}", headers=AUTH)
+    assert poll.status_code == 200
+    assert poll.json()["delete_requested"] is True
+    assert store.read_status(vid)["status"] == "training"

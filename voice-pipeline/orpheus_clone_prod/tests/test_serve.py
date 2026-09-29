@@ -183,3 +183,15 @@ def test_synthesize_passes_explicit_stop_token_ids():
     assert seen["stop_token_ids"] == [128258]
     assert seen["voice"] == "v-abc1234567"
     assert seen["prompt"] == "hello"
+
+
+def test_resolve_voice_dir_rejects_ready_voice_with_delete_requested(tmp_path):
+    """A training job's commit can leave a voice "ready" with the delete
+    marker already set (the delete landed after the job's last check); it
+    must never be served."""
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+    store.write_status("v-abc1234567", "ready")
+    store.request_delete("v-abc1234567")
+    with pytest.raises(UnknownVoiceError):
+        resolve_voice_dir("custom-fast:v-abc1234567", store)

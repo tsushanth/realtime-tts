@@ -73,8 +73,10 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
         if supplied is None or not hmac.compare_digest(str(supplied).encode(), str(stored).encode()):
             raise HTTPException(403, "forbidden")
 
-    def load_owned_voice(vid: str, request: Request) -> dict:
-        """Reload, 404 if unknown/malformed, 403 if owned by someone else."""
+    def load_owned_voice(vid: str, request: Request, complete_pending: bool = True) -> dict:
+        """Reload, 404 if unknown/malformed, 403 if owned by someone else.
+        With complete_pending, a voice whose delete request is still pending
+        after training ended is deleted now and reported as 404."""
         if not VOICE_ID_RE.match(vid):
             raise HTTPException(404, "unknown voice")
         reload_store()
@@ -82,7 +84,22 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
         if status is None:
             raise HTTPException(404, "unknown voice")
         check_owner(request, status)
+        if complete_pending and complete_pending_delete(vid, status):
+            raise HTTPException(404, "unknown voice")
         return status
+
+    def complete_pending_delete(vid: str, status: dict) -> bool:
+        """Backstop for a delete request whose marker became visible only
+        after the training job's own post-commit check (e.g. this API's
+        reload saw "training", but the job committed "ready" before this
+        API's marker commit landed). Once status is no longer "training", no
+        training job will write this voice again, so it is safe to finish
+        the deletion here. Returns True if the voice was deleted."""
+        if status.get("status") == "training" or not store.is_delete_requested(vid):
+            return False
+        store.delete(vid)
+        commit_store()
+        return True
 
     @app.post("/v1/orpheus-voices")
     async def create_voice(request: Request):
@@ -156,23 +173,35 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
     async def poll_voice(vid: str, request: Request):
         auth(request)
         status = load_owned_voice(vid, request)
-        return {"id": vid, **status}
+        body = {"id": vid, **status}
+        if store.is_delete_requested(vid):
+            body["delete_requested"] = True
+        return body
 
     @app.delete("/v1/orpheus-voices/{vid}")
     async def delete_voice(vid: str, request: Request):
         auth(request)
-        status = load_owned_voice(vid, request)
+        # No read-side completion here: the non-training branch below
+        # deletes (and returns 200) anyway.
+        status = load_owned_voice(vid, request, complete_pending=False)
         if status.get("status") == "training":
             # The training container holds its own Volume snapshot and commits
-            # it when it finishes; a delete now could be undone by that
-            # commit, resurrecting the voice and its consent record. Instead
-            # of rejecting forever (a container that's force-killed or hangs
-            # without reaching its own exception handler would otherwise
-            # wedge the voice as undeletable), record the request as a soft
-            # flag: run_training_job checks it at its own terminal point
-            # (success or failure) and completes the deletion then, since by
-            # that point there's no longer a race with an in-flight write.
-            store.write_status(vid, "training", delete_requested=True)
+            # it when it finishes; deleting now could be undone by that
+            # commit, resurrecting the voice and its consent record. Instead,
+            # record the request as a separate marker file (NOT a
+            # manifest.json field): the training job writes manifest.json
+            # from its own stale snapshot, and Modal Volumes are
+            # last-write-wins per file, so a manifest flag could be silently
+            # overwritten by the job's final "ready" write. The job never
+            # writes the marker file, so whatever the timing, the request
+            # survives the job's commit, and the job's post-commit check
+            # (main.py) -- or, failing that, the next API read of the voice
+            # (complete_pending_delete) -- completes the deletion. Remaining
+            # limitation: a training container that is force-killed or
+            # crashes before reaching its checks leaves the voice at
+            # "training" with the marker set until a (not yet built)
+            # stuck-job sweep or manual cleanup removes it.
+            store.request_delete(vid)
             commit_store()
             return JSONResponse(
                 status_code=202,
@@ -215,6 +244,7 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
                 status = store.read_status(vid)
                 if status is not None:
                     check_owner(request, status)
+                    complete_pending_delete(vid, status)
         try:
             resolve_voice_dir(voice, store)
         except UnknownVoiceError:

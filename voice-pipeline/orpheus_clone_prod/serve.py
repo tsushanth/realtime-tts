@@ -41,6 +41,10 @@ def resolve_voice_dir(voice: str, store: VoiceRecordStore) -> str:
     status = store.read_status(vid)
     if status is None or status.get("status") != "ready":
         raise UnknownVoiceError(f"voice not ready: {vid!r}")
+    if store.is_delete_requested(vid):
+        # A delete was requested; never serve it even if a training job's
+        # commit left it "ready" before the deletion was completed.
+        raise UnknownVoiceError(f"voice deleted: {vid!r}")
     return store.checkpoint_dir(vid)
 
 

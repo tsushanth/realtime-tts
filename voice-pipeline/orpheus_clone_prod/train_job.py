@@ -12,19 +12,27 @@ Constraints) -- a DIFFERENT image than serve.py's vllm==0.7.3/
 transformers==4.48.2 image. Never share these images.
 
 Delete-during-training: the API does NOT reject DELETE while
-status=="training" -- it records a soft delete_requested flag on the voice
-and returns 202 (see api.py's delete_voice). This job is what actually acts
-on that flag: right before writing its final status, it re-checks whether
-the voice record still exists and whether delete_requested was set in the
-latest committed Volume state. If either is true, the job removes its own
-local copy of the voice dir (so main.py's trailing commit propagates the
-deletion instead of resurrecting it) and returns/re-raises without writing
-a final status. main.py's run_training_job_modal does one more
-reload+recheck+commit after its own trailing commit, narrowing (but not
-closing -- there is no lock) the window between this job's check and that
-commit landing. A training container that is forcibly killed or crashes
-before reaching either of these checks leaves the voice stuck at
-"training"+delete_requested with no automatic path to deletion; that
+status=="training" -- it writes a separate `{vid}/delete_requested` marker
+file (storage.py's request_delete) and returns 202. The marker is NOT a
+field in manifest.json: this job writes manifest.json from its own stale
+snapshot, and Modal Volumes resolve concurrent same-file writes
+last-write-wins, so a manifest flag could be silently overwritten by this
+job's final "ready"/"failed" write. This job never writes the marker file,
+so nothing it commits can clobber it.
+
+This job checks the marker (after a reload) before saving the checkpoint --
+an early-out so a deleted voice's multi-GB checkpoint isn't copied and
+uploaded -- and, if set, removes its local copy of the voice dir so
+main.py's trailing commit propagates the deletion. main.py's
+run_training_job_modal then reloads and checks the marker again AFTER that
+trailing commit; that post-commit check is what catches a DELETE landing
+during save_checkpoint_dir or the commit. Any marker that becomes visible
+after that point (a DELETE whose API-side reload still saw "training" but
+whose commit landed after the post-commit check) is completed by the API on
+the next read of the voice, and serve.resolve_voice_dir refuses to serve a
+voice with the marker set. A training container that is forcibly killed or
+crashes before reaching any of these checks leaves the voice stuck at
+"training" with the marker set and no automatic path to deletion; that
 requires manual cleanup (a "sweep stuck jobs" mechanism is acknowledged
 follow-up scope, not implemented here).
 
@@ -64,12 +72,13 @@ def _deleted_mid_run(vid: str, store: VoiceRecordStore, reload_store) -> bool:
     """Reload the latest committed Volume state and report whether the voice
     should be discarded rather than given its final status write -- either
     because the record is gone outright, or because a delete was requested
-    while training was in flight (delete_requested, set by the API's soft
-    delete-during-training path). Either way this is the safe point to
-    actually complete that deletion: training has reached its own terminal
-    point (success or failure), so there's no longer a race with an
-    in-flight training write. A failed reload (e.g. open files) falls back
-    to the local view."""
+    while training was in flight (the delete_requested marker file written
+    by the API's request_delete). This is an early-out that saves the
+    checkpoint copy/upload for a voice that's already been deleted; it is
+    NOT the last line of defense -- main.py re-checks the marker after its
+    trailing commit, which is what catches a delete that lands during
+    save_checkpoint_dir or the commit itself. A failed reload (e.g. open
+    files) falls back to the local view."""
     if reload_store is not None:
         try:
             reload_store()
@@ -80,7 +89,7 @@ def _deleted_mid_run(vid: str, store: VoiceRecordStore, reload_store) -> bool:
         logger.warning(f"voice {vid} was deleted while training; discarding training output")
         store.delete(vid)
         return True
-    if record.get("delete_requested"):
+    if store.is_delete_requested(vid):
         logger.warning(f"voice {vid} had a delete requested while training; completing deletion now")
         store.delete(vid)
         return True

@@ -110,3 +110,23 @@ def test_save_checkpoint_dir_replaces_existing_merged_dir(tmp_path):
     assert open(os.path.join(merged, "model.safetensors"), "rb").read() == b"new"
     assert not os.path.exists(os.path.join(merged, "old_only.json"))
     assert not os.path.exists(merged + ".staging")
+
+
+def test_request_delete_is_a_separate_marker_not_a_manifest_field(tmp_path):
+    from orpheus_clone_prod.storage import VoiceRecordStore
+
+    store = VoiceRecordStore(root=str(tmp_path))
+    store.create("v-abc1234567", {"speaker_name": "Jane"})
+    store.write_status("v-abc1234567", "training")
+    assert store.is_delete_requested("v-abc1234567") is False
+    store.request_delete("v-abc1234567")
+    assert store.is_delete_requested("v-abc1234567") is True
+    # The manifest is untouched, so a later manifest write (the training
+    # job's "ready") cannot erase the request.
+    assert "delete_requested" not in store.read_status("v-abc1234567")
+    store.write_status("v-abc1234567", "ready")
+    assert store.is_delete_requested("v-abc1234567") is True
+    # Final delete removes the marker with the rest of the voice dir.
+    store.delete("v-abc1234567")
+    assert store.is_delete_requested("v-abc1234567") is False
+    assert store.read_status("v-abc1234567") is None

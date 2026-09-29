@@ -80,7 +80,7 @@ def run_training_job_modal(vid: str):
     # snapshot (missing this voice's manifest/upload.zip).
     checkpoint_volume.reload()
     try:
-        # reload_store lets the job re-check, just before its final write,
+        # reload_store lets the job re-check, before saving the checkpoint,
         # that the voice wasn't deleted mid-run (see train_job.py).
         run_training_job(vid, root=CHECKPOINT_ROOT, reload_store=checkpoint_volume.reload)
     finally:
@@ -89,23 +89,29 @@ def run_training_job_modal(vid: str):
         # If the voice was deleted mid-run, the job has already removed its
         # local copy, so this commit propagates the deletion.
         checkpoint_volume.commit()
+        try:
+            _complete_delete_requested_after_commit(vid)
+        except Exception as e:
+            # Don't mask the training error. If this check itself failed,
+            # the API completes the deletion on the next read of the voice
+            # (see api.py's load_owned_voice) and serving refuses it.
+            logger.warning(f"post-commit delete-request check failed for {vid}: {e}")
 
-    # Narrow (not close -- there's no lock) the remaining resurrection
-    # window: run_training_job's own delete_requested/record-exists check
-    # (train_job.py's _deleted_mid_run) runs BEFORE save_checkpoint_dir
-    # copies the merged checkpoint and before the commit() above uploads it
-    # -- a window that can be minutes long on a multi-GB checkpoint. If a
-    # DELETE lands during that window, this container's local view still
-    # shows the voice as "ready" even though the API's delete-request commit
-    # may since have landed. Reload once more (only reached on the success
-    # path -- an exception above propagates before this line) and, if a
-    # delete arrived in that window, complete it now instead of leaving the
-    # voice resurrected or permanently stuck.
+
+def _complete_delete_requested_after_commit(vid: str) -> None:
+    """The authoritative delete-request check for a training run. It runs
+    AFTER this container's final status is committed, so a DELETE that
+    landed at any earlier point -- including during save_checkpoint_dir's
+    multi-minute copy or the commit upload itself -- is visible here. The
+    signal is the delete_requested marker file, which this job never writes,
+    so this container's own commit (manifest -> "ready"/"failed") cannot have
+    overwritten it (Modal Volumes are last-write-wins per file; a flag inside
+    manifest.json could be clobbered, a separate file cannot). Runs on both
+    the success and failure paths."""
     checkpoint_volume.reload()
     store = VoiceRecordStore(root=CHECKPOINT_ROOT)
-    record = store.read_status(vid)
-    if record is not None and record.get("delete_requested"):
-        logger.warning(f"voice {vid} had a delete requested during the final checkpoint commit; completing deletion now")
+    if store.is_delete_requested(vid):
+        logger.warning(f"voice {vid} had a delete requested during training; completing deletion now")
         store.delete(vid)
         checkpoint_volume.commit()
 

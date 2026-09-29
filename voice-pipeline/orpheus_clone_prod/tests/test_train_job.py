@@ -152,14 +152,15 @@ def test_run_training_job_failure_after_delete_does_not_resurrect_or_raise(tmp_p
 
 
 def test_run_training_job_completes_deferred_delete_on_success(tmp_path, monkeypatch):
-    """A delete requested while training was in flight (soft delete_requested
-    flag set by the API's 202 path) must be completed once training reaches
+    """A delete requested while training was in flight (delete_requested
+    marker file written by the API's 202 path) must be completed once training reaches
     its normal success exit point: the voice is actually gone, and no
     checkpoint is saved for a voice the customer asked to delete."""
     vid = "v-abc1234567"
     store = VoiceRecordStore(root=str(tmp_path))
     store.create(vid, {"speaker_name": "Jane"})
-    store.write_status(vid, "training", delete_requested=True)
+    store.write_status(vid, "training")
+    store.request_delete(vid)
     _stub_training(monkeypatch)
 
     run_training_job(vid, root=str(tmp_path))
@@ -175,7 +176,8 @@ def test_run_training_job_completes_deferred_delete_on_failure(tmp_path, monkeyp
     vid = "v-abc1234567"
     store = VoiceRecordStore(root=str(tmp_path))
     store.create(vid, {"speaker_name": "Jane"})
-    store.write_status(vid, "training", delete_requested=True)
+    store.write_status(vid, "training")
+    store.request_delete(vid)
     monkeypatch.setattr(
         "orpheus_clone_prod.train_job._load_zip_bytes",
         lambda vid, root: b"",  # empty zip -> prepare_dataset raises
