@@ -18,23 +18,41 @@ import zipfile
 
 logger = logging.getLogger(__name__)
 
+_WHISPER_MODEL = None
+
 
 class DatasetTooSmallError(Exception):
     pass
 
 
+class TranscriptionUnavailableError(Exception):
+    """The transcription model itself could not be loaded (download failure,
+    missing CUDA/cuDNN library, ...). A systemic service failure, NOT a
+    problem with the customer's data -- kept distinct from
+    DatasetTooSmallError so it is never reported as "not enough usable clips"."""
+
+
+def load_transcription_model():
+    """Load the Whisper model once. Called eagerly by prepare_dataset before
+    the per-clip loop, OUTSIDE the per-clip exception handling, so a systemic
+    load failure surfaces as TranscriptionUnavailableError instead of being
+    swallowed as N individual "bad clip" skips. Isolated so tests can
+    monkeypatch it without loading a real model."""
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        try:
+            from faster_whisper import WhisperModel
+
+            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+        except Exception as e:
+            raise TranscriptionUnavailableError(f"transcription service unavailable: {e}") from e
+    return _WHISPER_MODEL
+
+
 def transcribe_clip(path: str) -> str:
     """Isolated so tests can monkeypatch it without loading a real Whisper
-    model. Production implementation loads faster-whisper lazily (import
-    inside the function) since this module is also imported by tests that
-    never need the real model."""
-    from faster_whisper import WhisperModel
-
-    global _WHISPER_MODEL
-    try:
-        model = _WHISPER_MODEL
-    except NameError:
-        model = _WHISPER_MODEL = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+    model."""
+    model = load_transcription_model()
     segments, _ = model.transcribe(path, language="en")
     return " ".join(seg.text.strip() for seg in segments).strip()
 
@@ -65,6 +83,15 @@ def prepare_dataset(zip_bytes: bytes, dataset_dir: str, voice_tag: str, min_clip
         shutil.rmtree(clips_dir, ignore_errors=True)
         raise DatasetTooSmallError("uploaded file is not a valid zip archive")
 
+    if extracted:
+        # Eager, outside the per-clip try/except below: if the model can't
+        # load, that's our failure, not the customer's data. Let it propagate.
+        try:
+            load_transcription_model()
+        except Exception:
+            shutil.rmtree(clips_dir, ignore_errors=True)
+            raise
+
     rows = []
     for path in extracted:
         if path.lower().endswith(".wav") and not _is_valid_wav(path):
@@ -72,8 +99,9 @@ def prepare_dataset(zip_bytes: bytes, dataset_dir: str, voice_tag: str, min_clip
         try:
             text = transcribe_clip(path)
         except Exception as e:
-            # Catch any exception during transcription (corrupt/unreadable files of any format).
-            # Log and skip that clip; continue with the rest.
+            # Per-clip decode/transcribe failure (corrupt/unreadable file of
+            # any format). The model itself is already loaded at this point,
+            # so this is genuinely about this clip. Log and skip.
             logger.warning(f"Failed to transcribe {path}: {e}, skipping")
             continue
         if not text:
