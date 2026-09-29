@@ -370,3 +370,28 @@ def test_voice_without_stored_owner_skips_check(client):
 def test_create_rejects_non_string_owner(client):
     resp = client.post("/v1/orpheus-voices", json={**CONSENT_BODY, "owner": 123}, headers=AUTH)
     assert resp.status_code == 400
+
+
+def test_create_falls_back_to_x_owner_header_when_body_has_no_owner(client):
+    # This mirrors the real production caller (ReadAloudAI's backend), which
+    # never puts "owner" in the create body -- it only ever sends X-Owner.
+    headers = {**AUTH, "X-Owner": "user-42"}
+    vid = client.post("/v1/orpheus-voices", json=CONSENT_BODY, headers=headers).json()["id"]
+
+    poll_resp = client.get(f"/v1/orpheus-voices/{vid}", headers=headers)
+    assert poll_resp.status_code == 200
+    assert poll_resp.json()["owner"] == "user-42"
+
+    # Enforcement now actually works end-to-end for header-derived owners.
+    wrong_owner_resp = client.get(f"/v1/orpheus-voices/{vid}", headers={**AUTH, "X-Owner": "someone-else"})
+    assert wrong_owner_resp.status_code == 403
+
+
+def test_create_prefers_explicit_body_owner_over_x_owner_header(client):
+    headers = {**AUTH, "X-Owner": "header-owner"}
+    body = {**CONSENT_BODY, "owner": "body-owner"}
+    vid = client.post("/v1/orpheus-voices", json=body, headers=headers).json()["id"]
+
+    poll_resp = client.get(f"/v1/orpheus-voices/{vid}", headers={**AUTH, "X-Owner": "body-owner"})
+    assert poll_resp.status_code == 200
+    assert poll_resp.json()["owner"] == "body-owner"

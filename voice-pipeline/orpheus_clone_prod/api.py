@@ -97,6 +97,14 @@ def create_app(root: str, spawn_training, get_engine_cls=None, store_reload=None
             raise HTTPException(400, "consent must be the boolean true")
         record = {k: body[k] for k in REQUIRED_CONSENT_FIELDS}
         owner = body.get("owner")
+        if owner is None:
+            # The real caller (ReadAloudAI's backend) never sets "owner" in
+            # the body -- it sends its gateway-resolved identity as the
+            # X-Owner header on every route, including this one. Fall back
+            # to that header so ownership is actually recorded in the
+            # deployed flow; explicit body owner (e.g. direct API testing)
+            # still takes precedence when present.
+            owner = request.headers.get(OWNER_HEADER)
         if owner is not None:
             if not isinstance(owner, str) or not owner:
                 raise HTTPException(400, "owner must be a non-empty string")
