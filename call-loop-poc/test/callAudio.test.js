@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isCallAudioEnabled,
+  isSoundEffectsEnabled,
   parseCallAudioContext,
   buildPlaySoundEffectTool,
   pickSoundEffect,
@@ -132,5 +133,35 @@ describe('encodeCallAudioForContext (tenantLookup -> context message)', () => {
     expect(encodeCallAudioForContext([])).toBeUndefined();
     expect(encodeCallAudioForContext(null)).toBeUndefined();
     expect(encodeCallAudioForContext([{ asset_type: 'sound_effect', name: 'x', enabled: false, audio: Buffer.from([1]) }])).toBeUndefined();
+  });
+});
+
+describe('isSoundEffectsEnabled (effects-only kill switch)', () => {
+  it('defaults to enabled when unset', () => {
+    expect(isSoundEffectsEnabled({})).toBe(true);
+  });
+  it('is disabled by "false" / "0" (case-insensitive)', () => {
+    expect(isSoundEffectsEnabled({ CALL_AUDIO_EFFECTS_ENABLED: 'false' })).toBe(false);
+    expect(isSoundEffectsEnabled({ CALL_AUDIO_EFFECTS_ENABLED: 'FALSE' })).toBe(false);
+    expect(isSoundEffectsEnabled({ CALL_AUDIO_EFFECTS_ENABLED: '0' })).toBe(false);
+    expect(isSoundEffectsEnabled({ CALL_AUDIO_EFFECTS_ENABLED: 'true' })).toBe(true);
+  });
+  it('is also off when the global switch is off (global wins)', () => {
+    expect(isSoundEffectsEnabled({ CALL_AUDIO_ASSETS_ENABLED: 'false' })).toBe(false);
+  });
+});
+
+describe('effects kill switch in parseCallAudioContext', () => {
+  it('drops the effects (so no play_sound_effect tool is ever built) but keeps the jingle', () => {
+    const ca = parseCallAudioContext(RAW, { CALL_AUDIO_EFFECTS_ENABLED: 'false' });
+    expect(ca.jingle).not.toBeNull();
+    expect(ca.effects.size).toBe(0);
+    expect(buildPlaySoundEffectTool(ca)).toBeNull();
+  });
+  it('effects-only tenant with effects disabled has nothing left to play -> null', () => {
+    expect(parseCallAudioContext({ effects: RAW.effects }, { CALL_AUDIO_EFFECTS_ENABLED: 'false' })).toBeNull();
+  });
+  it('the jingle switch is independent: the global switch off still kills both', () => {
+    expect(parseCallAudioContext(RAW, { CALL_AUDIO_ASSETS_ENABLED: 'false' })).toBeNull();
   });
 });

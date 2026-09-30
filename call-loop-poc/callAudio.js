@@ -19,6 +19,16 @@ export function isCallAudioEnabled(env = process.env) {
   return v !== 'false' && v !== '0';
 }
 
+// Narrower switch for sound effects only, layered under the global one. Effects put a tool in front of
+// the LLM on every turn (so they can change what it says); the jingle never touches the LLM. That
+// difference is why an operator may want to disable effects without silencing every tenant's jingle.
+// The global switch still wins: if it's off, effects are off too.
+export function isSoundEffectsEnabled(env = process.env) {
+  if (!isCallAudioEnabled(env)) return false;
+  const v = String(env.CALL_AUDIO_EFFECTS_ENABLED ?? 'true').trim().toLowerCase();
+  return v !== 'false' && v !== '0';
+}
+
 function decodeAudio(b64) {
   if (typeof b64 !== 'string' || b64.length === 0) return null;
   const buf = Buffer.from(b64, 'base64');
@@ -36,7 +46,7 @@ export function parseCallAudioContext(raw, env = process.env) {
   const jingle = raw.jingle && typeof raw.jingle === 'object' ? decodeAudio(raw.jingle.audio) : null;
 
   const effects = new Map();
-  if (Array.isArray(raw.effects)) {
+  if (Array.isArray(raw.effects) && isSoundEffectsEnabled(env)) {
     for (const e of raw.effects) {
       if (!e || typeof e !== 'object' || typeof e.name !== 'string' || !NAME_RE.test(e.name)) continue;
       const audio = decodeAudio(e.audio);
