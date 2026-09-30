@@ -17,8 +17,10 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
+import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
+import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
@@ -692,6 +694,8 @@ const SHOPPER_PERSONA_RULES =
   'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
   'Never break character or mention an AI, a test, or a script.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
+// Same sound effect won't replay within this window — see CallSession._playSoundEffect.
+const SFX_MIN_REPEAT_MS = 10_000;
 // How many times _maybeRetireTurn will nudge a silent/stalled extraction
 // node before giving up and forcing a hard-coded spoken fallback instead —
 // see the deadlock-nudge fix there. Real call reproduced 2 consecutive
@@ -1620,8 +1624,36 @@ server.on('upgrade', (req, socket, head) => {
   }
 });
 
-wss.on('connection', (clientWs) => {
-  console.log('[call-loop] client connected');
+// Browser sessions on /call cost money and are reachable from any page, so they
+// go through admission control (see demoGuard.js). Twilio phone calls use a
+// different socket and are not affected.
+const demoGuard = createDemoGuardFromEnv();
+setInterval(() => demoGuard.prune(), 10 * 60 * 1000).unref();
+
+wss.on('connection', (clientWs, req) => {
+  const ip = clientIpFromRequest(req);
+  const admission = demoGuard.admit({ ip, origin: req.headers.origin });
+  if (!admission.ok) {
+    console.log(`[call-loop] /call rejected (${admission.code}) ip=${ip} origin=${req.headers.origin || '-'}`);
+    clientWs.send(JSON.stringify({ type: 'error', code: admission.code, message: admission.message }));
+    clientWs.close(1008, admission.code);
+    return;
+  }
+  console.log(`[call-loop] client connected ip=${ip}${admission.unlimited ? ' (unlimited)' : ''}`);
+  // Hard cap on session length, enforced here so a client cannot opt out of it.
+  let capTimer = null;
+  if (admission.maxSessionMs) {
+    capTimer = setTimeout(() => {
+      try {
+        clientWs.send(JSON.stringify({ type: 'error', code: 'session_limit', message: MESSAGES.session_limit }));
+      } catch { /* socket already closing */ }
+      clientWs.close(1000, 'session_limit');
+    }, admission.maxSessionMs);
+  }
+  clientWs.on('close', () => {
+    if (capTimer) clearTimeout(capTimer);
+    admission.release();
+  });
   const session = new CallSession(clientWs);
   clientWs.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   clientWs.on('close', () => session.close());
@@ -1733,6 +1765,7 @@ twilioWss.on('connection', (twilioWs) => {
       ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
       ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
       ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
+      ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
     }), false);
 
     // Real call logging + recording (2026-09-17) — this is the only place a
@@ -1854,6 +1887,11 @@ export class CallSession {
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
     this.calendar = null; // { provider, apiKey, eventTypeId } — see tenantLookup.js / onClientMessage
+    // Per-tenant jingle + sound effects, decoded from the context message — see callAudio.js. null
+    // when the tenant has none or CALL_AUDIO_ASSETS_ENABLED is off (then nothing below fires).
+    this.callAudio = null;
+    this._jinglePlayed = false;
+    this._sfxLastPlayedAt = new Map(); // effect name -> ms timestamp, see _playSoundEffect
     this._lastAvailableSlots = null; // label -> real ISO time, from the most recent check_availability — see _bookAppointment
     // Mystery-shopper flag (see MYSTERY_SHOPPER_DECISIONS.md) — enables the
     // closing-loop-detection hangup below, since a flow-less session
@@ -2186,6 +2224,9 @@ export class CallSession {
       // other tenant.
       if (msg.calendar && typeof msg.calendar === 'object') {
         this.calendar = msg.calendar;
+      }
+      if (msg.callAudio) {
+        this.callAudio = parseCallAudioContext(msg.callAudio);
       }
       // Live-monitoring metadata (see the registry / GET /active-calls) — a
       // real routed call passes both; anonymous browser demos pass neither.
@@ -2753,7 +2794,43 @@ export class CallSession {
         content: `[System note: the flow has moved to the "${nodeId}" step. Give your opening line for this step now.]`,
       });
     }
+    if (isCallOpening) this._playIntroJingle();
     await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening, isCallOpening });
+  }
+
+  // Tenant's intro jingle, if any — sent straight to the adapter's paced-frame queue BEFORE the
+  // greeting's LLM/TTS round trip even starts, so it's guaranteed to be first in the queue and the
+  // greeting (which arrives ~1s later) simply plays after it. Deliberately not tied to any turn:
+  // it's not something the agent "said", so it must not hold a turn open or be superseded by one.
+  // A caller who talks over it cuts it off like any other agent audio (adapter.clearQueue()).
+  _playIntroJingle() {
+    if (this._jinglePlayed || !this.callAudio?.jingle) return;
+    this._jinglePlayed = true;
+    if (this.clientWs.readyState !== WebSocket.OPEN) return;
+    console.log(`[call-loop] intro jingle (${this.callAudio.jingle.length} bytes)`);
+    this.clientWs.send(this.callAudio.jingle, { binary: true, format: 'mulaw8k' });
+  }
+
+  // Situational SFX chosen by the model via the play_sound_effect tool. Goes through _speakCached
+  // (not a bare clientWs.send) so it takes its place in the same ordered send chain as the reply
+  // text being spoken this turn — the chime lands AFTER "you're all booked", not on top of it.
+  // The same effect is suppressed for SFX_MIN_REPEAT_MS after playing: nothing in the spec asks
+  // the model to be disciplined about this, and a chime firing on every turn of a long
+  // conversation would be worse than a missed one.
+  _playSoundEffect(name, turnId) {
+    const buf = pickSoundEffect(this.callAudio, name);
+    if (!buf) {
+      console.warn(`[call-loop] model asked for unknown sound effect "${name}" — ignoring`);
+      return;
+    }
+    const last = this._sfxLastPlayedAt.get(name) || 0;
+    if (Date.now() - last < SFX_MIN_REPEAT_MS) {
+      console.log(`[call-loop] sound effect "${name}" suppressed — played ${Date.now() - last}ms ago`);
+      return;
+    }
+    this._sfxLastPlayedAt.set(name, Date.now());
+    console.log(`[call-loop] turn ${turnId} sound effect: "${name}"`);
+    this._speakCached(buf, turnId, 'mulaw8k').catch((err) => console.error('[call-loop] sound effect send failed', err));
   }
 
   // Shared by both a real caller turn and a flow auto-advance turn — the
@@ -2932,6 +3009,12 @@ export class CallSession {
       }
     }
 
+    // Per-tenant sound effects — only offered when this tenant has enabled SFX assets AND the
+    // global CALL_AUDIO_ASSETS_ENABLED switch is on (this.callAudio is null otherwise). Same
+    // conditional-inclusion shape as the calendar tools above.
+    const sfxTool = node ? buildPlaySoundEffectTool(this.callAudio) : null;
+    if (sfxTool) tools.push(sfxTool);
+
     // 'subagent' node — attaches multiple pre-configured tools (any mix of
     // function/code/sms/mcp/transfer) to ONE node and lets the model decide
     // WHEN (if ever) to call each, mid-conversation, across as many turns as
@@ -3071,6 +3154,14 @@ export class CallSession {
         if (block.type === 'tool_use' && block.name === 'record_field' && block.input?.field) {
           this.collectedData[block.input.field] = block.input.value;
           console.log(`[call-loop] recorded field "${block.input.field}" = "${block.input.value}"`);
+        }
+      }
+
+      // Sound effects are fire-and-forget like record_field: the model needs no result back, so no
+      // follow-up turn — just play the cached clip.
+      for (const block of final.content) {
+        if (block.type === 'tool_use' && block.name === SOUND_EFFECT_TOOL_NAME && this.activeTurn === turnId) {
+          this._playSoundEffect(block.input?.name, turnId);
         }
       }
 
@@ -3347,7 +3438,7 @@ export class CallSession {
   // TTS path uses (see _speak/_speakHttpTts) so barge-in and
   // _maybeRetireTurn stay correct even when a filler is the only thing a
   // superseded turn ever said.
-  async _speakCached(buffer, turnId) {
+  async _speakCached(buffer, turnId, format) {
     if (this.activeTurn !== turnId) return;
     if (this.turnState?.id === turnId) this.turnState.pendingTts++;
     // Same ordering chain _speakHttpTts uses — a cached clip (backchannel
@@ -3365,7 +3456,7 @@ export class CallSession {
     try {
       if (this.activeTurn !== turnId) return;
       if (this.clientWs.readyState !== WebSocket.OPEN) return;
-      this.clientWs.send(buffer, { binary: true });
+      this.clientWs.send(buffer, format ? { binary: true, format } : { binary: true });
     } finally {
       releaseNext();
       if (this.turnState?.id === turnId) {
