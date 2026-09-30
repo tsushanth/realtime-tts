@@ -94,10 +94,11 @@ describe('/twilio/voice real-call idempotency (today\'s regression)', () => {
 
     expect(res1.status).toBe(200);
     expect(res2.status).toBe(200);
-    // Exactly one full resolveInboundCall() should have run: 2 sequential + 4 parallel real
-    // queries = 6 fetch calls. If the two requests had raced independently (the bug), this would
-    // be 12. This is the direct, black-box proof the coalescing fix works.
-    expect(fetchMock.callCount()).toBe(6);
+    // Exactly one full resolveInboundCall() should have run: 2 sequential + 5 parallel real
+    // queries (the 5th is the tenant's call-audio assets) = 7 fetch calls. If the two requests had
+    // raced independently (the bug), this would be 14. This is the direct, black-box proof the
+    // coalescing fix works.
+    expect(fetchMock.callCount()).toBe(7);
     expect(contextWrittenCallSids.has(callSid)).toBe(true);
   });
 
@@ -138,7 +139,7 @@ describe('/twilio/voice real-call idempotency (today\'s regression)', () => {
     expect(res2.status).toBe(200);
     expect(pendingCallContext.has('CAone00000000000000000000000000')).toBe(true);
     expect(pendingCallContext.has('CAtwo00000000000000000000000000')).toBe(true);
-    // Two independent calls, two independent lookups: 12, not 6.
-    expect(fetchMock.callCount()).toBe(12);
+    // Two independent calls, two independent lookups: 14, not 7.
+    expect(fetchMock.callCount()).toBe(14);
   });
 });

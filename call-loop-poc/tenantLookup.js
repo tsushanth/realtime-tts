@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isCallAudioEnabled, encodeCallAudioForContext } from './callAudio.js';
 // Resolves a real inbound Twilio call to the tenant that owns the dialed
 // number — the gap that made every phone call get the exact same static
 // config regardless of which number was called, and made per-tenant
@@ -211,6 +212,64 @@ export async function findExpiredRecordings() {
 // ran the number's INBOUND flow regardless of what was actually configured
 // for outbound. Found auditing what a real "make an outbound call" button
 // would need to call correctly.
+// Per-tenant jingle / sound-effect assets (see callAudio.js and the 2026-09-29 design spec). The
+// rows are queried on every call (cheap, and picks up dashboard changes immediately), but the
+// audio bytes are cached per process: an asset's storage object is immutable for its row id (the
+// dashboard creates a fresh row rather than overwriting — no versioning, per the spec), so an id
+// is safe to cache forever. Bounded so a long-lived machine can't grow without limit.
+const CALL_AUDIO_BUCKET = 'call-audio-assets';
+const CALL_AUDIO_CACHE_MAX = 200;
+const callAudioBytesCache = new Map(); // asset id -> Buffer
+
+async function downloadCallAudio(row) {
+  const hit = callAudioBytesCache.get(row.id);
+  if (hit) return hit;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !row.mulaw8k_storage_path) return null;
+  const res = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/${CALL_AUDIO_BUCKET}/${row.mulaw8k_storage_path.split('/').map(encodeURIComponent).join('/')}`,
+    {
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      signal: AbortSignal.timeout(5000),
+    }
+  );
+  if (!res.ok) {
+    console.error(`[tenant-lookup] call audio download failed for asset ${row.id}: HTTP ${res.status}`);
+    return null;
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) return null;
+  if (callAudioBytesCache.size >= CALL_AUDIO_CACHE_MAX) callAudioBytesCache.delete(callAudioBytesCache.keys().next().value);
+  callAudioBytesCache.set(row.id, buf);
+  return buf;
+}
+
+// Returns the context-message payload for callAudio.js (or undefined). Never throws and never
+// blocks the call on a failure: a broken/missing asset just means that sound doesn't play.
+export async function fetchCallAudioAssets(tenantId) {
+  if (!tenantId || !isCallAudioEnabled()) return undefined;
+  try {
+    const rows = await pg(
+      'tenant_call_audio_assets',
+      `tenant_id=eq.${encodeURIComponent(tenantId)}&enabled=eq.true&select=id,asset_type,name,description,mulaw8k_storage_path,enabled&order=created_at.asc`
+    );
+    if (!rows?.length) return undefined;
+    const withAudio = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          return { ...r, audio: await downloadCallAudio(r) };
+        } catch (err) {
+          console.error(`[tenant-lookup] call audio asset ${r.id} unavailable`, err);
+          return { ...r, audio: null };
+        }
+      })
+    );
+    return encodeCallAudioForContext(withAudio);
+  } catch (err) {
+    console.error('[tenant-lookup] call audio lookup failed', err);
+    return undefined;
+  }
+}
+
 export async function resolveInboundCall(toNumber, direction = 'inbound') {
   if (!toNumber) return null;
   const versionColumn = direction === 'outbound' ? 'outbound_agent_version_id' : 'inbound_agent_version_id';
@@ -238,11 +297,12 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     return null;
   }
 
-  const [flows, businesses, calendars, tenants] = await Promise.all([
+  const [flows, businesses, calendars, tenants, callAudio] = await Promise.all([
     pg('calldesk_conversation_flows', `id=eq.${version.flow_id}&select=nodes,global_settings`),
     pg('calldesk_businesses', `tenant_id=eq.${numberRow.tenant_id}&select=stripe_customer_id`),
     pg('calldesk_calendar_connections', `tenant_id=eq.${numberRow.tenant_id}&select=provider,api_key,event_type_id`),
     pg('calldesk_tenants', `id=eq.${numberRow.tenant_id}&select=settings`),
+    fetchCallAudioAssets(numberRow.tenant_id),
   ]);
   const flowRow = flows?.[0];
   if (!flowRow?.nodes?.length) {
@@ -260,6 +320,9 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
       globalSettings: flowRow.global_settings || {},
     },
     ttsBackend: version.tts_backend || undefined,
+    // Per-tenant jingle + sound effects (undefined for a tenant with none, or when the global
+    // CALL_AUDIO_ASSETS_ENABLED kill switch is off) — see callAudio.js.
+    callAudio,
     stripeCustomerId: businesses?.[0]?.stripe_customer_id || undefined,
     // Real calendar booking (2026-09-17) — present only for a tenant that's
     // actually connected one; check_availability/book_appointment simply
