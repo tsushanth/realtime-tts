@@ -17,6 +17,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
+import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
@@ -1623,8 +1624,36 @@ server.on('upgrade', (req, socket, head) => {
   }
 });
 
-wss.on('connection', (clientWs) => {
-  console.log('[call-loop] client connected');
+// Browser sessions on /call cost money and are reachable from any page, so they
+// go through admission control (see demoGuard.js). Twilio phone calls use a
+// different socket and are not affected.
+const demoGuard = createDemoGuardFromEnv();
+setInterval(() => demoGuard.prune(), 10 * 60 * 1000).unref();
+
+wss.on('connection', (clientWs, req) => {
+  const ip = clientIpFromRequest(req);
+  const admission = demoGuard.admit({ ip, origin: req.headers.origin });
+  if (!admission.ok) {
+    console.log(`[call-loop] /call rejected (${admission.code}) ip=${ip} origin=${req.headers.origin || '-'}`);
+    clientWs.send(JSON.stringify({ type: 'error', code: admission.code, message: admission.message }));
+    clientWs.close(1008, admission.code);
+    return;
+  }
+  console.log(`[call-loop] client connected ip=${ip}${admission.unlimited ? ' (unlimited)' : ''}`);
+  // Hard cap on session length, enforced here so a client cannot opt out of it.
+  let capTimer = null;
+  if (admission.maxSessionMs) {
+    capTimer = setTimeout(() => {
+      try {
+        clientWs.send(JSON.stringify({ type: 'error', code: 'session_limit', message: MESSAGES.session_limit }));
+      } catch { /* socket already closing */ }
+      clientWs.close(1000, 'session_limit');
+    }, admission.maxSessionMs);
+  }
+  clientWs.on('close', () => {
+    if (capTimer) clearTimeout(capTimer);
+    admission.release();
+  });
   const session = new CallSession(clientWs);
   clientWs.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   clientWs.on('close', () => session.close());
