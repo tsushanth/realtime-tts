@@ -47,8 +47,10 @@ Kokoro voices: `voice="af_heart"`. Custom voices: `voice="custom:<id>"`.
   (Piper), otherwise collects the WebSocket stream.
 - `stop()` cancels the in-flight sync `stream()` from another thread.
 - `wav(pcm, sample_rate=24000)` wraps PCM in a WAV header.
-- `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`. Only PCM formats
-  can be wrapped with `wav()`; pass the matching sample rate.
+- `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`, plus the compressed
+  `mp3_24000_64`, `mp3_24000_128` (`audio/mpeg`) and `opus_24000` (`audio/ogg`). Compressed formats are
+  only served by the one-shot `POST /v1/text-to-speech` endpoint (the WebSocket and Piper `http_url`
+  streams are PCM/G.711 only). Only PCM formats can be wrapped with `wav()`; pass the matching sample rate.
 
 ## Errors
 

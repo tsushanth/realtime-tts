@@ -110,7 +110,7 @@ def test_stream_http_errors(mock):
         list(ReadAloud("bad", api_base=mock.base).stream_http("hi"))
 
 
-@pytest.mark.parametrize("fmt", ["pcm_24000", "pcm_8000", "mulaw_8000", "alaw_8000"])
+@pytest.mark.parametrize("fmt", ["pcm_24000", "pcm_8000", "mulaw_8000", "alaw_8000", "mp3_24000_64", "mp3_24000_128", "opus_24000"])
 def test_formats_ws_and_http(mock, fmt):
     c = ReadAloud("k", api_base=mock.base)
     list(c.stream("hi", format=fmt))

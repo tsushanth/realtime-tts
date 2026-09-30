@@ -23,6 +23,9 @@ import * as keys from "./keys.js";
 import { handleVoiceApi } from "./voiceApiProxy.js";
 import { handleOrpheusVoiceApi } from "./orpheusApiProxy.js";
 import { auditLog } from "./audit.js";
+import { COMPRESSED_FORMATS, isCompressedFormat, spawnEncoder } from "./audioEncode.js";
+import { Readable } from "node:stream";
+import { once } from "node:events";
 
 // Stripe self-serve webhook (see PUBLIC_DRAFT.md billing section)
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -120,6 +123,94 @@ function warmRealtimeWorker() {
     r.on("error", () => {});
     r.on("timeout", () => r.destroy());
   } catch { /* malformed STT_REALTIME_WORKER_URL: skip the ping */ }
+}
+
+// --- Compressed one-shot TTS (mp3 / opus) ---
+const MAX_CONCURRENT_ENCODERS = Number(process.env.MAX_CONCURRENT_ENCODERS) || 8;
+let activeEncoders = 0;
+
+function jsonError(res, status, message) {
+  if (res.headersSent) { res.destroy(); return; }
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify({ error: message }));
+}
+
+// Streams worker PCM through ffmpeg to the client. Headers are sent on the first encoded byte, so
+// worker/encoder failures before that point become a JSON 502; failures after it destroy the
+// socket (a clean chunked end would make a truncated file look complete). Usage/billing is
+// reported by the worker from the text it synthesizes and is unaffected by the encode step.
+async function proxyCompressedTts({ res, workerHttpUrl, token, bodyObj, fmt, id, engine }) {
+  const spec = COMPRESSED_FORMATS[fmt];
+  const ac = new AbortController();
+  let ff = null;
+  let clientGone = false;
+  const cleanup = () => {
+    ac.abort();
+    if (ff && ff.exitCode === null && !ff.killed) ff.kill("SIGKILL");
+  };
+  res.once("close", () => { if (!res.writableEnded) { clientGone = true; cleanup(); } });
+
+  let upstream;
+  try {
+    upstream = await fetch(workerHttpUrl, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...bodyObj, format: "pcm_24000" }),
+      signal: ac.signal,
+    });
+  } catch (err) {
+    if (clientGone) return;
+    auditLog("tts_http_proxy_error", { id, engine, error: err.message });
+    return jsonError(res, 502, "TTS worker unavailable, please retry");
+  }
+  if (clientGone) { ac.abort(); return; }
+
+  if (!upstream.ok) {
+    // Pass worker errors (400 bad speed, 404 voice, 503 capacity...) through as-is.
+    const headers = { "content-type": upstream.headers.get("content-type") || "application/json", "cache-control": "no-store" };
+    const ra = upstream.headers.get("retry-after");
+    if (ra) headers["retry-after"] = ra;
+    res.writeHead(upstream.status, headers);
+    try { res.end(Buffer.from(await upstream.arrayBuffer())); } catch { res.end(); }
+    return;
+  }
+
+  let stderrTail = "";
+  let spawnError = null;
+  ff = spawnEncoder(fmt);
+  ff.on("error", (e) => { spawnError = e; });
+  ff.stderr.on("data", (d) => { stderrTail = (stderrTail + d).slice(-500); });
+  ff.stdin.on("error", () => { /* EPIPE when ffmpeg dies/is killed: surfaced via exit code */ });
+  const exited = new Promise((r) => { ff.once("close", (code) => r(code)); ff.once("error", () => r(-1)); });
+
+  let upstreamError = null;
+  const src = Readable.fromWeb(upstream.body);
+  src.on("error", (e) => { upstreamError = e; if (!clientGone) cleanup(); });
+  src.pipe(ff.stdin);
+
+  let sent = false;
+  try {
+    for await (const chunk of ff.stdout) {
+      if (clientGone) break;
+      if (!sent) {
+        sent = true;
+        res.writeHead(200, {
+          "content-type": spec.contentType,
+          "cache-control": "no-store",
+          "x-sample-rate": String(spec.sampleRate),
+          "x-audio-format": fmt,
+        });
+      }
+      if (!res.write(chunk) && !clientGone) await Promise.race([once(res, "drain"), once(res, "close")]);
+    }
+  } catch { /* stdout torn down by cleanup(); handled below */ }
+
+  const code = await exited;
+  src.destroy();
+  if (clientGone) return;
+  if (code === 0 && !upstreamError && !spawnError && sent) { res.end(); return; }
+  auditLog("tts_http_encode_error", { id, engine, format: fmt, code, spawn: spawnError && spawnError.message, upstream: upstreamError && upstreamError.message, stderr: stderrTail });
+  jsonError(res, 502, spawnError ? "audio encoder unavailable" : "audio encoding failed, please retry");
 }
 
 const server = http.createServer(async (req, res) => {
@@ -377,6 +468,25 @@ const server = http.createServer(async (req, res) => {
     const id = keys.getIdForKey(key);
     const uid = keys.getOwnerForKey(key);
     const token = keys.createSessionToken(id, uid);
+
+    // Compressed formats (mp3/opus) are produced here: the worker is asked for pcm_24000 and the
+    // PCM is piped through ffmpeg. Everything else is forwarded untouched (worker validates it).
+    const compressed = isCompressedFormat(bodyObj.format) ? bodyObj.format : null;
+    if (compressed) {
+      if (activeEncoders >= MAX_CONCURRENT_ENCODERS) {
+        res.writeHead(503, { "content-type": "application/json", "retry-after": "2" });
+        res.end(JSON.stringify({ error: "encoder at capacity, please retry" }));
+        return;
+      }
+      activeEncoders++;
+      let released = false;
+      const release = () => { if (!released) { released = true; activeEncoders--; } };
+      res.once("close", release);
+      try {
+        await proxyCompressedTts({ req, res, workerHttpUrl, token, bodyObj, fmt: compressed, id, engine });
+      } finally { release(); }
+      return;
+    }
 
     let upstream;
     try {

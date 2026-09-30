@@ -50,7 +50,10 @@ catch (e) { if (e.name !== 'AbortError') throw e; }
 - `convert(text, opts)` -> `Promise<Uint8Array>`; uses HTTP streaming when `/tts/authorize`
   returns `http_url` (Piper), otherwise collects the WebSocket stream.
 - `pcmToWav(pcm, sampleRate = 24000, channels = 1)`
-- `format`: `pcm_24000`, `pcm_8000`, `mulaw_8000`, `alaw_8000`.
+- `format`: `pcm_24000`, `pcm_8000`, `mulaw_8000`, `alaw_8000`, plus the compressed `mp3_24000_64`,
+  `mp3_24000_128` (`audio/mpeg`) and `opus_24000` (`audio/ogg`). Compressed formats are only served by the
+  one-shot `POST /v1/text-to-speech` endpoint (the WebSocket and Piper `http_url` streams are PCM/G.711 only),
+  and `pcmToWav` does not apply to them.
 - Voices: Piper `default`; Kokoro e.g. `af_heart`; custom `custom:<id>`.
 
 ## Errors

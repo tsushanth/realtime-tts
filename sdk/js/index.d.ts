@@ -6,7 +6,7 @@ export class CapacityError extends ApiError { retryAfter?: number; }
 export class VoiceError extends ApiError {}
 
 export type Engine = 'piper' | 'kokoro';
-export type AudioFormat = 'pcm_24000' | 'pcm_8000' | 'mulaw_8000' | 'alaw_8000' | (string & {});
+export type AudioFormat = 'pcm_24000' | 'pcm_8000' | 'mulaw_8000' | 'alaw_8000' | 'mp3_24000_64' | 'mp3_24000_128' | 'opus_24000' | (string & {});
 /** 'default', a built-in voice name, or 'custom:<id>'. */
 export type Voice = 'default' | `custom:${string}` | (string & {});
 

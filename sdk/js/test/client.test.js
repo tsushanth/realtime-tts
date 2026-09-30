@@ -133,7 +133,7 @@ test('streamHttp: no http_url, 503 and 401 errors; early break ok', async () => 
 });
 
 test('all audio formats and custom voice reach the websocket request', async () => {
-  for (const format of ['pcm_24000', 'pcm_8000', 'mulaw_8000', 'alaw_8000']) {
+  for (const format of ['pcm_24000', 'pcm_8000', 'mulaw_8000', 'alaw_8000', 'mp3_24000_64', 'mp3_24000_128', 'opus_24000']) {
     reset(['{"type":"done"}']);
     await mk(okAuth()).convert('x', { format, voice: 'custom:q1' });
     assert.equal(FakeWS.sent[0].format, format);

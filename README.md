@@ -53,12 +53,13 @@ curl -X POST https://api.readaloudai.org/v1/text-to-speech \
 - `voice`: any Kokoro voice ID (`af_heart`, `am_adam`, …) or `custom:<id>` for
   cloned voices. Defaults to `af_heart` (worker-side).
 - `speed`: 0.5–4.0. Default 1.0.
-- `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`.
+- `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`, `mp3_24000_64`,
+  `mp3_24000_128`, `opus_24000`.
 - `engine`: `kokoro` (default) or `piper`.
 
 The response is a chunked stream of raw audio in the requested format:
-- `Content-Type`: `audio/pcm` (PCM formats), `audio/basic` (μ-law), or
-  `audio/x-alaw-basic` (A-law).
+- `Content-Type`: `audio/pcm` (PCM formats), `audio/basic` (μ-law),
+  `audio/x-alaw-basic` (A-law), `audio/mpeg` (`mp3_*`), or `audio/ogg` (`opus_24000`, Ogg Opus).
 - `X-Sample-Rate`: 24000 or 8000.
 - `X-Audio-Format`: the format string.
 
@@ -67,6 +68,8 @@ Errors are returned as JSON with the same status codes the worker uses:
 - `402` — free tier exhausted or request too large for remaining allowance
 - `400` — bad JSON, missing text, invalid speed/format
 - `413` — text over 5,000 chars
+- `502` — worker unreachable, or the mp3/opus encoder failed before any audio was sent
+- `503` — mp3/opus encoder at capacity (`Retry-After` set)
 - `501` — selected engine not configured on this gateway
 - `502` — worker unreachable
 - `503` — worker at capacity (Piper only)
@@ -315,7 +318,7 @@ not started here.
 
 Client libraries live in `sdk/`: Python (`pip install readaloud`, [sdk/python](sdk/python)) and
 JavaScript/TypeScript (`npm install readaloud`, [sdk/js](sdk/js)). They cover WebSocket and HTTP
-streaming, audio formats (`pcm_24000`, `pcm_8000`, `mulaw_8000`, `alaw_8000`) and `custom:<id>`
+streaming, audio formats (`pcm_24000`, `pcm_8000`, `mulaw_8000`, `alaw_8000`; `mp3_24000_64`, `mp3_24000_128`, `opus_24000` on the one-shot HTTP endpoint) and `custom:<id>`
 voices. They take the API key, so run them server-side. Docs: https://readaloudai.org/developers
 
 ## Run the worker locally (direct WS, no RunPod)
