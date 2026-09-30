@@ -131,3 +131,136 @@ def test_from_status_unknown_voice_404():
     e = from_status(404, "unknown voice")
     assert isinstance(e, VoiceError) and e.status == 404
     assert not isinstance(from_status(404, "not found"), VoiceError)
+
+
+# ---- POST /v1/text-to-speech (mp3/opus) ----------------------------------
+import asyncio
+import json as _json
+import threading as _threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+@pytest.fixture
+def gateway():
+    class G:
+        status = 200
+        error = {"error": "x"}
+        headers = ()
+        seen = []
+    g = G()
+    g.seen = []
+    MP3 = b"\xff\xfb\x90\x00" + bytes(range(10))
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def do_POST(self):
+            body = _json.loads(self.rfile.read(int(self.headers["content-length"])))
+            g.seen.append((self.path, self.headers["Authorization"], body))
+            if g.status != 200:
+                b = _json.dumps(g.error).encode()
+                self.send_response(g.status)
+                self.send_header("content-type", "application/json")
+                for k, v in g.headers:
+                    self.send_header(k, v)
+                self.send_header("content-length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+                return
+            self.send_response(200)
+            self.send_header("content-type", "audio/mpeg")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            for part in (MP3[:5], MP3[5:]):
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
+            self.wfile.write(b"0\r\n\r\n")
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    _threading.Thread(target=srv.serve_forever, daemon=True).start()
+    g.base = f"http://127.0.0.1:{srv.server_port}"
+    g.mp3 = MP3
+    yield g
+    srv.shutdown()
+
+
+def test_text_to_speech_mp3(gateway):
+    c = ReadAloud("sk", engine="kokoro", api_base=gateway.base)
+    out = c.text_to_speech("hello", voice="af_heart", speed=1.2, format="mp3_24000_64")
+    assert out == gateway.mp3
+    path, auth, body = gateway.seen[0]
+    assert path == "/v1/text-to-speech" and auth == "Bearer sk"
+    assert body == {"text": "hello", "voice": "af_heart", "speed": 1.2,
+                    "format": "mp3_24000_64", "engine": "kokoro"}
+
+
+def test_text_to_speech_defaults_and_engine_override(gateway):
+    c = ReadAloud("sk", api_base=gateway.base)
+    c.text_to_speech("hi", engine="kokoro")
+    assert gateway.seen[0][2]["format"] == "mp3_24000_128"
+    assert gateway.seen[0][2]["engine"] == "kokoro"
+    c.text_to_speech("hi")
+    assert gateway.seen[1][2]["engine"] == "piper"
+
+
+def test_stream_text_to_speech(gateway):
+    c = ReadAloud("sk", api_base=gateway.base)
+    chunks = list(c.stream_text_to_speech("hi", chunk_size=3))
+    assert len(chunks) > 1 and b"".join(chunks) == gateway.mp3
+    # early close doesn't raise
+    it = c.stream_text_to_speech("hi", chunk_size=2)
+    assert next(it)
+    it.close()
+
+
+@pytest.mark.parametrize("status,cls,exact", [
+    (401, AuthError, False), (402, QuotaError, False), (503, CapacityError, False),
+    (400, ApiError, True), (413, ApiError, True), (501, ApiError, True), (502, ApiError, True),
+])
+def test_text_to_speech_errors(gateway, status, cls, exact):
+    gateway.status = status
+    gateway.error = {"error": f"boom {status}"}
+    c = ReadAloud("sk", api_base=gateway.base)
+    for call in (lambda: c.text_to_speech("x"), lambda: list(c.stream_text_to_speech("x"))):
+        with pytest.raises(cls) as e:
+            call()
+        assert e.value.status == status and str(e.value) == f"boom {status}"
+        if exact:
+            assert type(e.value) is ApiError
+
+
+def test_text_to_speech_voice_error(gateway):
+    gateway.status = 400
+    gateway.error = {"error": "unknown voice"}
+    with pytest.raises(VoiceError):
+        ReadAloud("sk", api_base=gateway.base).text_to_speech("x", voice="custom:nope")
+
+
+def test_text_to_speech_503_retry_after(gateway):
+    gateway.status = 503
+    gateway.error = {"error": "encoder at capacity"}
+    gateway.headers = (("Retry-After", "2"),)
+    with pytest.raises(CapacityError) as e:
+        ReadAloud("sk", api_base=gateway.base).text_to_speech("x")
+    assert e.value.retry_after == 2.0
+    gateway.headers = ()
+    with pytest.raises(CapacityError) as e:
+        ReadAloud("sk", api_base=gateway.base).text_to_speech("x")
+    assert e.value.retry_after is None
+
+
+def test_async_text_to_speech(gateway):
+    c = ReadAloud("sk", api_base=gateway.base)
+
+    async def run():
+        chunks = [ch async for ch in c.astream_text_to_speech("hi", chunk_size=3)]
+        whole = await c.atext_to_speech("hi", format="opus_24000")
+        gateway.status, gateway.error = 402, {"error": "quota"}
+        with pytest.raises(QuotaError):
+            await c.atext_to_speech("hi")
+        with pytest.raises(QuotaError):
+            [ch async for ch in c.astream_text_to_speech("hi")]
+        return chunks, whole
+
+    chunks, whole = asyncio.run(run())
+    assert b"".join(chunks) == gateway.mp3 and whole == gateway.mp3
+    assert gateway.seen[1][2]["format"] == "opus_24000"

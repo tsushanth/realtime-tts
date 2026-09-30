@@ -148,6 +148,48 @@ export class ReadAloud {
     const res = await this._httpResponse(auth, text, o);
     return new Uint8Array(await res.arrayBuffer());
   }
+
+  async _ttsResponse(text, { voice, speed, format, engine, signal }) {
+    const res = await this._fetch(`${this.apiBase}/v1/text-to-speech`, {
+      method: 'POST', signal,
+      headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ text, voice, speed, format, engine }),
+    });
+    if (!res.ok) {
+      const ra = Number(res.headers.get('retry-after'));
+      throw fromStatus(res.status, await errText(res), Number.isFinite(ra) && ra > 0 ? ra : undefined);
+    }
+    return res;
+  }
+
+  /**
+   * Stream audio bytes from the one-shot gateway endpoint (POST /v1/text-to-speech, Bearer API
+   * key). The only path that serves compressed formats (mp3_24000_64, mp3_24000_128, opus_24000);
+   * also serves the PCM/G.711 formats. No authorize step. Chunks are arbitrary byte slices.
+   * Errors: 401 AuthError, 402 QuotaError, 503 CapacityError (.retryAfter from Retry-After),
+   * 400 voice-related VoiceError, otherwise ApiError (.status, e.g. 400/413/501/502).
+   * `break` or abort cancels the request.
+   */
+  async *textToSpeech(text, { voice = 'default', speed = 1.0, format = 'mp3_24000_128', engine = this.engine, signal } = {}) {
+    const res = await this._ttsResponse(text, { voice, speed, format, engine, signal });
+    if (!res.body) { yield new Uint8Array(await res.arrayBuffer()); return; }
+    const reader = res.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        if (value?.length) yield value;
+      }
+    } finally {
+      try { await reader.cancel(); } catch {}
+    }
+  }
+
+  /** Whole clip from POST /v1/text-to-speech as one Uint8Array (e.g. an mp3 file's bytes). */
+  async textToSpeechBytes(text, { voice = 'default', speed = 1.0, format = 'mp3_24000_128', engine = this.engine, signal } = {}) {
+    const res = await this._ttsResponse(text, { voice, speed, format, engine, signal });
+    return new Uint8Array(await res.arrayBuffer());
+  }
 }
 
 async function collect(it) { const out = []; for await (const c of it) out.push(c); return out; }

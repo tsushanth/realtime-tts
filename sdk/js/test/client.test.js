@@ -148,3 +148,102 @@ test('http 404 unknown voice -> VoiceError', async () => {
     ? json(200, { token: 't', url: 'wss://x', http_url: 'https://x/h' }) : json(404, { error: 'unknown voice' });
   await assert.rejects(() => mk(f).convert('x', { voice: 'custom:z' }), VoiceError);
 });
+
+// ---- POST /v1/text-to-speech (mp3/opus) against a real local HTTP server ----
+import http from 'node:http';
+
+async function withGateway(handler, fn) {
+  const seen = [];
+  const srv = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      seen.push({ url: req.url, method: req.method, auth: req.headers.authorization, body });
+      handler(req, res, body);
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  try { await fn(`http://127.0.0.1:${srv.address().port}`, seen); }
+  finally { srv.closeAllConnections?.(); await new Promise((r) => srv.close(r)); }
+}
+const reply = (res, status, body, headers = {}) => {
+  res.writeHead(status, { 'content-type': 'application/json', ...headers });
+  res.end(JSON.stringify(body));
+};
+const mkReal = (apiBase, extra = {}) => new ReadAloud({ apiKey: 'sk', apiBase, ...extra });
+
+test('textToSpeechBytes: mp3 success, request shape', async () => {
+  const mp3 = Buffer.from([0xff, 0xfb, 0x90, 0x00, 1, 2, 3]);
+  await withGateway((req, res) => { res.writeHead(200, { 'content-type': 'audio/mpeg' }); res.end(mp3); }, async (base, seen) => {
+    const out = await mkReal(base, { engine: 'kokoro' }).textToSpeechBytes('hello', { voice: 'af_heart', speed: 1.2, format: 'mp3_24000_64' });
+    assert.deepEqual([...out], [...mp3]);
+    assert.equal(seen[0].url, '/v1/text-to-speech');
+    assert.equal(seen[0].method, 'POST');
+    assert.equal(seen[0].auth, 'Bearer sk');
+    assert.deepEqual(seen[0].body, { text: 'hello', voice: 'af_heart', speed: 1.2, format: 'mp3_24000_64', engine: 'kokoro' });
+  });
+});
+
+test('textToSpeech: defaults to mp3_24000_128 and streams chunks', async () => {
+  await withGateway((req, res) => {
+    res.writeHead(200, { 'content-type': 'audio/mpeg' });
+    res.write(Buffer.from([1, 2]));
+    setTimeout(() => { res.write(Buffer.from([3, 4])); setTimeout(() => res.end(Buffer.from([5])), 20); }, 20);
+  }, async (base, seen) => {
+    const got = [];
+    for await (const c of mkReal(base).textToSpeech('hi', { engine: 'piper' })) got.push(...c);
+    assert.deepEqual(got, [1, 2, 3, 4, 5]);
+    assert.equal(seen[0].body.format, 'mp3_24000_128');
+    assert.equal(seen[0].body.engine, 'piper');
+  });
+});
+
+test('textToSpeech: break cancels the request', async () => {
+  let closed;
+  const done = new Promise((r) => { closed = r; });
+  await withGateway((req, res) => {
+    res.writeHead(200, { 'content-type': 'audio/mpeg' });
+    res.on('close', closed);
+    const t = setInterval(() => res.write(Buffer.alloc(64)), 5);
+    res.on('close', () => clearInterval(t));
+  }, async (base) => {
+    for await (const _ of mkReal(base).textToSpeech('hi')) break;
+    await Promise.race([done, new Promise((_, rej) => setTimeout(() => rej(new Error('server never saw close')), 2000))]);
+  });
+});
+
+test('textToSpeech: HTTP error mapping', async () => {
+  const cases = [
+    [401, { error: 'invalid or missing API key' }, AuthError],
+    [402, { error: 'Free tier exhausted' }, QuotaError],
+    [400, { error: 'text must be a non-empty string' }, ApiError],
+    [400, { error: 'unknown voice' }, VoiceError],
+    [413, { error: 'text too long (max 5000 chars)' }, ApiError],
+    [501, { error: 'kokoro engine not available' }, ApiError],
+    [502, { error: 'TTS worker unavailable, please retry' }, ApiError],
+    [503, { error: 'encoder at capacity, please retry' }, CapacityError],
+  ];
+  for (const [status, body, Cls] of cases) {
+    await withGateway((req, res) => reply(res, status, body), async (base) => {
+      for (const call of [(c) => c.textToSpeechBytes('x'), async (c) => { for await (const _ of c.textToSpeech('x')); }]) {
+        await assert.rejects(() => call(mkReal(base)), (e) => {
+          assert.ok(e instanceof Cls, `${status}: expected ${Cls.name}, got ${e.constructor.name}`);
+          assert.equal(e.status, status);
+          assert.equal(e.message, body.error);
+          if (Cls === ApiError) assert.equal(e.constructor, ApiError);
+          return true;
+        });
+      }
+    });
+  }
+});
+
+test('textToSpeech: 503 honors Retry-After; absent header -> undefined', async () => {
+  await withGateway((req, res) => reply(res, 503, { error: 'encoder at capacity' }, { 'retry-after': '2' }), async (base) => {
+    await assert.rejects(() => mkReal(base).textToSpeechBytes('x'), (e) => e instanceof CapacityError && e.retryAfter === 2);
+  });
+  await withGateway((req, res) => reply(res, 503, { error: 'busy' }), async (base) => {
+    await assert.rejects(() => mkReal(base).textToSpeechBytes('x'), (e) => e instanceof CapacityError && e.retryAfter === undefined);
+  });
+});

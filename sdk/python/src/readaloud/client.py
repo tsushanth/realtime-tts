@@ -174,6 +174,72 @@ class ReadAloud:
             return b"".join(self._http_stream(auth, text, voice, speed, format, 65536))
         return b"".join(self._ws_stream(auth, text, voice, speed, format))
 
+    # -- one-shot gateway endpoint (mp3 / opus) -----------------------------
+    def _tts_post(self, text, voice, speed, format, engine) -> requests.Response:
+        r = requests.post(f"{self.api_base}/v1/text-to-speech",
+                          headers={"Authorization": f"Bearer {self.api_key}"},
+                          json={"text": text, "voice": voice, "speed": speed, "format": format,
+                                "engine": engine or self.engine},
+                          timeout=self.timeout, stream=True)
+        if r.status_code != 200:
+            try:
+                ra = r.headers.get("Retry-After")
+                try:
+                    retry_after = float(ra) if ra else None
+                except ValueError:
+                    retry_after = None
+                raise from_status(r.status_code, _err_text(r), retry_after)
+            finally:
+                r.close()
+        return r
+
+    def stream_text_to_speech(self, text: str, voice: str = "default", speed: float = 1.0,
+                              format: str = "mp3_24000_128", engine: Optional[str] = None,
+                              chunk_size: int = 4096) -> Iterator[bytes]:
+        """Yield audio chunks from ``POST /v1/text-to-speech`` (Bearer API key, no authorize
+        step). This is the only path that serves the compressed formats ``mp3_24000_64``,
+        ``mp3_24000_128`` and ``opus_24000``; PCM/G.711 formats work too. ``engine`` defaults
+        to the client's. Chunks are arbitrary byte slices. Errors are raised on the first
+        ``next()``: 401 AuthError, 402 QuotaError, 503 CapacityError (``retry_after`` from
+        Retry-After), voice-related 400 VoiceError, otherwise ApiError (400/413/501/502).
+        Closing the generator drops the connection."""
+        r = self._tts_post(text, voice, speed, format, engine)
+        try:
+            for chunk in r.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    yield chunk
+        finally:
+            r.close()
+
+    def text_to_speech(self, text: str, voice: str = "default", speed: float = 1.0,
+                       format: str = "mp3_24000_128", engine: Optional[str] = None) -> bytes:
+        """Return the whole clip from ``POST /v1/text-to-speech`` (e.g. mp3 file bytes).
+        See :meth:`stream_text_to_speech` for formats and errors."""
+        return b"".join(self.stream_text_to_speech(text, voice, speed, format, engine, 65536))
+
+    async def astream_text_to_speech(self, text: str, voice: str = "default", speed: float = 1.0,
+                                     format: str = "mp3_24000_128", engine: Optional[str] = None,
+                                     chunk_size: int = 4096) -> AsyncIterator[bytes]:
+        """Async variant of :meth:`stream_text_to_speech` (blocking reads run in a worker
+        thread). Breaking out of the loop closes the connection."""
+        import asyncio
+        it = self.stream_text_to_speech(text, voice, speed, format, engine, chunk_size)
+        end = object()
+        try:
+            while True:
+                chunk = await asyncio.to_thread(next, it, end)
+                if chunk is end:
+                    return
+                yield chunk
+        finally:
+            await asyncio.to_thread(it.close)
+
+    async def atext_to_speech(self, text: str, voice: str = "default", speed: float = 1.0,
+                              format: str = "mp3_24000_128", engine: Optional[str] = None) -> bytes:
+        """Async variant of :meth:`text_to_speech`."""
+        import asyncio
+        return await asyncio.to_thread(self.text_to_speech, text, voice, speed, format, engine)
+
 
 async def _to_thread(fn):
     import asyncio

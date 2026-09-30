@@ -27,6 +27,11 @@ for chunk in client.stream("Hello from ReadAloud.", voice="default"):
 for chunk in client.stream_http("Hello from ReadAloud.", format="mulaw_8000"):
     send_to_phone(chunk)
 
+# Compressed audio (mp3 / opus) via POST /v1/text-to-speech
+open("hello.mp3", "wb").write(client.text_to_speech("Hello.", format="mp3_24000_128"))
+for chunk in client.stream_text_to_speech("Hello.", format="opus_24000"):
+    send(chunk)
+
 # Whole clip -> WAV file
 pcm = client.convert("Hello there.")
 open("out.wav", "wb").write(wav(pcm, 24000))
@@ -45,12 +50,18 @@ Kokoro voices: `voice="af_heart"`. Custom voices: `voice="custom:<id>"`.
   `ApiError` when the server offers no `http_url`.
 - `convert(...)` -> `bytes`. Uses HTTP streaming when `/tts/authorize` returns `http_url`
   (Piper), otherwise collects the WebSocket stream.
+- `text_to_speech(text, voice="default", speed=1.0, format="mp3_24000_128", engine=None)` -> `bytes`
+  from the one-shot gateway endpoint `POST /v1/text-to-speech` (Bearer API key, no authorize step).
+  The way to get mp3/opus. `engine` defaults to the client's. HTTP errors map to the exceptions below
+  (`CapacityError.retry_after` comes from `Retry-After`).
+- `stream_text_to_speech(..., chunk_size=4096)` -> iterator of `bytes` from the same endpoint;
+  `astream_text_to_speech(...)` / `atext_to_speech(...)` are the async variants (blocking I/O runs in a thread).
 - `stop()` cancels the in-flight sync `stream()` from another thread.
 - `wav(pcm, sample_rate=24000)` wraps PCM in a WAV header.
 - `format`: `pcm_24000` (default), `pcm_8000`, `mulaw_8000`, `alaw_8000`, plus the compressed
   `mp3_24000_64`, `mp3_24000_128` (`audio/mpeg`) and `opus_24000` (`audio/ogg`). Compressed formats are
-  only served by the one-shot `POST /v1/text-to-speech` endpoint (the WebSocket and Piper `http_url`
-  streams are PCM/G.711 only). Only PCM formats can be wrapped with `wav()`; pass the matching sample rate.
+  only served by `text_to_speech()` / `stream_text_to_speech()` (the WebSocket `stream()` and Piper
+  `stream_http()`/`convert()` are PCM/G.711 only). Only PCM formats can be wrapped with `wav()`; pass the matching sample rate.
 
 ## Errors
 
@@ -62,7 +73,7 @@ All derive from `ReadAloudError`; `ApiError` has `.status`.
 | `QuotaError` | 402, free tier exhausted |
 | `CapacityError` | WS close 1013, "at capacity", HTTP 503 (`.retry_after`) |
 | `VoiceError` | unknown voice (including an unknown `custom:<id>`) |
-| `ApiError` | anything else |
+| `ApiError` | anything else (from `text_to_speech`: 400 bad request, 413 text over 5000 chars, 501 engine unavailable, 502 worker unavailable) |
 
 ```python
 import time
