@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
-import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
+import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
@@ -679,7 +679,15 @@ function parseSampleCallee(raw) {
   if (systemPrompt.length < 20 || systemPrompt.length > 6000) return null;
   if (greeting.length < 1 || greeting.length > 400) return null;
   const voice = sampleVoiceId(raw.voice) ? String(raw.voice).trim().toLowerCase() : null;
-  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability) };
+  // Optional jingle + sound effects carried inline (see callAudio.js sanitizeInlineCallAudio). Present but
+  // unusable = the whole sampleCallee is rejected, so a generator never ends up with an audio-less sample
+  // it believes has audio.
+  let callAudio;
+  if (raw.callAudio !== undefined) {
+    callAudio = sanitizeInlineCallAudio(raw.callAudio);
+    if (!callAudio) return null;
+  }
+  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability), ...(callAudio ? { callAudio } : {}) };
 }
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
@@ -1037,7 +1045,7 @@ app.post('/twilio/voice', async (req, res) => {
     sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
-    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1306,7 +1314,7 @@ app.get('/call-status/:sid', async (req, res) => {
 // Capability probe so clients (calldesktech scripts/generate-vertical-sample.mjs) can tell a poc that
 // supports sampleCallee from an older one, which would silently IGNORE the field and run the dialed
 // number's real tenant agent. Public, reveals nothing.
-app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1 }));
+app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1, callAudio: 1 }));
 
 // Secret-gated lookup of the Twilio recording for a call we placed (shopper calls with record:true never
 // get a RecordingStatusCallback, so nothing stores the URL). Used with GET /recording-audio?url= to copy
@@ -1337,7 +1345,8 @@ app.get('/call-recording/:sid', async (req, res) => {
   }
 });
 
-app.post('/place-test-call', express.json(), async (req, res) => {
+// 2mb: a sample call may carry its jingle + effects inline (up to ~100KB of mu-law each, base64'd).
+app.post('/place-test-call', express.json({ limit: '2mb' }), async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -1491,7 +1500,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
         .catch((err) => console.error('[call-loop] shopper internal-test call log failed (non-fatal)', err));
     }
 
-    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status, ...(sampleCallee ? { sampleCallee: true } : {}) });
+    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status, ...(sampleCallee ? { sampleCallee: true, callAudio: !!sampleCallee.callAudio } : {}) });
   } catch (err) {
     console.error('[call-loop] place-test-call failed', err);
     res.status(500).json({ error: err.message });
@@ -1710,6 +1719,7 @@ twilioWss.on('connection', (twilioWs) => {
         samplePlayback: true,
         voice: resolved.voice,
         stability: resolved.stability,
+        ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
       }), false);
       const hangup = setTimeout(() => {
         console.log(`[call-loop] sample callee call ${callSid} hit max duration, hanging up`);
@@ -2354,13 +2364,7 @@ export class CallSession {
       }
       if (typeof msg.greeting === 'string' && msg.greeting.trim()) {
         this.greeting = msg.greeting;
-        this.history.push({ role: 'assistant', content: msg.greeting });
-        // Speak it as a real turn (not a special-cased id) so barge-in works
-        // on the greeting exactly like it does on every other response.
-        const turnId = ++this.turnSeq;
-        this.activeTurn = turnId;
-        this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
-        this._speak(msg.greeting, turnId, Date.now());
+        this._startGreetingTurn(msg.greeting);
       } else if (this.flow) {
         // No explicit greeting text — let the flow's own start node (usually
         // a 'greeting'-type node) generate the opening line itself, same as
@@ -2798,6 +2802,18 @@ export class CallSession {
     await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening, isCallOpening });
   }
 
+  // The fixed opening line of a flow-less session (a sample call's demo agent, a browser demo): recorded
+  // in history and spoken as a real turn (not a special-cased id) so barge-in works on the greeting exactly
+  // like on every other response. The intro jingle, if this session has one, goes out first.
+  _startGreetingTurn(greeting) {
+    this._playIntroJingle();
+    this.history.push({ role: 'assistant', content: greeting });
+    const turnId = ++this.turnSeq;
+    this.activeTurn = turnId;
+    this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+    this._speak(greeting, turnId, Date.now());
+  }
+
   // Tenant's intro jingle, if any — sent straight to the adapter's paced-frame queue BEFORE the
   // greeting's LLM/TTS round trip even starts, so it's guaranteed to be first in the queue and the
   // greeting (which arrives ~1s later) simply plays after it. Deliberately not tied to any turn:
@@ -3012,7 +3028,9 @@ export class CallSession {
     // Per-tenant sound effects — only offered when this tenant has enabled SFX assets AND the
     // global CALL_AUDIO_ASSETS_ENABLED switch is on (this.callAudio is null otherwise). Same
     // conditional-inclusion shape as the calendar tools above.
-    const sfxTool = node ? buildPlaySoundEffectTool(this.callAudio) : null;
+    // Offered to flow-less sessions too (a sample call's demo agent has no node): this.callAudio is only
+    // ever set from a tenant's assets or an explicit sample payload, so nothing else is affected.
+    const sfxTool = buildPlaySoundEffectTool(this.callAudio);
     if (sfxTool) tools.push(sfxTool);
 
     // 'subagent' node — attaches multiple pre-configured tools (any mix of

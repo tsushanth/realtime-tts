@@ -105,3 +105,34 @@ export function encodeCallAudioForContext(rows) {
   if (!jingle && effects.length === 0) return undefined;
   return { jingle, effects };
 }
+
+// Inline payloads (a sample call carries its sounds in the request instead of looking up a tenant's
+// assets). Same shape as the context-message payload, but validated strictly and returned in its raw
+// base64 form so it can ride through JSON again: a sample generator must be able to tell "accepted"
+// from "silently dropped", so ANY problem returns null (fail closed) rather than a partial set.
+// Deliberately independent of the kill switches, which apply at playback (parseCallAudioContext).
+const INLINE_MAX_CLIP_BYTES = 100_000; // a 12s clip of 8kHz mu-law is 96,000
+const INLINE_MAX_EFFECTS = 10;
+
+export function sanitizeInlineCallAudio(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  let jingle = null;
+  if (raw.jingle !== undefined && raw.jingle !== null) {
+    const a = raw.jingle && typeof raw.jingle === 'object' ? decodeAudio(raw.jingle.audio) : null;
+    if (!a || a.length > INLINE_MAX_CLIP_BYTES) return null;
+    jingle = { name: typeof raw.jingle.name === 'string' ? raw.jingle.name : 'intro', audio: raw.jingle.audio };
+  }
+  const effects = [];
+  if (raw.effects !== undefined) {
+    if (!Array.isArray(raw.effects) || raw.effects.length > INLINE_MAX_EFFECTS) return null;
+    for (const e of raw.effects) {
+      if (!e || typeof e !== 'object' || typeof e.name !== 'string' || !NAME_RE.test(e.name)) return null;
+      if (typeof e.description !== 'string' || !e.description.trim()) return null; // the model reads it to decide when to play
+      const a = decodeAudio(e.audio);
+      if (!a || a.length > INLINE_MAX_CLIP_BYTES) return null;
+      effects.push({ name: e.name, description: e.description, audio: e.audio });
+    }
+  }
+  if (!jingle && effects.length === 0) return null;
+  return { jingle, effects };
+}

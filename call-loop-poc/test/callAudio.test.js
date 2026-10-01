@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isCallAudioEnabled,
   isSoundEffectsEnabled,
+  sanitizeInlineCallAudio,
   parseCallAudioContext,
   buildPlaySoundEffectTool,
   pickSoundEffect,
@@ -163,5 +164,39 @@ describe('effects kill switch in parseCallAudioContext', () => {
   });
   it('the jingle switch is independent: the global switch off still kills both', () => {
     expect(parseCallAudioContext(RAW, { CALL_AUDIO_ASSETS_ENABLED: 'false' })).toBeNull();
+  });
+});
+
+describe('sanitizeInlineCallAudio (sample-call payloads sent inline instead of looked up by tenant)', () => {
+  it('returns the normalized payload for a valid jingle + effects', () => {
+    const out = sanitizeInlineCallAudio(RAW);
+    expect(out.jingle).toEqual(RAW.jingle);
+    expect(out.effects).toEqual(RAW.effects);
+  });
+  it('accepts jingle-only and effects-only', () => {
+    expect(sanitizeInlineCallAudio({ jingle: RAW.jingle }).effects).toEqual([]);
+    expect(sanitizeInlineCallAudio({ effects: RAW.effects }).jingle).toBeNull();
+  });
+  it('returns null (fail closed) for anything unusable, so a caller can refuse instead of silently dropping audio', () => {
+    expect(sanitizeInlineCallAudio(undefined)).toBeNull();
+    expect(sanitizeInlineCallAudio('x')).toBeNull();
+    expect(sanitizeInlineCallAudio({})).toBeNull();
+    expect(sanitizeInlineCallAudio({ jingle: { name: 'intro', audio: '' } })).toBeNull();
+    expect(sanitizeInlineCallAudio({ effects: [{ name: 'bad name', description: 'd', audio: b64([1]) }] })).toBeNull();
+    expect(sanitizeInlineCallAudio({ effects: [{ name: 'ok', description: '', audio: b64([1]) }] })).toBeNull(); // the model needs a description
+  });
+  it('rejects the whole payload if ANY effect is invalid (never plays a partial set)', () => {
+    expect(sanitizeInlineCallAudio({ jingle: RAW.jingle, effects: [RAW.effects[0], { name: '', description: 'd', audio: b64([1]) }] })).toBeNull();
+  });
+  it('caps the clip size (12s of 8kHz mu-law) and the number of effects', () => {
+    const big = Buffer.alloc(100_001, 1).toString('base64');
+    expect(sanitizeInlineCallAudio({ jingle: { name: 'intro', audio: big } })).toBeNull();
+    const ok = Buffer.alloc(96_000, 1).toString('base64');
+    expect(sanitizeInlineCallAudio({ jingle: { name: 'intro', audio: ok } })).not.toBeNull();
+    const eleven = Array.from({ length: 11 }, (_, i) => ({ name: 'e' + i, description: 'd', audio: b64([1]) }));
+    expect(sanitizeInlineCallAudio({ effects: eleven })).toBeNull();
+  });
+  it('ignores the kill switches (they apply at playback, in parseCallAudioContext) so a payload is validated the same either way', () => {
+    expect(sanitizeInlineCallAudio(RAW)).not.toBeNull();
   });
 });
