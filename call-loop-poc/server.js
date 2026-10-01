@@ -2861,6 +2861,12 @@ export class CallSession {
       console.warn(`[call-loop] model asked for unknown sound effect "${name}" — ignoring`);
       return;
     }
+    // A sample call demonstrates ONE moment: the model was seen calling the tool again on the goodbye turn (30s after
+    // the right moment), well outside the repeat window, so each effect plays at most once per sample call.
+    if (this._sampleTo && this._sfxLastPlayedAt.has(name)) {
+      console.log(`[call-loop] sound effect "${name}" skipped: already played in this sample call`);
+      return;
+    }
     const last = this._sfxLastPlayedAt.get(name) || 0;
     if (Date.now() - last < SFX_MIN_REPEAT_MS) {
       console.log(`[call-loop] sound effect "${name}" suppressed — played ${Date.now() - last}ms ago`);

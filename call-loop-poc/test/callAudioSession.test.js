@@ -82,6 +82,33 @@ describe('_playSoundEffect', () => {
   });
 });
 
+describe('_playSoundEffect in a SAMPLE call (once per call)', () => {
+  beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('plays each effect at most once even after the repeat window has passed: a sample demonstrates one moment', () => {
+    const s = { ...stubSession(parseCallAudioContext(RAW, {})), _sampleTo: '+15550000001' };
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 1);
+    s._sfxLastPlayedAt.set('chime', Date.now() - 120_000); // well past the 10s window
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 2);
+    expect(s._speakCached).toHaveBeenCalledTimes(1);
+  });
+  it('a normal (tenant) call is unaffected: the same effect may play again after the window', () => {
+    const s = stubSession(parseCallAudioContext(RAW, {}));
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 1);
+    s._sfxLastPlayedAt.set('chime', Date.now() - 120_000);
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 2);
+    expect(s._speakCached).toHaveBeenCalledTimes(2);
+  });
+  it('a different effect in the same sample call still plays', () => {
+    const two = parseCallAudioContext({ ...RAW, effects: [...RAW.effects, { name: 'other', description: 'd', audio: b64([5]) }] }, {});
+    const s = { ...stubSession(two), _sampleTo: '+15550000001' };
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 1);
+    CallSession.prototype._playSoundEffect.call(s, 'other', 2);
+    expect(s._speakCached).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('_speakCached format passthrough', () => {
   const mk = (format) => {
     const sent = [];
