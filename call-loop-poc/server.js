@@ -651,6 +651,13 @@ const SAMPLE_SID_MAX = 50;
 // instead of inferring from a recording or scraping logs. callSid -> [{kind:'jingle'|'effect', name, atMs}], with atMs
 // measured from the start of the call. Bounded like the sid set above.
 export const sampleAudioEvents = new Map();
+// A sample call has TWO phone legs with different CallSids: the shopper's outbound leg (the sid the generator polls) and
+// the demo agent's inbound leg (where the jingle/effects actually play). Remember, per callee number, which shopper-leg
+// sid was placed, so the agent leg can file its events under the sid the caller will ask about.
+export const samplePlacedSidByTo = new Map();
+function audioEventSid(session) {
+  return (session._sampleTo && samplePlacedSidByTo.get(session._sampleTo)) || session.callSid;
+}
 function recordAudioEvent(callSid, startedAt, kind, name) {
   if (!callSid) return;
   while (!sampleAudioEvents.has(callSid) && sampleAudioEvents.size >= SAMPLE_SID_MAX) sampleAudioEvents.delete(sampleAudioEvents.keys().next().value);
@@ -1057,7 +1064,7 @@ app.post('/twilio/voice', async (req, res) => {
     sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
-    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isSampleCallee: true, sampleTo: normNumber(req.body.To), systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1470,6 +1477,7 @@ app.post('/place-test-call', express.json({ limit: '2mb' }), async (req, res) =>
     }
     if (sampleCallee) {
       rememberSampleSid(callBody.sid);
+      samplePlacedSidByTo.set(toNumber, callBody.sid); // the sid callers poll; the agent leg files its audio events under it
       sampleCalleeOverrides.set(toNumber, { ...sampleCallee, fromNumber: normNumber(fromNumber), expiresAt: Date.now() + SAMPLE_CALLEE_TTL_MS });
       setTimeout(() => { const o = sampleCalleeOverrides.get(toNumber); if (o && o.expiresAt <= Date.now()) sampleCalleeOverrides.delete(toNumber); }, SAMPLE_CALLEE_TTL_MS + 1000).unref?.();
     }
@@ -1722,6 +1730,7 @@ twilioWss.on('connection', (twilioWs) => {
     if (!resolved) return;
     pendingCallContext.delete(callSid);
     if (resolved.isSampleCallee) {
+      session._sampleTo = resolved.sampleTo; // see samplePlacedSidByTo: events are filed under the shopper leg's sid
       // Flow-less demo agent answering as a fictional business. No tenant, no call log, no webhooks.
       session.onClientMessage(JSON.stringify({
         type: 'context',
@@ -2837,7 +2846,7 @@ export class CallSession {
     if (this.clientWs.readyState !== WebSocket.OPEN) return;
     console.log(`[call-loop] intro jingle (${this.callAudio.jingle.length} bytes)`);
     this.clientWs.send(this.callAudio.jingle, { binary: true, format: 'mulaw8k' });
-    recordAudioEvent(this.callSid, this._callStartedAt, 'jingle', 'intro');
+    recordAudioEvent(audioEventSid(this), this._callStartedAt, 'jingle', 'intro');
   }
 
   // Situational SFX chosen by the model via the play_sound_effect tool. Goes through _speakCached
@@ -2859,7 +2868,7 @@ export class CallSession {
     }
     this._sfxLastPlayedAt.set(name, Date.now());
     console.log(`[call-loop] turn ${turnId} sound effect: "${name}"`);
-    recordAudioEvent(this.callSid, this._callStartedAt, 'effect', name);
+    recordAudioEvent(audioEventSid(this), this._callStartedAt, 'effect', name);
     this._speakCached(buf, turnId, 'mulaw8k').catch((err) => console.error('[call-loop] sound effect send failed', err));
   }
 

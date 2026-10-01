@@ -9,7 +9,7 @@ process.env.TWILIO_ACCOUNT_SID = 'AC' + '1'.repeat(32);
 process.env.TWILIO_AUTH_TOKEN = 'twilio-token';
 process.env.DEMO_FROM_NUMBER = '+15550000009';
 
-const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents } = await import('../server.js');
+const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents, samplePlacedSidByTo } = await import('../server.js');
 
 const callee = { systemPrompt: 'You are the after-hours line for a fictional brokerage.', greeting: 'Thanks for calling, how can I help?' };
 const TO = '+15550000001';
@@ -78,6 +78,18 @@ describe('sampleCallee', () => {
     expect(twilioCalls[0]).toContain('TimeLimit=210'); // raised from 150: a sample with a jingle + a booking was getting cut off before the confirmation
     expect(sampleCalleeOverrides.get(TO)?.fromNumber).toBe(FROM);
     expect(sampleCallSids.has(SID('d'))).toBe(true);
+  });
+
+  it('remembers which shopper-leg sid was placed for the callee number, so audio events can be filed under it', async () => {
+    samplePlacedSidByTo.clear();
+    await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+    expect(samplePlacedSidByTo.get(TO)).toBe(SID('d'));
+  });
+
+  it('tells the demo-agent leg which number it is answering (sampleTo), so it can find that placement', async () => {
+    await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+    await voice(SID('a'), TO, FROM);
+    expect(pendingCallContext.get(SID('a'))?.sampleTo).toBe(TO);
   });
 
   it('/twilio/voice consumes a matching override exactly once (second hit falls through)', async () => {

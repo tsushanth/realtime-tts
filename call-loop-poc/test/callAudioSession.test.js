@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import WebSocket from 'ws';
 
 process.env.NODE_ENV = 'test';
-const { CallSession, sampleAudioEvents } = await import('../server.js');
+const { CallSession, sampleAudioEvents, samplePlacedSidByTo } = await import('../server.js');
 const { parseCallAudioContext } = await import('../callAudio.js');
 
 const b64 = (bytes) => Buffer.from(bytes).toString('base64');
@@ -166,6 +166,33 @@ describe('recording what actually played (sampleAudioEvents)', () => {
     const ev = sampleAudioEvents.get(SIDX);
     expect(ev.map((e) => `${e.kind}:${e.name}`)).toEqual(['effect:chime']);
   });
+  describe('a sample call has TWO phone legs with different call sids', () => {
+    // The generator polls /call-status with the sid of the SHOPPER's outbound leg, but the jingle/effects play on the
+    // demo agent's INBOUND leg (its own sid). Events must be filed under the sid the caller actually polls.
+    const TO = '+15550000001', PLACED = 'CA' + '1'.repeat(32), CALLEE = 'CA' + '2'.repeat(32);
+    beforeEach(() => samplePlacedSidByTo.clear());
+    it('files events under the shopper leg\'s sid when this session is the sample callee for that number', () => {
+      samplePlacedSidByTo.set(TO, PLACED);
+      const s = mk({ callSid: CALLEE, _sampleTo: TO });
+      CallSession.prototype._playIntroJingle.call(s);
+      CallSession.prototype._playSoundEffect.call(s, 'chime', 1);
+      expect(sampleAudioEvents.get(PLACED).map((e) => `${e.kind}:${e.name}`)).toEqual(['jingle:intro', 'effect:chime']);
+      expect(sampleAudioEvents.has(CALLEE)).toBe(false);
+    });
+    it('falls back to the session\'s own sid if no placement is known (never loses the events)', () => {
+      const s = mk({ callSid: CALLEE, _sampleTo: TO });
+      CallSession.prototype._playIntroJingle.call(s);
+      expect(sampleAudioEvents.get(CALLEE)).toHaveLength(1);
+    });
+    it('a non-sample session (a tenant call) is unaffected: events stay under its own sid', () => {
+      samplePlacedSidByTo.set(TO, PLACED);
+      const s = mk({ callSid: CALLEE }); // no _sampleTo
+      CallSession.prototype._playIntroJingle.call(s);
+      expect(sampleAudioEvents.get(CALLEE)).toHaveLength(1);
+      expect(sampleAudioEvents.has(PLACED)).toBe(false);
+    });
+  });
+
   it('does nothing (and does not crash) for a session with no callSid, e.g. a browser demo', () => {
     const s = mk({ callSid: undefined });
     CallSession.prototype._playIntroJingle.call(s);
