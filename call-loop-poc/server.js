@@ -729,12 +729,14 @@ const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
 const SAMPLE_SHOPPER_GRACE_MS = 10_000;
 // A SAMPLE call's shopper is patient: it was clipping the agent twice over, answering on the agent's first fragment (end-of-turn
 // declared in a mid-reply pause) and hanging up mid-goodbye the moment the agent said something closing-shaped after the caller's
-// own "bye". For a sample it lingers before hanging up and waits for higher end-of-turn confidence. Mystery-shopper tests (not
-// samples) keep their fast behavior.
-const SAMPLE_SHOPPER_HANGUP_LINGER_MS = 7000;
+// own "bye". For a sample it waits for higher end-of-turn confidence, and hangs up only once the OTHER side has been quiet for a
+// moment (a fixed delay cannot fit a ping-pong of goodbyes: a second closing line was starting just as a 7s linger expired).
+// Mystery-shopper tests (not samples) keep their fast behavior.
+const SAMPLE_SHOPPER_HANGUP_QUIET_MS = 2000; // hang up once the other side has been silent this long...
+const SAMPLE_SHOPPER_HANGUP_MAX_MS = 15000;  // ...but never wait longer than this
 const SAMPLE_SHOPPER_EOT_THRESHOLD = '0.75'; // Deepgram Flux "accurate" (see TRANSCRIPTION_MODE_THRESHOLDS)
-export function shopperHangupLingerMs(callSid) {
-  return callSid && isSampleSid(callSid) ? SAMPLE_SHOPPER_HANGUP_LINGER_MS : 0;
+export function sampleHangupWindow(callSid) {
+  return callSid && isSampleSid(callSid) ? { quietMs: SAMPLE_SHOPPER_HANGUP_QUIET_MS, maxMs: SAMPLE_SHOPPER_HANGUP_MAX_MS } : null;
 }
 export function sampleShopperEotThreshold(callSid) {
   return callSid && isSampleSid(callSid) ? SAMPLE_SHOPPER_EOT_THRESHOLD : null;
@@ -2085,6 +2087,7 @@ export class CallSession {
       if (msg.type !== 'TurnInfo') return;
 
       if (msg.event === 'StartOfTurn') {
+        this._lastOtherSpeechAt = Date.now(); // raw acoustic start of speech: restarts _shopperHangUp's quiet clock before any text exists
         // Real complaint from a real call: the assistant kept getting cut
         // off — including right near the end of a response — by things
         // that were never actual interruptions (a breath, a stray "mm",
@@ -2100,6 +2103,7 @@ export class CallSession {
       } else if (msg.event === 'Update') {
         const text = msg.transcript?.trim();
         if (text) {
+          this._lastOtherSpeechAt = Date.now(); // used by _shopperHangUp to wait for the other side to go quiet
           this.send({ type: 'transcript', text, isFinal: false });
           // Interruption Sensitivity (per-node tuning, params.interruptionSensitivity)
           // — real threshold on the SAME mechanism as the fix above, not a
@@ -2121,6 +2125,7 @@ export class CallSession {
         // is what nova-2 + acoustic VAD couldn't do: it waits for a complete
         // thought, not just a gap in the audio.
         const text = msg.transcript?.trim();
+        if (text) this._lastOtherSpeechAt = Date.now();
         if (text) this._scheduleUserTurn(text);
       }
     });
@@ -2872,16 +2877,26 @@ export class CallSession {
     recordAudioEvent(audioEventSid(this), this._callStartedAt, 'jingle', 'intro');
   }
 
-  // The shopper has decided to end the call. Stop generating turns immediately (so it cannot talk over the other side), then close,
-  // after a delay for a SAMPLE call so the agent can finish its sentence (see shopperHangupLingerMs). baseDelayMs keeps the
-  // shopper's own proactive hang-up wait.
+  // The shopper has decided to end the call. Stop generating turns immediately (so it cannot talk over the other side), then close.
+  // A SAMPLE call closes only once the other side has been quiet for a moment (see sampleHangupWindow), so the agent finishes its
+  // sentence and the recording ends in silence; everything else closes at once. baseDelayMs keeps the shopper's own proactive wait.
   _shopperHangUp(baseDelayMs = 0) {
     this._closing = true;
-    const delay = Math.max(baseDelayMs, shopperHangupLingerMs(this.callSid));
-    if (delay === 0) { this.close(); return; }
-    console.log(`[call-loop] shopper hanging up in ${delay}ms (letting the other side finish)`);
-    const t = setTimeout(() => this.close(), delay);
-    t.unref?.();
+    const win = sampleHangupWindow(this.callSid);
+    if (!win) {
+      if (baseDelayMs > 0) setTimeout(() => this.close(), baseDelayMs).unref?.();
+      else this.close();
+      return;
+    }
+    console.log(`[call-loop] shopper hanging up once the other side has been quiet ${win.quietMs}ms (max ${win.maxMs}ms)`);
+    const startedAt = Date.now();
+    const check = () => {
+      const waited = Date.now() - startedAt;
+      const quietFor = Date.now() - (this._lastOtherSpeechAt || 0);
+      if (waited >= win.maxMs || (waited >= baseDelayMs && quietFor >= win.quietMs)) { this.close(); return; }
+      setTimeout(check, 250).unref?.();
+    };
+    setTimeout(check, 250).unref?.();
   }
 
   // A turn whose ONLY output was the play_sound_effect call (no spoken words) leaves the agent mute: the chime plays, then

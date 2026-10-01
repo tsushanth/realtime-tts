@@ -285,9 +285,11 @@ describe('_followUpAfterSilentSoundEffect (a turn whose ONLY output was the soun
 
 
 describe('_shopperHangUp', () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-01-01T00:00:00Z')); vi.spyOn(console, 'log').mockImplementation(() => {}); });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
-  const mk = (callSid) => ({ callSid, _closing: false, close: vi.fn() });
+  const mk = (callSid, over = {}) => ({ callSid, _closing: false, close: vi.fn(), _lastOtherSpeechAt: 0, ...over });
+  const SAMPLE = 'CA' + 'd'.repeat(32);
+  const withSample = async (fn) => { const { sampleCallSids } = await import('../server.js'); sampleCallSids.set(SAMPLE, Date.now() + 600_000); try { await fn(); } finally { sampleCallSids.delete(SAMPLE); } };
 
   it('a normal shopper hangs up immediately and stops generating turns (unchanged behavior)', () => {
     const s = mk('CA' + 'e'.repeat(32));
@@ -295,21 +297,40 @@ describe('_shopperHangUp', () => {
     expect(s._closing).toBe(true);
     expect(s.close).toHaveBeenCalledTimes(1);
   });
-  it('a SAMPLE call\'s shopper stops generating turns at once but lingers 7s before hanging up, so the agent finishes its sentence', async () => {
-    const { samplePlacedSidByTo, sampleCallSids } = await import('../server.js');
-    const sid = 'CA' + 'd'.repeat(32);
-    sampleCallSids.set(sid, Date.now() + 60_000);
-    const s = mk(sid);
+
+  it('SAMPLE: stops new turns at once, then closes after the other side has been quiet for 2s', () => withSample(async () => {
+    const s = mk(SAMPLE, { _lastOtherSpeechAt: Date.now() }); // the agent is speaking right now
     CallSession.prototype._shopperHangUp.call(s);
     expect(s._closing).toBe(true);
+    vi.advanceTimersByTime(1800); expect(s.close).not.toHaveBeenCalled();   // only 1.8s since the agent last spoke
+    vi.advanceTimersByTime(400);  expect(s.close).toHaveBeenCalledTimes(1);  // 2.2s quiet -> close
+  }));
+
+  it('SAMPLE: if the agent keeps talking (a second goodbye), each new burst restarts the quiet clock', () => withSample(async () => {
+    const s = mk(SAMPLE, { _lastOtherSpeechAt: Date.now() });
+    CallSession.prototype._shopperHangUp.call(s);
+    vi.advanceTimersByTime(1500); s._lastOtherSpeechAt = Date.now();        // agent speaks again
+    vi.advanceTimersByTime(1500); expect(s.close).not.toHaveBeenCalled();   // only 1.5s since THAT burst
+    vi.advanceTimersByTime(800);  expect(s.close).toHaveBeenCalledTimes(1);
+  }));
+
+  it('SAMPLE: never hangs forever: closes at the 15s ceiling even if the other side never goes quiet', () => withSample(async () => {
+    const s = mk(SAMPLE);
+    CallSession.prototype._shopperHangUp.call(s);
+    for (let t = 0; t < 14_000; t += 500) { s._lastOtherSpeechAt = Date.now(); vi.advanceTimersByTime(500); }
     expect(s.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(6900);
-    expect(s.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(200);
+    s._lastOtherSpeechAt = Date.now(); vi.advanceTimersByTime(1200);
     expect(s.close).toHaveBeenCalledTimes(1);
-    sampleCallSids.delete(sid); void samplePlacedSidByTo;
-  });
-  it('an explicit longer base delay still wins (the shopper\'s own proactive hang-up waits 2s)', () => {
+  }));
+
+  it('SAMPLE: if the other side was already quiet, it closes promptly (not a fixed long wait)', () => withSample(async () => {
+    const s = mk(SAMPLE, { _lastOtherSpeechAt: Date.now() - 10_000 });
+    CallSession.prototype._shopperHangUp.call(s);
+    vi.advanceTimersByTime(600);
+    expect(s.close).toHaveBeenCalledTimes(1);
+  }));
+
+  it('an explicit base delay still holds (the shopper\'s own proactive hang-up waits 2s)', () => {
     const s = mk('CA' + 'e'.repeat(32));
     CallSession.prototype._shopperHangUp.call(s, 2000);
     vi.advanceTimersByTime(1900); expect(s.close).not.toHaveBeenCalled();
