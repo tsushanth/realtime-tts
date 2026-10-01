@@ -182,9 +182,12 @@ describe('sampleCallee', () => {
   describe('shopperMaxDurationMs (the shopper session has its OWN timer, separate from the sample callee cap)', () => {
     // Observed: with the sample callee cap raised to 210s, calls still ended at ~180s because the SHOPPER leg's own 3-minute
     // timer fired first ("shopper call ... hit max duration, hanging up").
-    it('a shopper leg that belongs to a sample call gets the sample cap (210s), so the two timers agree', async () => {
+    it('a shopper leg that belongs to a sample call ends just BEFORE Twilio\'s hard cut (210s) so its transcript is saved', async () => {
+      // Real bug: with both timers at exactly 210s Twilio's hangup won the race, the session never closed gracefully, and
+      // the call-log row was saved with NO transcript (the whole paid call was unusable).
       await place({ toNumber: TO, shopper: true, sampleCallee: callee }); // remembers SID('d') as a sample sid
-      expect(shopperMaxDurationMs(SID('d'))).toBe(210_000);
+      expect(shopperMaxDurationMs(SID('d'))).toBe(200_000);
+      expect(shopperMaxDurationMs(SID('d'))).toBeLessThan(210_000);
     });
     it('any other shopper call (mystery shopper tests) keeps the 3-minute default', () => {
       expect(shopperMaxDurationMs(SID('e'))).toBe(180_000);
