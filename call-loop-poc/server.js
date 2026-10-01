@@ -2932,7 +2932,8 @@ export class CallSession {
       return;
     }
 
-    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '') + SLOT_SAFETY_INSTRUCTION + (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
+    // See _buildTurnSystemPrompt: the slot-safety add-on must not reach a shopper session's own prompt.
+    const systemPrompt = this._buildTurnSystemPrompt(node, isNodeEntry);
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -3482,6 +3483,26 @@ export class CallSession {
         this._maybeRetireTurn(turnId);
       }
     }
+  }
+
+  // Assembles the full system prompt for one LLM turn: the base prompt (a flow node's own prompt,
+  // or this.systemPrompt for a flow-less session like the shopper), plus whichever global add-ons
+  // apply. Real bug found via mystery-shopper real-call logs (2026-09-28): SLOT_SAFETY_INSTRUCTION is
+  // written entirely from the business agent's point of view ("the caller has not told you", "ask ONE
+  // soft clarification", "never state a detail the caller hasn't told you") and used to be appended
+  // unconditionally, including on the shopper's own turn. For a shopper session the "caller" in ITS OWN
+  // transcript is actually the business agent asking IT questions, so that instruction told the
+  // shopper's LLM to behave like the one collecting fields from "the caller", i.e. to act like the
+  // receptionist instead of the customer. Two real calls reproduced this: the shopper started asking
+  // the business agent for name/time/callback number instead of answering. Every other
+  // isShopper-aware branch in this file already gates on the flag (see _onUserTurnComplete's
+  // closing-shaped check, the shopper phone guard in _speak): this was the one spot that never did.
+  _buildTurnSystemPrompt(node, isNodeEntry) {
+    const base = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
+    return base +
+      (this.lang ? languageInstruction(this.lang) : '') +
+      (this.isShopper ? '' : SLOT_SAFETY_INSTRUCTION) +
+      (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
   }
 
   // Builds this turn's system prompt from just the current flow node's own
