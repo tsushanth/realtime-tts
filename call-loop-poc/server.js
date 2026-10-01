@@ -2858,6 +2858,27 @@ export class CallSession {
     recordAudioEvent(audioEventSid(this), this._callStartedAt, 'jingle', 'intro');
   }
 
+  // A turn whose ONLY output was the play_sound_effect call (no spoken words) leaves the agent mute: the chime plays, then
+  // nobody speaks and the caller, waiting for the business to speak, sits in silence until a timer ends the call (seen on
+  // the first full sample call: 100s of dead air right after the booking). The existing silent-turn nudge only covers flow
+  // nodes with fields to capture, so this covers the sound-effect case: add a system note and generate a follow-up turn with
+  // the effect tool suppressed (so it cannot loop). Same pattern as the calendar-tool follow-up. Returns true if it took over.
+  async _followUpAfterSilentSoundEffect(content, assistantText, turnId) {
+    const toolUses = (content || []).filter((b) => b.type === 'tool_use');
+    const onlySoundEffect = toolUses.length > 0 && toolUses.every((b) => b.name === SOUND_EFFECT_TOOL_NAME);
+    if (!onlySoundEffect || (assistantText || '').trim() || this.activeTurn !== turnId) return false;
+    console.log(`[call-loop] turn ${turnId}: the turn was only a sound effect with no spoken text — asking the agent to speak`);
+    this.history.push({
+      role: 'user',
+      content: '[System note: the sound effect has played. Now say your spoken reply to the caller out loud, in one or two short sentences, as you normally would. Do not call the sound effect tool again.]',
+    });
+    const followUpTurnId = ++this.turnSeq;
+    this.activeTurn = followUpTurnId;
+    this.turnState = { id: followUpTurnId, llmDone: false, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+    await this._generateTurn(followUpTurnId, Date.now(), { isNodeEntry: false, suppressSoundEffectTool: true });
+    return true;
+  }
+
   // Situational SFX chosen by the model via the play_sound_effect tool. Goes through _speakCached
   // (not a bare clientWs.send) so it takes its place in the same ordered send chain as the reply
   // text being spoken this turn — the chime lands AFTER "you're all booked", not on top of it.
@@ -2911,7 +2932,7 @@ export class CallSession {
     }, 1200);
   }
 
-  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set(), forceTransition = false } = {}) {
+  async _generateTurn(turnId, turnStartedAt, { isNodeEntry = false, suppressTransitionTool = false, isCallOpening = false, ranSubagentTools = new Set(), forceTransition = false, suppressSoundEffectTool = false } = {}) {
     if (!anthropic) {
       this.send({ type: 'error', message: 'ANTHROPIC_API_KEY not configured' });
       if (this.turnState?.id === turnId) this.turnState.llmDone = true;
@@ -3069,7 +3090,7 @@ export class CallSession {
     // conditional-inclusion shape as the calendar tools above.
     // Offered to flow-less sessions too (a sample call's demo agent has no node): this.callAudio is only
     // ever set from a tenant's assets or an explicit sample payload, so nothing else is affected.
-    const sfxTool = buildPlaySoundEffectTool(this.callAudio);
+    const sfxTool = suppressSoundEffectTool ? null : buildPlaySoundEffectTool(this.callAudio);
     if (sfxTool) tools.push(sfxTool);
 
     // 'subagent' node — attaches multiple pre-configured tools (any mix of
@@ -3221,6 +3242,8 @@ export class CallSession {
           this._playSoundEffect(block.input?.name, turnId);
         }
       }
+      // ...but a turn that was ONLY the tool call leaves the agent mute: see _followUpAfterSilentSoundEffect.
+      if (await this._followUpAfterSilentSoundEffect(final.content, assistantText, turnId)) return;
 
       // Real calendar booking (2026-09-17): unlike record_field, the model
       // needs to actually SEE the real API result and speak from it (real

@@ -233,3 +233,52 @@ describe('recording what actually played (sampleAudioEvents)', () => {
     expect(sampleAudioEvents.size).toBeLessThanOrEqual(50);
   });
 });
+
+describe('_followUpAfterSilentSoundEffect (a turn whose ONLY output was the sound-effect tool call)', () => {
+  // Real bug, first full sample call after the quota fix: on the booking turn the model emitted only the tool call and no
+  // words. The chime played, nobody spoke, and the caller (waiting for the business to speak) sat in silence for 100s.
+  const sfx = { type: 'tool_use', name: 'play_sound_effect', input: { name: 'chime' } };
+  const mk = (over = {}) => ({
+    history: [{ role: 'user', content: 'caller said something' }], turnSeq: 4, activeTurn: 4, turnState: null,
+    _generateTurn: vi.fn(async () => {}), ...over,
+  });
+  beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('asks the model to speak: adds a system note and generates a follow-up turn with the effect tool suppressed', async () => {
+    const s = mk();
+    const handled = await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx], '', 4);
+    expect(handled).toBe(true);
+    expect(s.history.at(-1)).toMatchObject({ role: 'user' });
+    expect(s.history.at(-1).content).toMatch(/^\[System note:/);
+    expect(s.history.at(-1).content).toMatch(/say your (spoken )?reply|out loud/i);
+    expect(s._generateTurn).toHaveBeenCalledTimes(1);
+    expect(s._generateTurn.mock.calls[0][2]).toMatchObject({ suppressSoundEffectTool: true });
+    expect(s.activeTurn).toBe(5); // a fresh turn, so the reply is spoken as a normal turn
+    expect(s.turnState).toMatchObject({ id: 5, llmDone: false });
+  });
+  it('does nothing when the turn DID speak (the normal case: words plus the chime)', async () => {
+    const s = mk();
+    expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx], "You're all set.", 4)).toBe(false);
+    expect(s._generateTurn).not.toHaveBeenCalled();
+  });
+  it('does nothing when there was no sound-effect call at all', async () => {
+    const s = mk();
+    expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [{ type: 'text', text: '' }], '', 4)).toBe(false);
+    expect(s._generateTurn).not.toHaveBeenCalled();
+  });
+  it('leaves a turn that ALSO called another tool to that tool\'s own handling (calendar, transition, ...)', async () => {
+    const s = mk();
+    expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx, { type: 'tool_use', name: 'book_appointment', input: {} }], '', 4)).toBe(false);
+    expect(s._generateTurn).not.toHaveBeenCalled();
+  });
+  it('does nothing if the caller already barged in (the turn is no longer the active one)', async () => {
+    const s = mk({ activeTurn: 0 });
+    expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx], '', 4)).toBe(false);
+    expect(s._generateTurn).not.toHaveBeenCalled();
+  });
+  it('treats whitespace-only text as silence', async () => {
+    const s = mk();
+    expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx], '  \n ', 4)).toBe(true);
+  });
+});
