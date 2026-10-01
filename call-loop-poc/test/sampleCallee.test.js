@@ -183,8 +183,8 @@ describe('sampleCallee', () => {
     // Observed: with the sample callee cap raised to 210s, calls still ended at ~180s because the SHOPPER leg's own 3-minute
     // timer fired first ("shopper call ... hit max duration, hanging up").
     it('a shopper leg that belongs to a sample call ends just BEFORE Twilio\'s hard cut (210s) so its transcript is saved', async () => {
-      // Real bug: with both timers at exactly 210s Twilio's hangup won the race, the session never closed gracefully, and
-      // the call-log row was saved with NO transcript (the whole paid call was unusable).
+      // A safety margin so the session closes on its own terms rather than racing Twilio's hangup. (Not the cause of the
+      // empty-transcript calls on 2026-10-01: those were an exhausted ElevenLabs quota, so nobody ever spoke.)
       await place({ toNumber: TO, shopper: true, sampleCallee: callee }); // remembers SID('d') as a sample sid
       expect(shopperMaxDurationMs(SID('d'))).toBe(200_000);
       expect(shopperMaxDurationMs(SID('d'))).toBeLessThan(210_000);
