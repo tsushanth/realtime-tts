@@ -9,7 +9,7 @@ process.env.TWILIO_ACCOUNT_SID = 'AC' + '1'.repeat(32);
 process.env.TWILIO_AUTH_TOKEN = 'twilio-token';
 process.env.DEMO_FROM_NUMBER = '+15550000009';
 
-const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids } = await import('../server.js');
+const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents } = await import('../server.js');
 
 const callee = { systemPrompt: 'You are the after-hours line for a fictional brokerage.', greeting: 'Thanks for calling, how can I help?' };
 const TO = '+15550000001';
@@ -27,6 +27,7 @@ function stubFetch() {
     const json = (b, ok = true, status = 200) => ({ ok, status, json: async () => b, text: async () => JSON.stringify(b) });
     if (u.includes('calldesk_try_acquire_token')) return json(true);
     if (u.endsWith('/Calls.json')) { twilioCalls.push(String(init?.body)); return json({ sid: SID('d'), status: 'queued' }); }
+    if (/\/Calls\/CA[0-9a-f]{32}\.json$/.test(u)) return json({ status: 'completed', duration: '148' });
     if (u.includes('/Recordings.json')) return json({ recordings: [{ sid: 'RE' + '2'.repeat(32), status: 'completed', channels: 2, duration: '70' }] });
     return json([]);
   }));
@@ -74,7 +75,7 @@ describe('sampleCallee', () => {
     const res = await place({ toNumber: TO, shopper: true, record: true, sampleCallee: callee });
     expect(res.status).toBe(200);
     expect(res.body.sampleCallee).toBe(true);
-    expect(twilioCalls[0]).toContain('TimeLimit=150');
+    expect(twilioCalls[0]).toContain('TimeLimit=210'); // raised from 150: a sample with a jingle + a booking was getting cut off before the confirmation
     expect(sampleCalleeOverrides.get(TO)?.fromNumber).toBe(FROM);
     expect(sampleCallSids.has(SID('d'))).toBe(true);
   });
@@ -144,6 +145,25 @@ describe('sampleCallee', () => {
       const ctx = pendingCallContext.get(SID('a'));
       expect(ctx.isSampleCallee).toBe(true);
       expect(ctx.callAudio.jingle.name).toBe('intro');
+    });
+  });
+
+  describe('/call-status audioEvents (lets a generator verify what actually played, without scraping logs)', () => {
+    beforeEach(() => sampleAudioEvents.clear());
+    it('requires the secret like the rest of the sample endpoints', async () => {
+      expect((await request(app).get('/call-status/' + SID('d'))).status).toBe(401);
+    });
+    it('returns the recorded jingle/effect events for that call, with the call status', async () => {
+      sampleAudioEvents.set(SID('d'), [{ kind: 'jingle', name: 'intro', atMs: 5 }, { kind: 'effect', name: 'booking_chime', atMs: 91000 }]);
+      const res = await request(app).get('/call-status/' + SID('d')).set(AUTH);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('completed');
+      expect(res.body.duration).toBe(148);
+      expect(res.body.audioEvents).toEqual([{ kind: 'jingle', name: 'intro', atMs: 5 }, { kind: 'effect', name: 'booking_chime', atMs: 91000 }]);
+    });
+    it('a call with no events reports an empty list (so "nothing played" is distinguishable from "field missing")', async () => {
+      const res = await request(app).get('/call-status/' + SID('e')).set(AUTH);
+      expect(res.body.audioEvents).toEqual([]);
     });
   });
 

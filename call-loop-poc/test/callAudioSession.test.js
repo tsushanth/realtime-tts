@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import WebSocket from 'ws';
 
 process.env.NODE_ENV = 'test';
-const { CallSession } = await import('../server.js');
+const { CallSession, sampleAudioEvents } = await import('../server.js');
 const { parseCallAudioContext } = await import('../callAudio.js');
 
 const b64 = (bytes) => Buffer.from(bytes).toString('base64');
@@ -135,5 +135,47 @@ describe('_startGreetingTurn (flow-less sessions, e.g. a sample call\'s demo age
     const { s, order } = mk(null);
     CallSession.prototype._startGreetingTurn.call(s, 'Hi');
     expect(order).toEqual(['speak:Hi']);
+  });
+});
+
+describe('recording what actually played (sampleAudioEvents)', () => {
+  const SIDX = 'CA' + '9'.repeat(32);
+  beforeEach(() => { sampleAudioEvents.clear(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
+  afterEach(() => vi.restoreAllMocks());
+
+  const mk = (over = {}) => ({
+    ...stubSession(parseCallAudioContext(RAW, {})),
+    callSid: SIDX, _callStartedAt: Date.now() - 5000,
+    ...over,
+  });
+
+  it('records the jingle with its offset from the start of the call', () => {
+    const s = mk();
+    CallSession.prototype._playIntroJingle.call(s);
+    const ev = sampleAudioEvents.get(SIDX);
+    expect(ev).toHaveLength(1);
+    expect(ev[0]).toMatchObject({ kind: 'jingle', name: 'intro' });
+    expect(ev[0].atMs).toBeGreaterThanOrEqual(4900);
+  });
+  it('records a sound effect that actually plays, and NOT one that was suppressed or unknown', () => {
+    const s = mk();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 1);
+    CallSession.prototype._playSoundEffect.call(s, 'chime', 2); // within the repeat window -> suppressed
+    CallSession.prototype._playSoundEffect.call(s, 'nope', 3); // unknown
+    const ev = sampleAudioEvents.get(SIDX);
+    expect(ev.map((e) => `${e.kind}:${e.name}`)).toEqual(['effect:chime']);
+  });
+  it('does nothing (and does not crash) for a session with no callSid, e.g. a browser demo', () => {
+    const s = mk({ callSid: undefined });
+    CallSession.prototype._playIntroJingle.call(s);
+    expect(sampleAudioEvents.size).toBe(0);
+  });
+  it('the map is bounded so a long-lived server cannot grow without limit', () => {
+    for (let i = 0; i < 80; i++) {
+      const sid = 'CA' + i.toString(16).padStart(32, '0');
+      CallSession.prototype._playIntroJingle.call({ ...stubSession(parseCallAudioContext(RAW, {})), callSid: sid, _callStartedAt: Date.now() });
+    }
+    expect(sampleAudioEvents.size).toBeLessThanOrEqual(50);
   });
 });

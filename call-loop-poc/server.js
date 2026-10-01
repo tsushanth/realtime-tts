@@ -647,6 +647,16 @@ function sampleCalleeAllowlist() {
 export const sampleCallSids = new Map();
 const SAMPLE_SID_TTL_MS = 30 * 60_000;
 const SAMPLE_SID_MAX = 50;
+// What audio actually PLAYED on a call (jingle / effects), so a generator can verify it through GET /call-status/:sid
+// instead of inferring from a recording or scraping logs. callSid -> [{kind:'jingle'|'effect', name, atMs}], with atMs
+// measured from the start of the call. Bounded like the sid set above.
+export const sampleAudioEvents = new Map();
+function recordAudioEvent(callSid, startedAt, kind, name) {
+  if (!callSid) return;
+  while (!sampleAudioEvents.has(callSid) && sampleAudioEvents.size >= SAMPLE_SID_MAX) sampleAudioEvents.delete(sampleAudioEvents.keys().next().value);
+  if (!sampleAudioEvents.has(callSid)) sampleAudioEvents.set(callSid, []);
+  sampleAudioEvents.get(callSid).push({ kind, name, atMs: Math.max(0, Date.now() - (startedAt || Date.now())) });
+}
 function rememberSampleSid(sid) {
   const now = Date.now();
   for (const [k, exp] of sampleCallSids) if (exp <= now) sampleCallSids.delete(k);
@@ -671,7 +681,9 @@ function matchSampleCallee(to, from) {
   }
   return o;
 }
-const SAMPLE_CALL_TIME_LIMIT_SEC = 150; // hard Twilio cap on the placed call, whatever the agents do
+// Hard Twilio cap on the placed call, whatever the agents do. 150 -> 210: with a 4s jingle and a scenario that books at
+// the end, every sample was being cut off right as the confirmation (and its sound effect) happened.
+const SAMPLE_CALL_TIME_LIMIT_SEC = 210;
 function parseSampleCallee(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const systemPrompt = typeof raw.systemPrompt === 'string' ? raw.systemPrompt.trim() : '';
@@ -1308,7 +1320,7 @@ app.get('/call-status/:sid', async (req, res) => {
     headers: { Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64') },
   });
   const b = await r.json().catch(() => ({}));
-  res.status(r.ok ? 200 : r.status).json({ status: b.status, duration: Number(b.duration) || 0 });
+  res.status(r.ok ? 200 : r.status).json({ status: b.status, duration: Number(b.duration) || 0, audioEvents: sampleAudioEvents.get(req.params.sid) || [] });
 });
 
 // Capability probe so clients (calldesktech scripts/generate-vertical-sample.mjs) can tell a poc that
@@ -2825,6 +2837,7 @@ export class CallSession {
     if (this.clientWs.readyState !== WebSocket.OPEN) return;
     console.log(`[call-loop] intro jingle (${this.callAudio.jingle.length} bytes)`);
     this.clientWs.send(this.callAudio.jingle, { binary: true, format: 'mulaw8k' });
+    recordAudioEvent(this.callSid, this._callStartedAt, 'jingle', 'intro');
   }
 
   // Situational SFX chosen by the model via the play_sound_effect tool. Goes through _speakCached
@@ -2846,6 +2859,7 @@ export class CallSession {
     }
     this._sfxLastPlayedAt.set(name, Date.now());
     console.log(`[call-loop] turn ${turnId} sound effect: "${name}"`);
+    recordAudioEvent(this.callSid, this._callStartedAt, 'effect', name);
     this._speakCached(buf, turnId, 'mulaw8k').catch((err) => console.error('[call-loop] sound effect send failed', err));
   }
 
