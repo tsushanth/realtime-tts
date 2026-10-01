@@ -6,6 +6,8 @@
 // asset payload into playable buffers, and building/dispatching the `play_sound_effect` tool. It's
 // deliberately free of any server.js state so it can be unit-tested in isolation.
 
+import { readFileSync } from 'node:fs';
+
 export const SOUND_EFFECT_TOOL_NAME = 'play_sound_effect';
 
 // Effect names double as tool enum values, so they must be simple slugs.
@@ -135,4 +137,112 @@ export function sanitizeInlineCallAudio(raw) {
   }
   if (!jingle && effects.length === 0) return null;
   return { jingle, effects };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Browser path. A phone call takes mu-law@8kHz straight to Twilio; a browser session's player
+// (calldesktech BrowserDemoCall.playPCM16) only understands raw PCM16LE mono @ 24kHz binary frames and
+// ignores any `format` hint, so mu-law bytes sent as-is would play as loud noise. These helpers convert a
+// stored clip for that player.
+
+export const BROWSER_PCM_RATE = 24000;
+const UPSAMPLE = 3; // 8kHz -> 24kHz
+const SINC_HALF = 24; // taps per side, in 8kHz samples (windowed-sinc interpolator)
+
+const MULAW_BIAS = 0x84;
+function decodeMuLawByte(byte) {
+  const b = ~byte & 0xff;
+  const magnitude = (((b & 0x0f) << 3) + MULAW_BIAS) << ((b >> 4) & 0x07);
+  return b & 0x80 ? MULAW_BIAS - magnitude : magnitude - MULAW_BIAS;
+}
+
+// Blackman-windowed sinc, cutoff at the source Nyquist (4kHz), so the 3x upsample leaves no spectral images
+// (sample-repeat or linear interpolation would add audible 4-8kHz imaging on a bell jingle).
+const KERNEL = (() => {
+  const phases = [];
+  for (let p = 0; p < UPSAMPLE; p++) {
+    const frac = p / UPSAMPLE;
+    const taps = [];
+    for (let k = -SINC_HALF + 1; k <= SINC_HALF; k++) {
+      const x = k - frac; // distance in source samples from the output instant
+      const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+      const t = (x + SINC_HALF) / (2 * SINC_HALF);
+      const w = 0.42 - 0.5 * Math.cos(2 * Math.PI * t) + 0.08 * Math.cos(4 * Math.PI * t);
+      taps.push(sinc * w);
+    }
+    const sum = taps.reduce((a, b) => a + b, 0); // unity DC gain per phase
+    phases.push(taps.map((v) => v / sum));
+  }
+  return phases;
+})();
+
+// mu-law@8kHz Buffer -> PCM16LE mono @24kHz Buffer (3x the samples, 6x the bytes). Output is clamped to int16.
+export function mulaw8kToPcm16At24k(mulaw) {
+  const n = mulaw.length;
+  const src = new Float64Array(n);
+  for (let i = 0; i < n; i++) src[i] = decodeMuLawByte(mulaw[i]);
+  const out = Buffer.alloc(n * UPSAMPLE * 2);
+  for (let i = 0; i < n; i++) {
+    for (let p = 0; p < UPSAMPLE; p++) {
+      const taps = KERNEL[p];
+      let acc = 0;
+      for (let t = 0; t < taps.length; t++) {
+        const j = i + t - SINC_HALF + 1;
+        if (j >= 0 && j < n) acc += src[j] * taps[t];
+      }
+      out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(acc))), (i * UPSAMPLE + p) * 2);
+    }
+  }
+  return out;
+}
+
+// Per-Buffer memo: the same jingle/effect Buffer is sent on every browser session of this process.
+const pcmMemo = new WeakMap();
+export function browserPcmForClip(mulaw) {
+  let pcm = pcmMemo.get(mulaw);
+  if (!pcm) {
+    pcm = mulaw8kToPcm16At24k(mulaw);
+    pcmMemo.set(mulaw, pcm);
+  }
+  return pcm;
+}
+
+// ---- Anonymous browser demo assets ---------------------------------------------------------
+// A public browser demo has no tenant, so there is no assets table row to look up. The clips are small static
+// files committed with the engine (assets/demo-call-audio.json, ~64 KB: the same mu-law@8kHz clips the sample
+// phone calls use) and attached server-side only when the page asks for them (context `demoAudio: true`).
+// Server-side (not client-supplied audio) so the public endpoint never accepts arbitrary payloads.
+// Flag: BROWSER_DEMO_AUDIO_ENABLED (default on; "false"/"0" turns it off). The org-wide switches in
+// parseCallAudioContext (CALL_AUDIO_ASSETS_ENABLED / CALL_AUDIO_EFFECTS_ENABLED) still apply on top.
+export const DEMO_EFFECT_NAME = 'confirmation_chime';
+export const DEMO_EFFECT_DESCRIPTION =
+  'Play it at the exact moment you, speaking as the business receptionist, confirm a specific appointment or booking ' +
+  'with a day and time for the caller (for example "you are booked for Tuesday at 3 PM"). Never play it for greetings, ' +
+  'questions, or when you are only offering or checking times.';
+
+export function isBrowserDemoAudioEnabled(env = process.env) {
+  const v = String(env.BROWSER_DEMO_AUDIO_ENABLED ?? 'true').trim().toLowerCase();
+  return v !== 'false' && v !== '0';
+}
+
+const DEMO_ASSET_URL = new URL('./assets/demo-call-audio.json', import.meta.url);
+const MAX_DEMO_CLIP_BYTES = 100_000;
+
+// Returns a context-style payload ({jingle, effects}, base64 mu-law) or null. Fails open: a missing,
+// unreadable or malformed file, an oversized clip, or the flag being off all give null (no jingle, no effect,
+// no tool: the demo behaves as it did before this feature).
+export function loadBrowserDemoCallAudio(env = process.env, url = DEMO_ASSET_URL) {
+  if (!isBrowserDemoAudioEnabled(env)) return null;
+  try {
+    const f = JSON.parse(readFileSync(url, 'utf8'));
+    const jingle = decodeAudio(f?.intro_jingle?.audio);
+    const chime = decodeAudio(f?.confirmation_chime?.audio);
+    if (!jingle || !chime || jingle.length > MAX_DEMO_CLIP_BYTES || chime.length > MAX_DEMO_CLIP_BYTES) return null;
+    return {
+      jingle: { name: 'intro', audio: f.intro_jingle.audio },
+      effects: [{ name: DEMO_EFFECT_NAME, description: DEMO_EFFECT_DESCRIPTION, audio: f.confirmation_chime.audio }],
+    };
+  } catch {
+    return null;
+  }
 }

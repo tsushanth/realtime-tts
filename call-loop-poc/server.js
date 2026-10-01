@@ -20,7 +20,7 @@ import { SentenceChunker } from './sentenceChunker.js';
 import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
-import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
+import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME, browserPcmForClip, loadBrowserDemoCallAudio } from './callAudio.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
@@ -752,6 +752,13 @@ export function sampleShopperEotThreshold(callSid) {
 export function shopperMaxDurationMs(callSid) {
   return callSid && isSampleSid(callSid) ? SAMPLE_CALL_TIME_LIMIT_SEC * 1000 - SAMPLE_SHOPPER_GRACE_MS : SHOPPER_MAX_DURATION_MS;
 }
+// A stored jingle/effect clip is mu-law@8kHz. Twilio takes it as-is (format hint); a browser session's player only
+// understands PCM16@24kHz binary frames and ignores the hint, so convert (memoized) for anything that is not Twilio.
+export function clipForClient(ws, mulaw) {
+  if (ws instanceof TwilioCallAdapter) return { data: mulaw, opts: { binary: true, format: 'mulaw8k' } };
+  return { data: browserPcmForClip(mulaw), opts: { binary: true } };
+}
+
 // Same sound effect won't replay within this window — see CallSession._playSoundEffect.
 const SFX_MIN_REPEAT_MS = 10_000;
 // How many times _maybeRetireTurn will nudge a silent/stalled extraction
@@ -2296,6 +2303,11 @@ export class CallSession {
       }
       if (msg.callAudio) {
         this.callAudio = parseCallAudioContext(msg.callAudio);
+      } else if (msg.demoAudio === true && !(this.clientWs instanceof TwilioCallAdapter) && !(typeof msg.tenantId === 'string' && msg.tenantId.trim())) {
+        // The public in-browser demo (no tenant): attach the committed jingle + confirmation chime, server-side,
+        // only when the page asks and BROWSER_DEMO_AUDIO_ENABLED allows. Any asset problem -> null -> no audio.
+        this._browserDemo = true;
+        this.callAudio = parseCallAudioContext(loadBrowserDemoCallAudio());
       }
       // Live-monitoring metadata (see the registry / GET /active-calls) — a
       // real routed call passes both; anonymous browser demos pass neither.
@@ -2882,7 +2894,8 @@ export class CallSession {
     this._jinglePlayed = true;
     if (this.clientWs.readyState !== WebSocket.OPEN) return;
     console.log(`[call-loop] intro jingle (${this.callAudio.jingle.length} bytes)`);
-    this.clientWs.send(this.callAudio.jingle, { binary: true, format: 'mulaw8k' });
+    const clip = clipForClient(this.clientWs, this.callAudio.jingle);
+    this.clientWs.send(clip.data, clip.opts);
     recordAudioEvent(audioEventSid(this), this._callStartedAt, 'jingle', 'intro');
   }
 
@@ -2943,7 +2956,7 @@ export class CallSession {
     }
     // A sample call demonstrates ONE moment: the model was seen calling the tool again on the goodbye turn (30s after
     // the right moment), well outside the repeat window, so each effect plays at most once per sample call.
-    if (this._sampleTo && this._sfxLastPlayedAt.has(name)) {
+    if ((this._sampleTo || this._browserDemo) && this._sfxLastPlayedAt.has(name)) {
       console.log(`[call-loop] sound effect "${name}" skipped: already played in this sample call`);
       return;
     }
@@ -2955,7 +2968,8 @@ export class CallSession {
     this._sfxLastPlayedAt.set(name, Date.now());
     console.log(`[call-loop] turn ${turnId} sound effect: "${name}"`);
     recordAudioEvent(audioEventSid(this), this._callStartedAt, 'effect', name);
-    this._speakCached(buf, turnId, 'mulaw8k').catch((err) => console.error('[call-loop] sound effect send failed', err));
+    const clip = clipForClient(this.clientWs, buf);
+    this._speakCached(clip.data, turnId, clip.opts.format).catch((err) => console.error('[call-loop] sound effect send failed', err));
   }
 
   // Shared by both a real caller turn and a flow auto-advance turn — the

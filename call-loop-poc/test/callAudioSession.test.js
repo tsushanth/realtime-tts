@@ -3,9 +3,10 @@
 // minimal stub `this` objects, so the shipped code is what's exercised.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import WebSocket from 'ws';
+import { TwilioCallAdapter } from '../twilioAdapter.js';
 
 process.env.NODE_ENV = 'test';
-const { CallSession, sampleAudioEvents, samplePlacedSidByTo } = await import('../server.js');
+const { CallSession, sampleAudioEvents, samplePlacedSidByTo, clipForClient } = await import('../server.js');
 const { parseCallAudioContext } = await import('../callAudio.js');
 
 const b64 = (bytes) => Buffer.from(bytes).toString('base64');
@@ -21,7 +22,8 @@ function stubSession(callAudio) {
     callAudio,
     _jinglePlayed: false,
     _sfxLastPlayedAt: new Map(),
-    clientWs: { readyState: WebSocket.OPEN, send: (data, opts) => sent.push({ data, opts }) },
+    // A Twilio-like socket (these tests cover the phone path; the browser path has its own describe below).
+    clientWs: Object.assign(Object.create(TwilioCallAdapter.prototype), { readyState: WebSocket.OPEN, send: (data, opts) => sent.push({ data, opts }) }),
     _speakCached: vi.fn(async () => {}),
   };
 }
