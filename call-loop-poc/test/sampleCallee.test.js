@@ -92,6 +92,24 @@ describe('sampleCallee', () => {
     expect(pendingCallContext.get(SID('a'))?.sampleTo).toBe(TO);
   });
 
+  it('carries an optional ElevenLabs ttsModel for the demo-agent leg, and rejects an unknown one (fail closed)', async () => {
+    const ok = await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, ttsModel: 'eleven_v4_turbo' } });
+    expect(ok.status).toBe(200);
+    expect(sampleCalleeOverrides.get(TO)?.ttsModel).toBe('eleven_v4_turbo');
+    await voice(SID('a'), TO, FROM);
+    expect(pendingCallContext.get(SID('a'))?.ttsModel).toBe('eleven_v4_turbo');
+    sampleCalleeOverrides.clear();
+    expect((await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, ttsModel: 'not_a_model' } })).status).toBe(400);
+    expect((await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, ttsModel: 42 } })).status).toBe(400);
+    expect(sampleCalleeOverrides.size).toBe(0);
+  });
+
+  it('without a ttsModel nothing changes for the demo-agent leg (process default stays in force)', async () => {
+    await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+    await voice(SID('a'), TO, FROM);
+    expect('ttsModel' in (pendingCallContext.get(SID('a')) || {})).toBe(false);
+  });
+
   it('/twilio/voice consumes a matching override exactly once (second hit falls through)', async () => {
     await place({ toNumber: TO, shopper: true, sampleCallee: callee });
     await voice(SID('a'), TO, FROM);

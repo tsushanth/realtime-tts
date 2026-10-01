@@ -90,7 +90,7 @@ const CARTESIA_MODEL = process.env.CARTESIA_MODEL || 'sonic-3.6';
 // its DB config or the process-wide default, which would affect every real
 // caller for the duration of the test.
 const VALID_TTS_MODELS = {
-  elevenlabs: new Set(['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5']),
+  elevenlabs: new Set(['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5', 'eleven_v4_turbo']),
   cartesia: new Set(['sonic-3.6', 'sonic-2']),
 };
 if (TTS_BACKEND === 'cartesia' && (!CARTESIA_API_KEY || !CARTESIA_VOICE_ID)) {
@@ -706,7 +706,15 @@ function parseSampleCallee(raw) {
     callAudio = sanitizeInlineCallAudio(raw.callAudio);
     if (!callAudio) return null;
   }
-  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability), ...(callAudio ? { callAudio } : {}) };
+  // Optional per-sample ElevenLabs model (the agent leg of a sample call defaults to the process-wide ELEVENLABS_MODEL).
+  // An unknown model rejects the whole sampleCallee, same fail-closed rule as callAudio: a generator that asked for a
+  // model must never silently get a different voice.
+  let ttsModel;
+  if (raw.ttsModel !== undefined) {
+    if (typeof raw.ttsModel !== 'string' || !VALID_TTS_MODELS.elevenlabs.has(raw.ttsModel)) return null;
+    ttsModel = raw.ttsModel;
+  }
+  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability), ...(ttsModel ? { ttsModel } : {}), ...(callAudio ? { callAudio } : {}) };
 }
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
@@ -1087,7 +1095,7 @@ app.post('/twilio/voice', async (req, res) => {
     sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
-    pendingCallContext.set(callSid, { isSampleCallee: true, sampleTo: normNumber(req.body.To), systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isSampleCallee: true, sampleTo: normNumber(req.body.To), systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.ttsModel ? { ttsModel: o.ttsModel } : {}), ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1760,6 +1768,7 @@ twilioWss.on('connection', (twilioWs) => {
         systemPrompt: resolved.systemPrompt,
         greeting: resolved.greeting,
         ttsBackend: 'elevenlabs',
+        ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
         samplePlayback: true,
         voice: resolved.voice,
         stability: resolved.stability,
