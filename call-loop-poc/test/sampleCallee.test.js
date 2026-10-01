@@ -9,7 +9,7 @@ process.env.TWILIO_ACCOUNT_SID = 'AC' + '1'.repeat(32);
 process.env.TWILIO_AUTH_TOKEN = 'twilio-token';
 process.env.DEMO_FROM_NUMBER = '+15550000009';
 
-const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents, samplePlacedSidByTo } = await import('../server.js');
+const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents, samplePlacedSidByTo, shopperMaxDurationMs } = await import('../server.js');
 
 const callee = { systemPrompt: 'You are the after-hours line for a fictional brokerage.', greeting: 'Thanks for calling, how can I help?' };
 const TO = '+15550000001';
@@ -176,6 +176,19 @@ describe('sampleCallee', () => {
     it('a call with no events reports an empty list (so "nothing played" is distinguishable from "field missing")', async () => {
       const res = await request(app).get('/call-status/' + SID('e')).set(AUTH);
       expect(res.body.audioEvents).toEqual([]);
+    });
+  });
+
+  describe('shopperMaxDurationMs (the shopper session has its OWN timer, separate from the sample callee cap)', () => {
+    // Observed: with the sample callee cap raised to 210s, calls still ended at ~180s because the SHOPPER leg's own 3-minute
+    // timer fired first ("shopper call ... hit max duration, hanging up").
+    it('a shopper leg that belongs to a sample call gets the sample cap (210s), so the two timers agree', async () => {
+      await place({ toNumber: TO, shopper: true, sampleCallee: callee }); // remembers SID('d') as a sample sid
+      expect(shopperMaxDurationMs(SID('d'))).toBe(210_000);
+    });
+    it('any other shopper call (mystery shopper tests) keeps the 3-minute default', () => {
+      expect(shopperMaxDurationMs(SID('e'))).toBe(180_000);
+      expect(shopperMaxDurationMs(undefined)).toBe(180_000);
     });
   });
 

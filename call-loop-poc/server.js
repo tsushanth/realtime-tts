@@ -721,6 +721,11 @@ const SHOPPER_PERSONA_RULES =
   'Keep replies short and natural. If asked to confirm something that matches your goal, confirm it. Once your goal is done, or you are told you are being transferred, thank them briefly ONE time and say a single goodbye. ' +
   'Never break character or mention an AI, a test, or a script.';
 const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
+// The shopper session has its own timer. For the shopper leg of a SAMPLE call it must match the sample cap, otherwise it
+// fires first and cuts every sample at 3 minutes however high SAMPLE_CALL_TIME_LIMIT_SEC is set.
+export function shopperMaxDurationMs(callSid) {
+  return callSid && isSampleSid(callSid) ? SAMPLE_CALL_TIME_LIMIT_SEC * 1000 : SHOPPER_MAX_DURATION_MS;
+}
 // Same sound effect won't replay within this window — see CallSession._playSoundEffect.
 const SFX_MIN_REPEAT_MS = 10_000;
 // How many times _maybeRetireTurn will nudge a silent/stalled extraction
@@ -1783,7 +1788,7 @@ twilioWss.on('connection', (twilioWs) => {
       setTimeout(() => {
         console.log(`[call-loop] shopper call ${callSid} hit max duration, hanging up`);
         session.close();
-      }, SHOPPER_MAX_DURATION_MS);
+      }, shopperMaxDurationMs(callSid));
       return;
     }
     session.onClientMessage(JSON.stringify({
