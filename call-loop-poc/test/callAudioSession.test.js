@@ -103,3 +103,37 @@ describe('_speakCached format passthrough', () => {
     expect(b.sent[0]).toEqual({ binary: true, format: 'mulaw8k' });
   });
 });
+
+describe('_startGreetingTurn (flow-less sessions, e.g. a sample call\'s demo agent)', () => {
+  const mk = (callAudio) => {
+    const order = [];
+    const s = {
+      callAudio, _jinglePlayed: false, history: [], turnSeq: 0, activeTurn: 0, turnState: null,
+      clientWs: { readyState: WebSocket.OPEN, send: () => order.push('jingle-sent') },
+      _speak: vi.fn((text) => order.push(`speak:${text}`)),
+    };
+    s._playIntroJingle = CallSession.prototype._playIntroJingle.bind(s);
+    return { s, order };
+  };
+  beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sends the jingle BEFORE speaking the greeting', () => {
+    const { s, order } = mk(parseCallAudioContext(RAW, {}));
+    CallSession.prototype._startGreetingTurn.call(s, 'Thanks for calling.');
+    expect(order).toEqual(['jingle-sent', 'speak:Thanks for calling.']);
+  });
+  it('still records the greeting in history and opens a real turn for it (barge-in keeps working)', () => {
+    const { s } = mk(null);
+    CallSession.prototype._startGreetingTurn.call(s, 'Hello there');
+    expect(s.history).toEqual([{ role: 'assistant', content: 'Hello there' }]);
+    expect(s.activeTurn).toBe(1);
+    expect(s.turnState).toMatchObject({ id: 1, llmDone: true, pendingTts: 0 });
+    expect(s._speak).toHaveBeenCalledWith('Hello there', 1, expect.any(Number));
+  });
+  it('a session with no callAudio just speaks the greeting (zero behavior change)', () => {
+    const { s, order } = mk(null);
+    CallSession.prototype._startGreetingTurn.call(s, 'Hi');
+    expect(order).toEqual(['speak:Hi']);
+  });
+});

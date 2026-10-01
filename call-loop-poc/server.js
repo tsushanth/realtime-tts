@@ -19,13 +19,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
-import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
+import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME } from './callAudio.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { reportFailure, reportCrash } from './failureReporter.js';
 
 const PORT = process.env.PORT || 8090;
 // The Deepgram+Claude+TTS pipeline — the only engine this repo runs now.
@@ -279,6 +280,7 @@ const kokoroDown = () => Date.now() < kokoroDownUntil;
 async function markKokoroDown(why) {
   kokoroDownUntil = Date.now() + 60_000;
   console.error(`[ALERT] kokoro TTS unavailable (${why}) — failing over to ElevenLabs for 60s`);
+  reportFailure('tts:kokoro_unavailable', new Error(String(why).slice(0, 200)));
   const to = process.env.ALERT_SMS_TO;
   const from = process.env.ALERT_SMS_FROM;
   if (!to || !from || Date.now() - lastKokoroAlertAt < 6 * 3600_000) return;
@@ -293,6 +295,27 @@ async function markKokoroDown(why) {
     console.log(`[call-loop] kokoro alert SMS -> ${res.status}`);
   } catch (err) { console.error('[call-loop] kokoro alert SMS failed', err.message); }
 }
+// DECISIONS.md claims a "20s WS ping heartbeat" was added here to beat the
+// Cloudflare edge proxy's idle-timeout (tts.readaloudai.org / worker-cf-edge)
+// — but no such ping ever actually existed in this file. Production symptom
+// this caused: `tts gateway warm (dial) timed out after 45002ms` and
+// `kokoro TTS unavailable (gateway closed mid-turn)`, forcing ElevenLabs
+// failover on every recent call. Cloudflare Workers close an idle WebSocket
+// well under 45s (no traffic in either direction), so a socket sitting open
+// waiting on a slow Modal cold start — or a call with a quiet gap between
+// turns — gets dropped by the edge before the real work finishes. Fixed by
+// actually pinging every 20s on both TTS gateway socket lifecycles below.
+const TTS_GATEWAY_PING_INTERVAL_MS = 20_000;
+function armTtsGatewayPing(ws) {
+  const timer = setInterval(() => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try { ws.ping(); } catch { /* socket already closing */ }
+  }, TTS_GATEWAY_PING_INTERVAL_MS);
+  ws.once('close', () => clearInterval(timer));
+  ws.once('error', () => clearInterval(timer));
+  return timer;
+}
+
 let lastGatewayWarmAt = 0;
 function warmTtsGateway(reason) {
   if (Date.now() - lastGatewayWarmAt < 60_000) return;
@@ -302,6 +325,7 @@ function warmTtsGateway(reason) {
     TTS_GATEWAY_WS_URL,
     TTS_GATEWAY_API_KEY ? { headers: { Authorization: `Bearer ${TTS_GATEWAY_API_KEY}` } } : undefined
   );
+  armTtsGatewayPing(ws);
   const finish = (why) => {
     clearTimeout(timer);
     console.log(`[call-loop] tts gateway warm (${reason}) ${why} after ${Date.now() - startedAt}ms`);
@@ -426,7 +450,236 @@ function prewarmLangFillers(lang, voiceId) {
 // onClientMessage) so a quality-sensitive tenant can opt into a stronger
 // model without changing what every other call pays/suffers in latency.
 const LLM_MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
-const VALID_LLM_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6']);
+// 2026-09-28: one-off Luna vs Haiku vs open-weight (Groq) shopper-flow test.
+// Scoped ONLY to the main turn-generation call site below — calendar/
+// subagent tool call sites elsewhere still assume Anthropic and are
+// untouched, so this is safe for flows without those node types (the
+// medical-booking flow used for this test has none).
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+// 2026-09-29: genuinely self-hosted leg (Modal, own GPU, not a vendor API) —
+// see ../worker-modal-llm/app.py. Qwen2.5-7B-Instruct, chosen for
+// tool-calling reliability at small size after gpt-oss-120b's extraction
+// failures the same day. No API key needed from a vendor's billing
+// account — this is our own deployment, auth is a Modal Secret we generated
+// ourselves (selfhosted-llm-auth-token), same bearer-token shape as every
+// other OPENAI_COMPAT_KEY entry so the adapter code doesn't need to know
+// the difference.
+const SELFHOSTED_LLM_API_KEY = process.env.SELFHOSTED_LLM_API_KEY;
+// 2026-09-29: added the 32B step-up alongside the 7B — same model family
+// and same vLLM tool-call parser ("hermes") on purpose, to isolate
+// parameter count as the one variable vs. the working 7B deployment. See
+// ../worker-modal-llm/app_32b.py. Distinct provider key (not reused
+// "selfhosted") because each self-hosted model is its own Modal endpoint
+// URL, unlike openai/groq where one vendor endpoint serves every model
+// under that provider.
+const VALID_LLM_MODELS = new Set([
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-6',
+  'gpt-6-luna',
+  'openai/gpt-oss-120b',
+  'qwen2.5-7b-instruct-selfhosted',
+  'qwen2.5-32b-instruct-selfhosted',
+  'qwen3-32b-selfhosted',
+]);
+const MODEL_PROVIDER = {
+  'claude-haiku-4-5-20251001': 'anthropic',
+  'claude-sonnet-4-6': 'anthropic',
+  'gpt-6-luna': 'openai',
+  'openai/gpt-oss-120b': 'groq',
+  'qwen2.5-7b-instruct-selfhosted': 'selfhosted7b',
+  'qwen2.5-32b-instruct-selfhosted': 'selfhosted32b',
+  'qwen3-32b-selfhosted': 'selfhostedqwen3',
+};
+const OPENAI_COMPAT_ENDPOINT = {
+  openai: 'https://api.openai.com/v1/chat/completions',
+  groq: 'https://api.groq.com/openai/v1/chat/completions',
+  selfhosted7b: 'https://t-sushanth--selfhosted-llm-worker-serve.modal.run/v1/chat/completions',
+  selfhosted32b: 'https://t-sushanth--selfhosted-llm-worker-32b-serve.modal.run/v1/chat/completions',
+  selfhostedqwen3: 'https://t-sushanth--selfhosted-llm-worker-qwen3-32b-serve.modal.run/v1/chat/completions',
+};
+const OPENAI_COMPAT_KEY = {
+  openai: OPENAI_API_KEY,
+  groq: GROQ_API_KEY,
+  selfhosted7b: SELFHOSTED_LLM_API_KEY,
+  selfhosted32b: SELFHOSTED_LLM_API_KEY, // same Modal secret, both are our own deployments
+  selfhostedqwen3: SELFHOSTED_LLM_API_KEY,
+};
+
+// Anthropic tool schema -> OpenAI/Groq function-calling schema. Same
+// {name, description, input_schema} shape used everywhere in this file.
+function toOpenAiTools(anthropicTools) {
+  return anthropicTools.map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
+}
+
+// Normalizes an OpenAI-compatible streaming chat completion to the SAME
+// shape the rest of this file already expects from `stream.finalMessage()`
+// (Anthropic): { content: [{type:'text',text}|{type:'tool_use',name,input}],
+// usage: {input_tokens, output_tokens} }. Lets every downstream consumer
+// (record_field extraction, transition_flow, etc.) stay provider-blind.
+function reasoningEffortFor(model) {
+  // gpt-6-luna: 'none' is required for tool calling to work at all on Chat
+  // Completions, and it's also the only voice-safe-latency setting.
+  // gpt-oss-120b: 'none' returned a fully empty message in testing
+  // (2026-09-28) — it needs at least 'low' to emit visible content, not
+  // just to think less. Still burns some of the token budget on hidden
+  // reasoning before the visible reply.
+  if (model === 'gpt-6-luna') return 'none';
+  if (model === 'openai/gpt-oss-120b') return 'low';
+  return undefined;
+}
+
+// One non-streaming-shaped request/response cycle over an OpenAI-compatible
+// endpoint, still consumed as an SSE stream (so onText can fire per-delta
+// for TTFB timing). Returns the raw accumulated {text, toolCalls, usage} —
+// callers decide what a lack of text means.
+async function openAiCompatRequest({ provider, model, apiKey, messages, tools, onText }) {
+  const body = {
+    model,
+    stream: true,
+    messages,
+    // gpt-6-luna rejects `max_tokens` outright ("unsupported_parameter",
+    // found live 2026-09-28) — wants `max_completion_tokens` instead.
+    ...(model === 'gpt-6-luna' ? { max_completion_tokens: 300 } : { max_tokens: 300 }),
+    ...(tools.length > 0 ? { tools: toOpenAiTools(tools) } : {}),
+    ...(reasoningEffortFor(model) ? { reasoning_effort: reasoningEffortFor(model) } : {}),
+    // qwen3-32b-selfhosted is a reasoning model by default — found live
+    // 2026-09-29: with thinking on, its entire <think>...</think> trace
+    // leaks into `content` (the same field that gets spoken), with
+    // reasoning_content left null (no parser configured), burning the
+    // whole token budget on internal monologue before any real reply.
+    // enable_thinking:false (a request-time chat-template kwarg Qwen3's
+    // template itself respects) suppresses it cleanly — verified live to
+    // produce normal content + tool_calls together, no <think> leak.
+    ...(model === 'qwen3-32b-selfhosted' ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+  };
+  const res = await fetch(OPENAI_COMPAT_ENDPOINT[provider], {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`[call-loop] ${provider} chat completion failed: ${res.status} ${errText}`);
+  }
+  let text = '';
+  const toolCallsById = new Map(); // index -> {id, name, argsText}
+  let usage = null;
+  let buffer = '';
+  for await (const chunk of res.body) {
+    buffer += Buffer.from(chunk).toString('utf8');
+    let nlIdx;
+    while ((nlIdx = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nlIdx).trim();
+      buffer = buffer.slice(nlIdx + 1);
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') continue;
+      let evt;
+      try { evt = JSON.parse(data); } catch { continue; }
+      if (evt.usage) usage = evt.usage;
+      const delta = evt.choices?.[0]?.delta;
+      if (!delta) continue;
+      if (delta.content) {
+        text += delta.content;
+        onText(delta.content);
+      }
+      for (const tc of delta.tool_calls || []) {
+        const idx = tc.index ?? 0;
+        if (!toolCallsById.has(idx)) toolCallsById.set(idx, { id: tc.id || `call_${idx}`, name: '', argsText: '' });
+        const entry = toolCallsById.get(idx);
+        if (tc.function?.name) entry.name = tc.function.name;
+        if (tc.function?.arguments) entry.argsText += tc.function.arguments;
+      }
+    }
+  }
+  return {
+    text,
+    toolCalls: [...toolCallsById.values()],
+    usage: { input_tokens: usage?.prompt_tokens ?? 0, output_tokens: usage?.completion_tokens ?? 0 },
+  };
+}
+
+// Normalizes an OpenAI-compatible streaming chat completion to the SAME
+// shape the rest of this file already expects from `stream.finalMessage()`
+// (Anthropic): { content: [{type:'text',text}|{type:'tool_use',name,input}],
+// usage: {input_tokens, output_tokens} }. Lets every downstream consumer
+// (record_field extraction, transition_flow, etc.) stay provider-blind.
+//
+// Real finding (2026-09-28, Luna and gpt-oss-120b shopper-flow test): unlike
+// Anthropic, these Chat Completions endpoints do NOT interleave spoken text
+// with tool calls in one message — a turn that calls record_field comes
+// back with content:null, silently dropping the flow's "always say
+// something out loud too" requirement (server.js prompt text, ~line 3492).
+// Fix: if a turn produced tool calls but no text, immediately issue one
+// follow-up request with synthetic tool results appended, asking the model
+// to speak. This is the exact same "run it, then generate a follow-up turn
+// to react to it" pattern already used for calendar tools elsewhere in this
+// file — just applied here because these providers need it on EVERY
+// tool-calling turn, not only ones with a real external side effect. Adds
+// one full extra round-trip of latency on any turn that extracts a field —
+// a real cost of this architecture on these providers, not an artifact of
+// this test, and worth reporting alongside the win/loss judge scores.
+async function runOpenAiCompatibleTurn({ provider, model, system, messages, tools, onText }) {
+  const apiKey = OPENAI_COMPAT_KEY[provider];
+  if (!apiKey) throw new Error(`[call-loop] no API key configured for provider "${provider}"`);
+  const baseMessages = [{ role: 'system', content: system }, ...messages];
+
+  const first = await openAiCompatRequest({ provider, model, apiKey, messages: baseMessages, tools, onText });
+
+  const content = [];
+  for (const { name, argsText } of first.toolCalls) {
+    let input = {};
+    try { input = argsText ? JSON.parse(argsText) : {}; } catch { input = {}; }
+    content.push({ type: 'tool_use', name, input });
+  }
+
+  if (first.text) {
+    content.unshift({ type: 'text', text: first.text });
+    return { content, usage: first.usage };
+  }
+
+  if (first.toolCalls.length === 0) {
+    // No text, no tool calls — nothing to speak or record. Leave as-is
+    // rather than manufacturing a follow-up for an empty turn.
+    return { content, usage: first.usage };
+  }
+
+  // Tool calls with no speech: follow up once, synthetic tool results in
+  // hand, and ask for the spoken half of the turn.
+  const followUpMessages = [
+    ...baseMessages,
+    {
+      role: 'assistant',
+      content: null,
+      tool_calls: first.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: tc.argsText },
+      })),
+    },
+    ...first.toolCalls.map((tc) => ({ role: 'tool', tool_call_id: tc.id, content: 'recorded' })),
+  ];
+  const second = await openAiCompatRequest({
+    provider,
+    model,
+    apiKey,
+    messages: followUpMessages,
+    tools: [], // already called this turn's tools; this round is speech-only
+    onText,
+  });
+  if (second.text) content.unshift({ type: 'text', text: second.text });
+  return {
+    content,
+    usage: {
+      input_tokens: first.usage.input_tokens + second.usage.input_tokens,
+      output_tokens: first.usage.output_tokens + second.usage.output_tokens,
+    },
+  };
+}
 // Only needed for a flow's 'transfer' node type on a real (Twilio) phone
 // call — redirects the live call via Twilio's REST API. Not needed for
 // browser calls (there's nothing to redirect) or flows with no transfer node.
@@ -678,7 +931,15 @@ function parseSampleCallee(raw) {
   if (systemPrompt.length < 20 || systemPrompt.length > 6000) return null;
   if (greeting.length < 1 || greeting.length > 400) return null;
   const voice = sampleVoiceId(raw.voice) ? String(raw.voice).trim().toLowerCase() : null;
-  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability) };
+  // Optional jingle + sound effects carried inline (see callAudio.js sanitizeInlineCallAudio). Present but
+  // unusable = the whole sampleCallee is rejected, so a generator never ends up with an audio-less sample
+  // it believes has audio.
+  let callAudio;
+  if (raw.callAudio !== undefined) {
+    callAudio = sanitizeInlineCallAudio(raw.callAudio);
+    if (!callAudio) return null;
+  }
+  return { systemPrompt, greeting, voice, stability: parseStability(raw.stability), ...(callAudio ? { callAudio } : {}) };
 }
 // Website demo calls: flow supplied inline by the web app (no phone-number routing), keyed by CallSid.
 const demoFlows = new Map();
@@ -1036,7 +1297,7 @@ app.post('/twilio/voice', async (req, res) => {
     sampleCalleeOverrides.delete(normNumber(req.body.To));
     contextWrittenCallSids.add(callSid);
     setTimeout(() => contextWrittenCallSids.delete(callSid), 5 * 60_000).unref?.();
-    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, createdAt: Date.now() });
+    pendingCallContext.set(callSid, { isSampleCallee: true, systemPrompt: o.systemPrompt, greeting: o.greeting, voice: o.voice, stability: o.stability, ...(o.callAudio ? { callAudio: o.callAudio } : {}), createdAt: Date.now() });
   } else {
     const toNumber = req.query.routeAs || req.body.To;
     // ?direction=outbound (see /place-test-call below) resolves the DIALED
@@ -1054,6 +1315,7 @@ app.post('/twilio/voice', async (req, res) => {
       if (!resolvePromise) {
         resolvePromise = resolveInboundCall(toNumber, direction).catch((err) => {
           console.error('[call-loop] tenant lookup failed', err);
+          reportFailure('tenant:lookup', err);
           return null;
         });
         inFlightInboundResolves.set(callSid, resolvePromise);
@@ -1305,7 +1567,7 @@ app.get('/call-status/:sid', async (req, res) => {
 // Capability probe so clients (calldesktech scripts/generate-vertical-sample.mjs) can tell a poc that
 // supports sampleCallee from an older one, which would silently IGNORE the field and run the dialed
 // number's real tenant agent. Public, reveals nothing.
-app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1 }));
+app.get('/sample-callee-capability', (req, res) => res.json({ sampleCallee: 1, callAudio: 1 }));
 
 // Secret-gated lookup of the Twilio recording for a call we placed (shopper calls with record:true never
 // get a RecordingStatusCallback, so nothing stores the URL). Used with GET /recording-audio?url= to copy
@@ -1336,7 +1598,8 @@ app.get('/call-recording/:sid', async (req, res) => {
   }
 });
 
-app.post('/place-test-call', express.json(), async (req, res) => {
+// 2mb: a sample call may carry its jingle + effects inline (up to ~100KB of mu-law each, base64'd).
+app.post('/place-test-call', express.json({ limit: '2mb' }), async (req, res) => {
   const auth = req.headers['authorization'] || '';
   if (!TEST_CALL_SECRET || auth !== `Bearer ${TEST_CALL_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -1490,7 +1753,7 @@ app.post('/place-test-call', express.json(), async (req, res) => {
         .catch((err) => console.error('[call-loop] shopper internal-test call log failed (non-fatal)', err));
     }
 
-    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status, ...(sampleCallee ? { sampleCallee: true } : {}) });
+    res.json({ sid: callBody.sid, from: fromNumber, to: toNumber, status: callBody.status, ...(sampleCallee ? { sampleCallee: true, callAudio: !!sampleCallee.callAudio } : {}) });
   } catch (err) {
     console.error('[call-loop] place-test-call failed', err);
     res.status(500).json({ error: err.message });
@@ -1628,7 +1891,7 @@ wss.on('connection', (clientWs) => {
   const session = new CallSession(clientWs);
   clientWs.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   clientWs.on('close', () => session.close());
-  clientWs.on('error', (err) => console.error('[call-loop] client ws error', err));
+  clientWs.on('error', (err) => { console.error('[call-loop] client ws error', err); reportFailure('ws:client', err); });
 });
 
 twilioWss.on('connection', (twilioWs) => {
@@ -1639,7 +1902,7 @@ twilioWss.on('connection', (twilioWs) => {
   const session = new CallSession(adapter);
   adapter.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   adapter.on('close', () => session.close());
-  adapter.on('error', (err) => console.error('[call-loop] twilio adapter error', err));
+  adapter.on('error', (err) => { console.error('[call-loop] twilio adapter error', err); reportFailure('twilio:adapter', err); });
   adapter.on('dtmf', (digit) => session._onDtmfDigit(digit));
   // Per-tenant routing resolved back in /twilio/voice (see tenantLookup.js)
   // — handed to the session the same way a browser client does it, via a
@@ -1681,6 +1944,7 @@ twilioWss.on('connection', (twilioWs) => {
         samplePlayback: true,
         voice: resolved.voice,
         stability: resolved.stability,
+        ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
       }), false);
       const hangup = setTimeout(() => {
         console.log(`[call-loop] sample callee call ${callSid} hit max duration, hanging up`);
@@ -1769,7 +2033,7 @@ twilioWss.on('connection', (twilioWs) => {
         outcome: 'answered',
         duration_seconds: 0,
         is_internal_test: !!resolved.isDemo,
-      }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
+      }).then((id) => { session._callLogId = id; }).catch((err) => { console.error('[call-loop] call log insert failed', err); reportFailure('calllog:insert', err); });
       if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
         startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
       }
@@ -2041,7 +2305,7 @@ export class CallSession {
       }
     });
 
-    dg.on('error', (err) => console.error('[call-loop] deepgram error', err));
+    dg.on('error', (err) => { console.error('[call-loop] deepgram error', err); reportFailure('stt:deepgram', err); });
     dg.on('close', () => console.log('[call-loop] deepgram closed'));
   }
 
@@ -2325,13 +2589,7 @@ export class CallSession {
       }
       if (typeof msg.greeting === 'string' && msg.greeting.trim()) {
         this.greeting = msg.greeting;
-        this.history.push({ role: 'assistant', content: msg.greeting });
-        // Speak it as a real turn (not a special-cased id) so barge-in works
-        // on the greeting exactly like it does on every other response.
-        const turnId = ++this.turnSeq;
-        this.activeTurn = turnId;
-        this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
-        this._speak(msg.greeting, turnId, Date.now());
+        this._startGreetingTurn(msg.greeting);
       } else if (this.flow) {
         // No explicit greeting text — let the flow's own start node (usually
         // a 'greeting'-type node) generate the opening line itself, same as
@@ -2769,6 +3027,18 @@ export class CallSession {
     await this._generateTurn(turnId, Date.now(), { isNodeEntry: true, suppressTransitionTool: isCallOpening, isCallOpening });
   }
 
+  // The fixed opening line of a flow-less session (a sample call's demo agent, a browser demo): recorded
+  // in history and spoken as a real turn (not a special-cased id) so barge-in works on the greeting exactly
+  // like on every other response. The intro jingle, if this session has one, goes out first.
+  _startGreetingTurn(greeting) {
+    this._playIntroJingle();
+    this.history.push({ role: 'assistant', content: greeting });
+    const turnId = ++this.turnSeq;
+    this.activeTurn = turnId;
+    this.turnState = { id: turnId, llmDone: true, pendingTts: 0, startedSpeaking: false, saidNothing: false };
+    this._speak(greeting, turnId, Date.now());
+  }
+
   // Tenant's intro jingle, if any — sent straight to the adapter's paced-frame queue BEFORE the
   // greeting's LLM/TTS round trip even starts, so it's guaranteed to be first in the queue and the
   // greeting (which arrives ~1s later) simply plays after it. Deliberately not tied to any turn:
@@ -2887,7 +3157,18 @@ export class CallSession {
       return;
     }
 
-    const systemPrompt = (node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt) + (this.lang ? languageInstruction(this.lang) : '') + SLOT_SAFETY_INSTRUCTION + (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
+    // Real bug found via mystery-shopper real-call logs (2026-09-28): SLOT_SAFETY_INSTRUCTION
+    // is written entirely from the business agent's point of view ("the caller has not told
+    // you", "ask ONE soft clarification", "never state a detail the caller hasn't told you")
+    // and used to be appended to EVERY system prompt unconditionally, including the shopper's
+    // own turn. For a shopper session — where the "caller" in Deepgram's transcript is actually
+    // the BUSINESS agent asking the shopper questions — that text told the shopper's own LLM to
+    // behave as the one collecting fields from "the caller", i.e. to act like the receptionist
+    // instead of the customer. Two real calls reproduced this exactly: the shopper started
+    // asking the business agent for name/time/callback number instead of answering. Every other
+    // isShopper-aware branch in this file already gates on the flag (see _onUserTurnComplete's
+    // closing-shaped check, the shopper phone guard in _speak, etc.) — this one never did.
+    const systemPrompt = this._buildTurnSystemPrompt(node, isNodeEntry);
     // The call's very opening turn has no real caller utterance to justify
     // any edge yet — only the synthetic "[Call connected]" seed message —
     // so the transition tool is withheld for that one turn specifically.
@@ -2983,7 +3264,9 @@ export class CallSession {
     // Per-tenant sound effects — only offered when this tenant has enabled SFX assets AND the
     // global CALL_AUDIO_ASSETS_ENABLED switch is on (this.callAudio is null otherwise). Same
     // conditional-inclusion shape as the calendar tools above.
-    const sfxTool = node ? buildPlaySoundEffectTool(this.callAudio) : null;
+    // Offered to flow-less sessions too (a sample call's demo agent has no node): this.callAudio is only
+    // ever set from a tenant's assets or an explicit sample payload, so nothing else is affected.
+    const sfxTool = buildPlaySoundEffectTool(this.callAudio);
     if (sfxTool) tools.push(sfxTool);
 
     // 'subagent' node — attaches multiple pre-configured tools (any mix of
@@ -3078,15 +3361,10 @@ export class CallSession {
     }
 
     try {
-      const stream = anthropic.messages.stream({
-        model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
-        system: systemPrompt,
-        max_tokens: 300,
-        messages: this.history,
-        ...(tools.length > 0 ? { tools } : {}),
-      });
+      const turnModel = VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel;
+      const provider = MODEL_PROVIDER[turnModel] || 'anthropic';
 
-      stream.on('text', (delta) => {
+      const onText = (delta) => {
         if (this.activeTurn !== turnId) return;
         if (!firstTokenAt) {
           firstTokenAt = Date.now();
@@ -3095,15 +3373,35 @@ export class CallSession {
             backchannelTimer = null;
           }
           if (this._latency?.turnStart) this._latency.llmFirstToken = firstTokenAt;
-          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms (model ${VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel})`);
+          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms (model ${turnModel})`);
         }
         assistantText += delta;
         chunker.push(delta);
-      });
+      };
 
-      const final = await stream.finalMessage();
+      let final;
+      if (provider === 'anthropic') {
+        const stream = anthropic.messages.stream({
+          model: turnModel,
+          system: systemPrompt,
+          max_tokens: 300,
+          messages: this.history,
+          ...(tools.length > 0 ? { tools } : {}),
+        });
+        stream.on('text', onText);
+        final = await stream.finalMessage();
+      } else {
+        final = await runOpenAiCompatibleTurn({
+          provider,
+          model: turnModel,
+          system: systemPrompt,
+          messages: this.history,
+          tools,
+          onText,
+        });
+      }
       if (final.usage) {
-        this.cost.addLlmUsage(VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+        this.cost.addLlmUsage(turnModel, final.usage.input_tokens, final.usage.output_tokens);
         console.log(`[llm-usage] turn ${turnId} node=${node?.id}(${node?.type}) in=${final.usage.input_tokens} out=${final.usage.output_tokens} sysChars=${systemPrompt.length} histMsgs=${this.history.length} histChars=${JSON.stringify(this.history).length} tools=${tools.length}`);
       }
       // Real bug found via mystery-shopper: this used to live inside the
@@ -3363,6 +3661,7 @@ export class CallSession {
       }
     } catch (err) {
       console.error('[call-loop] LLM error', err);
+      reportFailure('llm:turn', err);
       this.send({ type: 'error', message: 'LLM request failed' });
     } finally {
       if (backchannelTimer) clearTimeout(backchannelTimer);
@@ -3455,6 +3754,31 @@ export class CallSession {
   // explicitly says the opening line has already been given and not to
   // repeat it, leaning on conversation history (which already has it)
   // instead of restating the step instructions as if they were still owed.
+  // Assembles the full system prompt for one LLM turn: the base prompt (a
+  // flow node's own prompt, or this.systemPrompt for a flow-less session
+  // like the shopper), plus whichever global add-ons apply. Real bug found
+  // via mystery-shopper real-call logs (2026-09-28): SLOT_SAFETY_INSTRUCTION
+  // is written entirely from the business agent's point of view ("the
+  // caller has not told you", "ask ONE soft clarification", "never state a
+  // detail the caller hasn't told you") and used to be appended here
+  // unconditionally, including on the shopper's own turn. For a shopper
+  // session, the "caller" in ITS OWN transcript is actually the business
+  // agent asking IT questions — so that instruction told the shopper's LLM
+  // to behave like the one collecting fields from "the caller", i.e. to act
+  // like the receptionist instead of the customer. Two real calls
+  // reproduced this exactly: the shopper started asking the business agent
+  // for name/time/callback number instead of answering. Every other
+  // isShopper-aware branch in this file already gates on the flag (see
+  // _onUserTurnComplete's closing-shaped check, the shopper phone guard in
+  // _speak) — this was the one spot that never did.
+  _buildTurnSystemPrompt(node, isNodeEntry) {
+    const base = node ? this._buildNodeSystemPrompt(node, isNodeEntry) : this.systemPrompt;
+    return base +
+      (this.lang ? languageInstruction(this.lang) : '') +
+      (this.isShopper ? '' : SLOT_SAFETY_INSTRUCTION) +
+      (this.expressiveDelivery ? EXPRESSIVE_DELIVERY_INSTRUCTION : '');
+  }
+
   _buildNodeSystemPrompt(node, isNodeEntry) {
     const gs = this.flow?.globalSettings || {};
     // Real call finding (2026-09-16, live test call): the prompt never told
@@ -3951,6 +4275,7 @@ export class CallSession {
       });
     } catch (err) {
       console.error(`[call-loop] function node "${node.id}" webhook failed`, err);
+      reportFailure('flow:function_node', err);
       this.history.push({
         role: 'user',
         content: `[System note: function "${node.function}" failed — let the caller know something went wrong and offer to have someone follow up]`,
@@ -4010,6 +4335,7 @@ export class CallSession {
       }
     } catch (err) {
       console.error(`[call-loop] sms node "${node.id}" request failed`, err);
+      reportFailure('flow:sms_node', err);
       this.history.push({
         role: 'user',
         content: `[System note: the text message failed to send — let the caller know and offer another way to get the info]`,
@@ -4125,6 +4451,7 @@ export class CallSession {
       }
     } catch (err) {
       console.error(`[call-loop] code node "${node.id}" execution failed`, err);
+      reportFailure('flow:code_node', err);
       this.history.push({
         role: 'user',
         content: `[System note: the code step failed (${err.message}) — let the caller know something went wrong and offer to have someone follow up]`,
@@ -4215,6 +4542,7 @@ export class CallSession {
       }
     } catch (err) {
       console.error(`[call-loop] mcp node "${node.id}" failed`, err);
+      reportFailure('flow:mcp_node', err);
       this.history.push({
         role: 'user',
         content: `[System note: the MCP tool call failed (${err.message}) — let the caller know something went wrong and offer to have someone follow up]`,
@@ -4373,6 +4701,7 @@ export class CallSession {
       // action= callback (not this WS) is what learns the real outcome.
     } catch (err) {
       console.error('[call-loop] transfer failed', err);
+      reportFailure('call:transfer', err);
       this.close();
     }
   }
@@ -4604,6 +4933,7 @@ export class CallSession {
       }
     } catch (err) {
       console.error(`[call-loop] calendar tool ${toolUse.name} failed`, err);
+      reportFailure('flow:calendar_tool', err);
       note = 'The calendar system is temporarily unavailable. Apologize to the caller and offer to take their info for a callback instead.';
     }
     this.history.push({ role: 'user', content: `[System note: ${note}]` });
@@ -4948,8 +5278,9 @@ export class CallSession {
       TTS_GATEWAY_API_KEY ? { headers: { Authorization: `Bearer ${TTS_GATEWAY_API_KEY}` } } : undefined
     );
     ws.binaryType = 'arraybuffer';
+    armTtsGatewayPing(ws);
     ws.on('open', () => console.log('[call-loop] tts gateway connected'));
-    ws.on('error', (err) => console.error('[call-loop] tts gateway error', err));
+    ws.on('error', (err) => { console.error('[call-loop] tts gateway error', err); reportFailure('tts:gateway', err); });
     ws.on('close', () => {
       console.log('[call-loop] tts gateway closed');
       if (this.ttsWs === ws) {
@@ -5162,7 +5493,7 @@ export class CallSession {
     try {
       await fetchPcm(text, controller.signal, turnId, onChunk);
     } catch (err) {
-      if (err.name !== 'AbortError') console.error(`[call-loop] ${label} stream error`, err);
+      if (err.name !== 'AbortError') { console.error(`[call-loop] ${label} stream error`, err); reportFailure('stream:' + label, err); }
     }
 
     // Fetch may have finished well before an earlier sentence's flush did —
@@ -5234,6 +5565,7 @@ export class CallSession {
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');
         console.error(`[call-loop] ElevenLabs request failed: ${res.status} ${detail.slice(0, 220)}`);
+        reportFailure('tts:elevenlabs', new Error(`ElevenLabs HTTP ${res.status}`));
         return;
       }
       for await (const chunk of res.body) {
@@ -5282,6 +5614,7 @@ export class CallSession {
       }
       if (!res.ok || !res.body) {
         console.error(`[call-loop] Cartesia request failed: ${res.status}`);
+        reportFailure('tts:cartesia', new Error(`Cartesia HTTP ${res.status}`));
         return;
       }
       for await (const chunk of res.body) {
@@ -5751,6 +6084,16 @@ CallSession.prototype._runPostCallAnalysis = async function (transcript) {
 // Guarded so importing this module from tests (Vitest sets NODE_ENV=test) never binds a real
 // port or kicks off the retention/keepalive intervals below — everything above this point (routes,
 // CallSession, etc.) is still defined and importable for unit testing.
+// Process-level failures: log, report (awaited so the email goes out), then exit as Node does by default.
+if (process.env.NODE_ENV !== 'test') {
+  for (const evt of ['uncaughtException', 'unhandledRejection']) {
+    process.on(evt, (err) => {
+      console.error(`[call-loop] ${evt}`, err);
+      reportCrash(evt, err).finally(() => process.exit(1));
+    });
+  }
+}
+
 if (process.env.NODE_ENV !== 'test') server.listen(PORT, () => {
   console.log(`[call-loop] listening on http://localhost:${PORT}`);
   console.log(`[call-loop] TTS gateway: ${TTS_GATEWAY_WS_URL}`);

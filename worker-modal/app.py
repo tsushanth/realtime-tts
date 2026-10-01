@@ -75,7 +75,36 @@ def to_pcm16(samples) -> bytes:
     # WebSocket that was billing it closes — it does not create an idle
     # billing tail the way the RunPod pod's timer did, since the call
     # itself is the billable unit, not this window.
-    scaledown_window=120,
+    #
+    # NOT APPLIED — proposal only, needs a human cost decision:
+    # `min_containers=1` here would keep one T4 container warm 24/7,
+    # eliminating the CUDA-init + Kokoro model-load cold start that is the
+    # likely cause of the 45s "warm (dial) timed out" failures whenever a
+    # call arrives after >120s idle. Modal's SDK supports `min_containers`
+    # on @app.function/@app.cls for exactly this ("keep warm") use case.
+    # Cost: T4 list price is ~$0.59/hr on Modal -> ~$0.59 * 24 * 30 =
+    # ~$425/month, ongoing, whether or not a single call comes in, for as
+    # long as this stays set. That is a real new recurring spend commitment,
+    # not a one-off — do not apply without the cost being explicitly signed
+    # off (see global autonomy policy: new recurring spend is a stop-and-ask
+    # case, not a default-to-act one).
+    # Cheaper alternatives worth considering before going always-on:
+    #  - Raise scaledown_window (e.g. 120 -> 600-900s): keeps a container
+    #    alive through longer gaps between calls at zero idle GPU cost
+    #    increase beyond whatever traffic already causes, but doesn't help
+    #    the very first call after a longer lull.
+    #  - Scheduled pre-warm: a Modal `@app.function` on a cron schedule (or
+    #    an external trigger from call-loop-poc's own known busy windows)
+    #    that pings the container awake ~2-3 min before expected traffic,
+    #    paying only for the pre-warm window instead of 24/7.
+    # min_containers=1,
+    # Raised 120 -> 600s (2026-09-29): cheap, bounded, usage-proportional
+    # mitigation for the cold-start-after-idle issue above, short of the
+    # $425/mo always-on commitment. Keeps a warm container through the
+    # gaps between calls that are actually typical; does not help the very
+    # first call after a longer lull (needs the pre-warm or always-on
+    # option for that).
+    scaledown_window=600,
     max_containers=10,
     secrets=[modal.Secret.from_name("tts-ws-auth-token")],
 )

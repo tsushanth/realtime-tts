@@ -44,7 +44,7 @@ describe('sampleCallee', () => {
 
   it('advertises the capability without revealing the allowlist', async () => {
     const res = await request(app).get('/sample-callee-capability');
-    expect(res.body).toEqual({ sampleCallee: 1 });
+    expect(res.body).toEqual({ sampleCallee: 1, callAudio: 1 });
   });
 
   it('rejects sampleCallee without shopper:true, and a malformed sampleCallee', async () => {
@@ -108,6 +108,43 @@ describe('sampleCallee', () => {
     await voice(SID('a'), TO, FROM);
     expect(pendingCallContext.get(SID('a'))?.isSampleCallee).toBeUndefined();
     expect(sampleCalleeOverrides.size).toBe(0);
+  });
+
+  describe('callAudio (jingle + sound effects on a sample call)', () => {
+    const b64 = (n, v = 1) => Buffer.alloc(n, v).toString('base64');
+    const audio = () => ({ jingle: { name: 'intro', audio: b64(32000, 0xaa) }, effects: [{ name: 'booking_confirmed_chime', description: 'After the booking is confirmed', audio: b64(16000, 0xbb) }] });
+
+    it('accepts it, confirms it back to the caller, and keeps it on the override', async () => {
+      const res = await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, callAudio: audio() } });
+      expect(res.status).toBe(200);
+      expect(res.body.callAudio).toBe(true);
+      expect(sampleCalleeOverrides.get(TO)?.callAudio.effects[0].name).toBe('booking_confirmed_chime');
+    });
+    it('a sample with no callAudio reports callAudio:false, so a generator can tell the difference', async () => {
+      const res = await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+      expect(res.status).toBe(200);
+      expect(res.body.callAudio).toBe(false);
+    });
+    it('accepts a full-size payload (12s jingle) that exceeds express.json\'s 100kb default', async () => {
+      const res = await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, callAudio: { jingle: { name: 'intro', audio: b64(96000) } } } });
+      expect(res.status).toBe(200);
+      expect(res.body.callAudio).toBe(true);
+    });
+    it('FAILS CLOSED (400, no call placed) when callAudio is present but unusable, instead of silently producing an audio-less sample', async () => {
+      for (const bad of [{ jingle: { name: 'x', audio: '' } }, { effects: [{ name: 'bad name', description: 'd', audio: b64(10) }] }, 'nope', {}]) {
+        const res = await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, callAudio: bad } });
+        expect(res.status).toBe(400);
+      }
+      expect(twilioCalls).toEqual([]);
+      expect(sampleCalleeOverrides.size).toBe(0);
+    });
+    it('hands the callAudio to the call context when /twilio/voice consumes the override', async () => {
+      await place({ toNumber: TO, shopper: true, sampleCallee: { ...callee, callAudio: audio() } });
+      await voice(SID('a'), TO, FROM);
+      const ctx = pendingCallContext.get(SID('a'));
+      expect(ctx.isSampleCallee).toBe(true);
+      expect(ctx.callAudio.jingle.name).toBe('intro');
+    });
   });
 
   it('/call-recording: 401 without secret, 404 for a sid we did not place, 200 for one we did', async () => {
