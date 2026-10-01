@@ -727,6 +727,18 @@ const SHOPPER_MAX_DURATION_MS = 3 * 60 * 1000;
 // than racing Twilio's hangup. NOTE: this was first believed to fix calls that saved no transcript; that diagnosis was WRONG
 // (those calls had no conversation at all because the ElevenLabs quota was exhausted). Kept as a harmless safety margin.
 const SAMPLE_SHOPPER_GRACE_MS = 10_000;
+// A SAMPLE call's shopper is patient: it was clipping the agent twice over, answering on the agent's first fragment (end-of-turn
+// declared in a mid-reply pause) and hanging up mid-goodbye the moment the agent said something closing-shaped after the caller's
+// own "bye". For a sample it lingers before hanging up and waits for higher end-of-turn confidence. Mystery-shopper tests (not
+// samples) keep their fast behavior.
+const SAMPLE_SHOPPER_HANGUP_LINGER_MS = 7000;
+const SAMPLE_SHOPPER_EOT_THRESHOLD = '0.75'; // Deepgram Flux "accurate" (see TRANSCRIPTION_MODE_THRESHOLDS)
+export function shopperHangupLingerMs(callSid) {
+  return callSid && isSampleSid(callSid) ? SAMPLE_SHOPPER_HANGUP_LINGER_MS : 0;
+}
+export function sampleShopperEotThreshold(callSid) {
+  return callSid && isSampleSid(callSid) ? SAMPLE_SHOPPER_EOT_THRESHOLD : null;
+}
 export function shopperMaxDurationMs(callSid) {
   return callSid && isSampleSid(callSid) ? SAMPLE_CALL_TIME_LIMIT_SEC * 1000 - SAMPLE_SHOPPER_GRACE_MS : SHOPPER_MAX_DURATION_MS;
 }
@@ -1780,6 +1792,9 @@ twilioWss.on('connection', (twilioWs) => {
         ...(resolved.shopperVoice ? { samplePlayback: true, voice: resolved.shopperVoice.voice, stability: resolved.shopperVoice.stability } : {}),
         ...(resolved.language ? { language: resolved.language } : {}),
       }), false);
+      // Sample-call shopper: wait for higher end-of-turn confidence so it does not answer in the middle of the agent's reply.
+      const sampleEot = sampleShopperEotThreshold(callSid);
+      if (sampleEot) { session.dgConnection?.close(); session._connectDeepgram(sampleEot); }
       // A caller who opens the conversation (e.g. the person who answers an outbound call): nudge a first turn.
       if (resolved.speakFirst) {
         setTimeout(() => session._onUserTurnComplete('[The call just connected and the other side has not spoken yet. Begin the conversation in character now.]'), 900);
@@ -2653,8 +2668,7 @@ export class CallSession {
     // might already be silence/noise on the line.
     if (this.isShopper && this._shopperClosingCount >= 1 && (this.lang?.closingRe || CLOSING_SHAPED_RE).test(userText.trim())) {
       console.log(`[call-loop] shopper: other party also closing-shaped (count=${this._shopperClosingCount}, matched text: "${userText.trim()}"), hanging up immediately`);
-      this._closing = true;
-      this.close();
+      this._shopperHangUp();
       return;
     }
     // Real bug, found via mystery-shopper + code review: this function used
@@ -2856,6 +2870,18 @@ export class CallSession {
     console.log(`[call-loop] intro jingle (${this.callAudio.jingle.length} bytes)`);
     this.clientWs.send(this.callAudio.jingle, { binary: true, format: 'mulaw8k' });
     recordAudioEvent(audioEventSid(this), this._callStartedAt, 'jingle', 'intro');
+  }
+
+  // The shopper has decided to end the call. Stop generating turns immediately (so it cannot talk over the other side), then close,
+  // after a delay for a SAMPLE call so the agent can finish its sentence (see shopperHangupLingerMs). baseDelayMs keeps the
+  // shopper's own proactive hang-up wait.
+  _shopperHangUp(baseDelayMs = 0) {
+    this._closing = true;
+    const delay = Math.max(baseDelayMs, shopperHangupLingerMs(this.callSid));
+    if (delay === 0) { this.close(); return; }
+    console.log(`[call-loop] shopper hanging up in ${delay}ms (letting the other side finish)`);
+    const t = setTimeout(() => this.close(), delay);
+    t.unref?.();
   }
 
   // A turn whose ONLY output was the play_sound_effect call (no spoken words) leaves the agent mute: the chime plays, then
@@ -3395,8 +3421,7 @@ export class CallSession {
             this._shopperClosingCount = (this._shopperClosingCount || 0) + 1;
             if (this._shopperClosingCount >= 2) {
               console.log('[call-loop] shopper: second closing-shaped reply, hanging up proactively');
-              this._closing = true;
-              setTimeout(() => this.close(), 2000);
+              this._shopperHangUp(2000);
             }
           }
         }

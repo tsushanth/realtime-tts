@@ -9,7 +9,7 @@ process.env.TWILIO_ACCOUNT_SID = 'AC' + '1'.repeat(32);
 process.env.TWILIO_AUTH_TOKEN = 'twilio-token';
 process.env.DEMO_FROM_NUMBER = '+15550000009';
 
-const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents, samplePlacedSidByTo, shopperMaxDurationMs } = await import('../server.js');
+const { app, pendingCallContext, sampleCalleeOverrides, sampleCallSids, sampleAudioEvents, samplePlacedSidByTo, shopperMaxDurationMs, shopperHangupLingerMs, sampleShopperEotThreshold } = await import('../server.js');
 
 const callee = { systemPrompt: 'You are the after-hours line for a fictional brokerage.', greeting: 'Thanks for calling, how can I help?' };
 const TO = '+15550000001';
@@ -192,6 +192,21 @@ describe('sampleCallee', () => {
     it('any other shopper call (mystery shopper tests) keeps the 3-minute default', () => {
       expect(shopperMaxDurationMs(SID('e'))).toBe(180_000);
       expect(shopperMaxDurationMs(undefined)).toBe(180_000);
+    });
+  });
+
+  describe('sample shopper patience (the caller was clipping the agent: answering on its first fragment, then hanging up mid-goodbye)', () => {
+    it('a sample call\'s shopper lingers before hanging up so the agent can finish; other shoppers hang up at once as before', async () => {
+      await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+      expect(shopperHangupLingerMs(SID('d'))).toBe(7000);
+      expect(shopperHangupLingerMs(SID('e'))).toBe(0);
+      expect(shopperHangupLingerMs(undefined)).toBe(0);
+    });
+    it('a sample call\'s shopper waits for higher end-of-turn confidence (0.75); other shoppers keep the default', async () => {
+      await place({ toNumber: TO, shopper: true, sampleCallee: callee });
+      expect(sampleShopperEotThreshold(SID('d'))).toBe('0.75');
+      expect(sampleShopperEotThreshold(SID('e'))).toBeNull();
+      expect(sampleShopperEotThreshold(undefined)).toBeNull();
     });
   });
 

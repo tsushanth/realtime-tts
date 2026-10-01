@@ -282,3 +282,37 @@ describe('_followUpAfterSilentSoundEffect (a turn whose ONLY output was the soun
     expect(await CallSession.prototype._followUpAfterSilentSoundEffect.call(s, [sfx], '  \n ', 4)).toBe(true);
   });
 });
+
+
+describe('_shopperHangUp', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.spyOn(console, 'log').mockImplementation(() => {}); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  const mk = (callSid) => ({ callSid, _closing: false, close: vi.fn() });
+
+  it('a normal shopper hangs up immediately and stops generating turns (unchanged behavior)', () => {
+    const s = mk('CA' + 'e'.repeat(32));
+    CallSession.prototype._shopperHangUp.call(s);
+    expect(s._closing).toBe(true);
+    expect(s.close).toHaveBeenCalledTimes(1);
+  });
+  it('a SAMPLE call\'s shopper stops generating turns at once but lingers 7s before hanging up, so the agent finishes its sentence', async () => {
+    const { samplePlacedSidByTo, sampleCallSids } = await import('../server.js');
+    const sid = 'CA' + 'd'.repeat(32);
+    sampleCallSids.set(sid, Date.now() + 60_000);
+    const s = mk(sid);
+    CallSession.prototype._shopperHangUp.call(s);
+    expect(s._closing).toBe(true);
+    expect(s.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(6900);
+    expect(s.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(s.close).toHaveBeenCalledTimes(1);
+    sampleCallSids.delete(sid); void samplePlacedSidByTo;
+  });
+  it('an explicit longer base delay still wins (the shopper\'s own proactive hang-up waits 2s)', () => {
+    const s = mk('CA' + 'e'.repeat(32));
+    CallSession.prototype._shopperHangUp.call(s, 2000);
+    vi.advanceTimersByTime(1900); expect(s.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200); expect(s.close).toHaveBeenCalledTimes(1);
+  });
+});
