@@ -26,6 +26,45 @@ browser mic --WS--> this server --WS--> Deepgram (STT)
 3. Open `http://localhost:8090`, click "Start call", allow mic access, talk. Interrupt the
    assistant mid-reply to test barge-in — it should cut off within one Deepgram VAD tick.
 
+## Switching LLM models (`llmProviders.js`)
+
+Anthropic (Haiku 4.5 by default, Sonnet 4.6) is the native path. Any other model is reached through an OpenAI-compatible
+chat-completions endpoint; the tools (`record_field`, `transition_flow`, `play_sound_effect`, calendar, subagent) are defined once
+in Anthropic's shape and translated, and the answer is converted back, so the flow engine never knows which provider replied.
+
+| Level | How |
+|---|---|
+| per call | context message `{"model": "gpt-6-luna"}` |
+| per node | `node.params.model` |
+| global default | `LLM_MODEL` env (an unusable value falls back to Haiku with a warning) |
+| a new model | add it to `LLM_EXTRA_MODELS` (JSON array) and set that provider's key env var |
+
+A model is selectable only when its key env var is set (Anthropic needs `ANTHROPIC_API_KEY`), so one that cannot answer can never be
+chosen. If a non-Anthropic provider errors **before it has spoken**, the turn is retried on Haiku and the call carries on; after speech
+has started the error is surfaced (a half-spoken turn cannot be restarted). The startup log lists every model and whether it is available.
+
+Built in: `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `gpt-6-luna` (`OPENAI_API_KEY`), `gemini-2.5-flash-lite` (`GEMINI_API_KEY`, **untested**).
+
+Adding a model without a code change (example: xAI):
+
+```
+LLM_EXTRA_MODELS='[{"id":"grok-fast","provider":"xai","endpoint":"https://api.x.ai/v1/chat/completions",
+  "keyEnv":"XAI_API_KEY","price":{"in":0.2,"out":0.5},"quirks":{"streamUsage":true}}]'
+```
+
+Fields: `id`, `provider`, `endpoint` (https; http only for localhost), `keyEnv`, `price` (USD per million tokens, used by the cost tracker),
+optional `status:"untested"`, and `quirks`: `maxTokensParam` (`max_tokens` | `max_completion_tokens`), `reasoningEffort`, `streamUsage`
+(ask the provider to report token usage in the stream; without it the cost tracker sees 0 tokens) and `extraBody` (extra request fields).
+Bad entries are skipped with a warning.
+
+Things to know before putting a non-Anthropic model on real calls:
+- These providers often answer a tool-calling turn with no spoken text. The adapter then makes one extra request (synthetic tool
+  result, tools off) to get the speech, which is a measured reason such models respond slower than Haiku.
+- Side calls that force an Anthropic tool (forced `transition_flow` retries, `extract_variable`) always run on an Anthropic model.
+  Sentiment and post-call analysis are Anthropic-only as before.
+- Passing the stress variants in `internal-docs/cost-lab/llm` (misread digits, corrections, off-topic questions) is the gate for a
+  new model, not the cooperative case.
+
 ## Per-call context (for embedding this in a multi-tenant product)
 
 By default every call gets the same hardcoded assistant (`SYSTEM_PROMPT` / `TTS_VOICE`

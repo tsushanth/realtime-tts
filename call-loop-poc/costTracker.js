@@ -2,6 +2,11 @@
 // per-provider rates (verified this session, not recalled from training
 // data — re-verify before trusting these for actual pricing decisions,
 // providers change rates without notice).
+import { buildRegistry, ratesFor } from './llmProviders.js';
+
+// Per-token rates for models outside this table come from the model registry (llmProviders.js).
+const LLM_REGISTRY = buildRegistry();
+
 export const RATES = {
   deepgramFluxPerMin: 0.0065,
   claude: {
@@ -80,7 +85,7 @@ export class CallCostTracker {
     const sttCost = (this.sttSeconds / 60) * RATES.deepgramFluxPerMin;
     let llmCost = 0;
     for (const { model, inputTokens, outputTokens } of this.llmUsage) {
-      const rate = RATES.claude[model];
+      const rate = RATES.claude[model] ?? ratesFor(LLM_REGISTRY, model);
       if (!rate) continue; // unknown model — skip rather than guess a wrong rate
       llmCost += inputTokens * rate.input + outputTokens * rate.output;
     }

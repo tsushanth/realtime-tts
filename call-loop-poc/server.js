@@ -21,6 +21,7 @@ import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGua
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { CallCostTracker } from './costTracker.js';
 import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME, browserPcmForClip, loadBrowserDemoCallAudio } from './callAudio.js';
+import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
@@ -426,8 +427,14 @@ function prewarmLangFillers(lang, voiceId) {
 // per call via the context message's `model` field (see CallSession.
 // onClientMessage) so a quality-sensitive tenant can opt into a stronger
 // model without changing what every other call pays/suffers in latency.
-const LLM_MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
-const VALID_LLM_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6']);
+// Model registry (llmProviders.js): Anthropic models are native, anything else is an OpenAI-compatible endpoint. A model is
+// selectable only when its key env var is set; LLM_EXTRA_MODELS adds models without a code change. LLM_MODEL sets the default.
+const LLM_REGISTRY = buildRegistry();
+const HAS_ANTHROPIC_KEY = !!process.env.ANTHROPIC_API_KEY;
+const LLM_MODEL = resolveDefaultModel(LLM_REGISTRY, process.env.LLM_MODEL, process.env, HAS_ANTHROPIC_KEY);
+// Same `.has(id)` interface the rest of this file already uses; true only for registered models that can actually answer.
+const VALID_LLM_MODELS = { has: (id) => typeof id === 'string' && isUsable(LLM_REGISTRY.get(id), process.env, HAS_ANTHROPIC_KEY) };
+console.log(`[call-loop] LLM default: ${LLM_MODEL}. Models: ${describeModels(LLM_REGISTRY, process.env, HAS_ANTHROPIC_KEY)}`);
 // Only needed for a flow's 'transfer' node type on a real (Twilio) phone
 // call — redirects the live call via Twilio's REST API. Not needed for
 // browser calls (there's nothing to redirect) or flows with no transfer node.
@@ -3249,15 +3256,8 @@ export class CallSession {
     }
 
     try {
-      const stream = anthropic.messages.stream({
-        model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
-        system: systemPrompt,
-        max_tokens: 300,
-        messages: this.history,
-        ...(tools.length > 0 ? { tools } : {}),
-      });
-
-      stream.on('text', (delta) => {
+      let turnModel = VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel;
+      const onText = (delta) => {
         if (this.activeTurn !== turnId) return;
         if (!firstTokenAt) {
           firstTokenAt = Date.now();
@@ -3266,15 +3266,37 @@ export class CallSession {
             backchannelTimer = null;
           }
           if (this._latency?.turnStart) this._latency.llmFirstToken = firstTokenAt;
-          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms (model ${VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel})`);
+          console.log(`[call-loop] turn ${turnId} LLM TTFB: ${firstTokenAt - turnStartedAt}ms (model ${turnModel})`);
         }
         assistantText += delta;
         chunker.push(delta);
+      };
+      // Anthropic: native streaming, spoken text and tool calls arrive in one message (unchanged behaviour).
+      const runAnthropicTurn = async (model) => {
+        const stream = anthropic.messages.stream({
+          model,
+          system: systemPrompt,
+          max_tokens: 300,
+          messages: this.history,
+          ...(tools.length > 0 ? { tools } : {}),
+        });
+        stream.on('text', onText);
+        return stream.finalMessage();
+      };
+      // Any other registered model goes through its OpenAI-compatible endpoint; if it fails before speaking, Haiku answers.
+      const runSelected = (spec) => (spec.native
+        ? runAnthropicTurn(spec.id)
+        : runOpenAiCompatibleTurn({ spec, apiKey: process.env[spec.keyEnv], system: systemPrompt, messages: this.history, tools, onText }));
+      const gen = await generateWithFallback({
+        selected: LLM_REGISTRY.get(turnModel),
+        runSelected,
+        runFallback: runAnthropicTurn,
+        hasSpoken: () => assistantText.length > 0,
       });
-
-      const final = await stream.finalMessage();
+      const final = gen.final;
+      turnModel = gen.usedModel; // the model that actually answered (Haiku after a fallback), for cost and logs
       if (final.usage) {
-        this.cost.addLlmUsage(VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel, final.usage.input_tokens, final.usage.output_tokens);
+        this.cost.addLlmUsage(turnModel, final.usage.input_tokens, final.usage.output_tokens);
         console.log(`[llm-usage] turn ${turnId} node=${node?.id}(${node?.type}) in=${final.usage.input_tokens} out=${final.usage.output_tokens} sysChars=${systemPrompt.length} histMsgs=${this.history.length} histChars=${JSON.stringify(this.history).length} tools=${tools.length}`);
       }
       // Real bug found via mystery-shopper: this used to live inside the
@@ -3501,7 +3523,7 @@ export class CallSession {
               const last = this.history[this.history.length - 1];
               const msgs = last?.role === 'user' ? this.history : [...this.history, { role: 'user', content: '[System note: you told the caller you are transferring them. Do it now.]' }];
               const r = await anthropic.messages.create({
-                model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+                model: auxAnthropicModel(LLM_REGISTRY, VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
                 system: systemPrompt, max_tokens: 120, messages: msgs, tools: [tt], tool_choice: { type: 'tool', name: 'transition_flow' },
               });
               const tu = r.content.find((b) => b.type === 'tool_use');
@@ -3519,7 +3541,7 @@ export class CallSession {
               const last = this.history[this.history.length - 1];
               const msgs = last?.role === 'user' ? this.history : [...this.history, { role: 'user', content: '[System note: choose the next step now.]' }];
               const r = await anthropic.messages.create({
-                model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+                model: auxAnthropicModel(LLM_REGISTRY, VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
                 system: systemPrompt, max_tokens: 120, messages: msgs, tools: [tt], tool_choice: { type: 'tool', name: 'transition_flow' },
               });
               const tu = r.content.find((b) => b.type === 'tool_use');
@@ -4491,7 +4513,7 @@ export class CallSession {
       .map((m) => `${m.role === 'user' ? 'Caller' : 'Agent'}: ${m.content}`).join('\n');
     try {
       const res = await anthropic.messages.create({
-        model: (VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
+        model: auxAnthropicModel(LLM_REGISTRY, VALID_LLM_MODELS.has(node?.params?.model) ? node.params.model : this.llmModel),
         max_tokens: 400,
         system: 'You extract named values from a phone call so far. Return a value for every field, or null when the conversation does not clearly state it. Never guess.' +
           (typeof node.prompt === 'string' && node.prompt.trim() ? `\nGuidance: ${node.prompt.trim()}` : ''),
