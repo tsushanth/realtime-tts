@@ -284,10 +284,12 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     return null;
   }
 
-  const versions = await pg(
-    'calldesk_agent_versions',
-    `id=eq.${agentVersionId}&select=voice_engine,tts_backend,flow_id,agent_id`
-  );
+  // llm_model / tts_model are the version's optional model choice (calldesktech migration 062). pg() returns null on ANY failed
+  // query, which would make this number unroutable, so if the query that names the new columns fails (for example before the
+  // migration is applied) retry once with the original column list: model choice is optional, a call must still connect.
+  const BASE_COLS = 'voice_engine,tts_backend,flow_id,agent_id';
+  let versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model`);
+  if (versions === null) versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS}`);
   const version = versions?.[0];
   // 'retell' versions are handled entirely on Retell's side (this call
   // wouldn't even reach call-loop-poc's Twilio number for those) — only
@@ -320,6 +322,9 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
       globalSettings: flowRow.global_settings || {},
     },
     ttsBackend: version.tts_backend || undefined,
+    // Optional per-version model choice (undefined = the engine defaults). The engine ignores a model it cannot use.
+    llmModel: version.llm_model || undefined,
+    ttsModel: version.tts_model || undefined,
     // Per-tenant jingle + sound effects (undefined for a tenant with none, or when the global
     // CALL_AUDIO_ASSETS_ENABLED kill switch is off) — see callAudio.js.
     callAudio,

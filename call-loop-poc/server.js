@@ -1835,18 +1835,7 @@ twilioWss.on('connection', (twilioWs) => {
       }, shopperMaxDurationMs(callSid));
       return;
     }
-    session.onClientMessage(JSON.stringify({
-      type: 'context',
-      flow: resolved.flow,
-      ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
-      ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
-      ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
-      ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
-      ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
-      ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
-      ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
-      ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
-    }), false);
+    session.onClientMessage(JSON.stringify(buildTenantContextMessage(resolved)), false);
 
     // Real call logging + recording (2026-09-17) — this is the only place a
     // real poc-engine call becomes visible on the dashboard's Calls page at
@@ -1885,6 +1874,24 @@ twilioWss.on('connection', (twilioWs) => {
     }
   });
 });
+
+// The context message a real tenant call starts with (what the agent version resolved to at call time). `model` is the version's
+// optional language-model choice; the session honours it only if the model is registered and usable, else it keeps the default.
+export function buildTenantContextMessage(resolved) {
+  return {
+    type: 'context',
+    flow: resolved.flow,
+    ...(resolved.llmModel ? { model: resolved.llmModel } : {}),
+    ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
+    ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
+    ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
+    ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
+    ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
+    ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
+    ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
+    ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
+  };
+}
 
 export class CallSession {
   constructor(clientWs) {
