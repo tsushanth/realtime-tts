@@ -54,8 +54,9 @@ describe('tenantLookup: version model choice', () => {
     expect(r.flow.nodes).toHaveLength(1);
     expect(r.llmModel).toBeUndefined();
     const versionQueries = urls.filter((u) => u.includes('calldesk_agent_versions'));
-    expect(versionQueries).toHaveLength(2);
-    expect(versionQueries[1]).not.toContain('llm_model');
+    // the tier column is requested first, then the model columns, then the base columns (see tieredBilling.test.js)
+    expect(versionQueries).toHaveLength(3);
+    expect(versionQueries[2]).not.toContain('llm_model');
   });
 });
 

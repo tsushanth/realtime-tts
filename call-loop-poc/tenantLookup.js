@@ -102,6 +102,18 @@ export async function findTenantIdByNumber(number) {
 // calldesktech, matching pg()'s own reasoning above.
 export async function insertCallLog(row) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  // `tier` is a newer nullable column: if a write that carries it is rejected (column not migrated yet), retry once without it
+  // so the call log row is never lost because of billing attribution.
+  if (row && 'tier' in row) {
+    const { tier, ...rest } = row;
+    const id = await insertCallLogOnce(row, true);
+    return id === undefined ? insertCallLogOnce(rest) : id;
+  }
+  return insertCallLogOnce(row);
+}
+
+// Returns the id, null on failure; with `tierRetry`, undefined means "rejected with a 4xx, caller may retry without tier".
+async function insertCallLogOnce(row, tierRetry = false) {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/calldesk_call_logs`, {
       method: 'POST',
@@ -116,6 +128,7 @@ export async function insertCallLog(row) {
     });
     if (!res.ok) {
       console.error(`[call-log] insert failed: HTTP ${res.status}`, await res.text().catch(() => ''));
+      if (tierRetry && res.status >= 400 && res.status < 500) return undefined;
       return null;
     }
     const inserted = await res.json();
@@ -149,6 +162,17 @@ export async function updateCallLogById(id, patch) {
 
 export async function updateCallLogByCallSid(callSid, patch) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !callSid) return;
+  if (patch && 'tier' in patch) {
+    const { tier, ...rest } = patch;
+    const ok = await updateCallLogByCallSidOnce(callSid, patch);
+    if (!ok) await updateCallLogByCallSidOnce(callSid, rest); // column not migrated yet: still finalize the row
+    return;
+  }
+  await updateCallLogByCallSidOnce(callSid, patch);
+}
+
+// true = written, false = rejected or errored.
+async function updateCallLogByCallSidOnce(callSid, patch) {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/calldesk_call_logs?retell_call_id=eq.${encodeURIComponent(callSid)}`, {
       method: 'PATCH',
@@ -162,9 +186,12 @@ export async function updateCallLogByCallSid(callSid, patch) {
     });
     if (!res.ok) {
       console.error(`[call-log] update failed: HTTP ${res.status}`, await res.text().catch(() => ''));
+      return false;
     }
+    return true;
   } catch (err) {
     console.error('[call-log] update failed', err);
+    return false;
   }
 }
 
@@ -270,6 +297,12 @@ export async function fetchCallAudioAssets(tenantId) {
   }
 }
 
+export const VALID_TIERS = ['lite', 'standard', 'pro'];
+// Anything other than the three known tiers is treated as no tier.
+export function normalizeTier(value) {
+  return typeof value === 'string' && VALID_TIERS.includes(value.trim().toLowerCase()) ? value.trim().toLowerCase() : undefined;
+}
+
 export async function resolveInboundCall(toNumber, direction = 'inbound') {
   if (!toNumber) return null;
   const versionColumn = direction === 'outbound' ? 'outbound_agent_version_id' : 'inbound_agent_version_id';
@@ -295,9 +328,13 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
   // query, which would make this number unroutable, so if the query that names the new columns fails (for example before the
   // migration is applied) retry once with the original column list: model choice is optional, a call must still connect.
   const BASE_COLS = 'voice_engine,tts_backend,flow_id,agent_id';
-  let versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model`);
+  // Billing tier (calldesktech: calldesk_agent_versions.tier, nullable 'lite'|'standard'|'pro'). Same pattern again: if the tier
+  // column does not exist yet the query fails, so retry without it (keeping the model choice), then without the models too.
+  let versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model,tier`);
+  if (versions === null) versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model`);
   if (versions === null) versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS}`);
   const version = versions?.[0];
+  const tier = normalizeTier(version?.tier);
   // 'retell' versions are handled entirely on Retell's side (this call
   // wouldn't even reach call-loop-poc's Twilio number for those) — only
   // 'poc' versions need a flow handed to this engine.
@@ -338,6 +375,8 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     // Per-tenant jingle + sound effects (undefined for a tenant with none, or when the global
     // CALL_AUDIO_ASSETS_ENABLED kill switch is off) — see callAudio.js.
     callAudio,
+    // Only present for a version with a valid billing tier, so an untiered call's resolved object is unchanged.
+    ...(tier ? { tier } : {}),
     stripeCustomerId: businesses?.[0]?.stripe_customer_id || undefined,
     // Real calendar booking (2026-09-17) — present only for a tenant that's
     // actually connected one; check_availability/book_appointment simply

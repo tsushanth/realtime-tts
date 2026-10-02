@@ -26,7 +26,7 @@ import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanit
 import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { reportCallUsage } from './stripeMeter.js';
-import { resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
+import { normalizeTier, resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -1900,6 +1900,7 @@ function wirePhoneAdapter(adapter, label) {
         outcome: 'answered',
         duration_seconds: 0,
         is_internal_test: !!resolved.isDemo,
+        ...(resolved.tier ? { tier: resolved.tier } : {}),
       }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
       if (adapter.carrier === 'telnyx') {
         if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) console.warn(`[call-loop] call recording is not supported on telnyx yet - call ${callSid} will not be recorded`);
@@ -1925,6 +1926,7 @@ export function buildTenantContextMessage(resolved) {
     ...(resolved.tenantNumber ? { tenantNumber: resolved.tenantNumber } : {}),
     ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
     ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
+    ...(resolved.tier ? { tier: resolved.tier } : {}),
   };
 }
 
@@ -2015,6 +2017,7 @@ export class CallSession {
     // demo calls and flow-MCP test calls have none, and simply don't get
     // metered). See stripeMeter.js.
     this.stripeCustomerId = null;
+    this.tier = null; // per-agent billing tier from the context message (see TIERED-BILLING.md); null = legacy billing
     this.calendar = null; // { provider, apiKey, eventTypeId } — see tenantLookup.js / onClientMessage
     // Per-tenant jingle + sound effects, decoded from the context message — see callAudio.js. null
     // when the tenant has none or CALL_AUDIO_ASSETS_ENABLED is off (then nothing below fires).
@@ -2348,6 +2351,9 @@ export class CallSession {
       }
       if (typeof msg.stripeCustomerId === 'string' && msg.stripeCustomerId.trim()) {
         this.stripeCustomerId = msg.stripeCustomerId.trim();
+      }
+      if (normalizeTier(msg.tier)) {
+        this.tier = normalizeTier(msg.tier);
       }
       // Real calendar booking (2026-09-17) — see tenantLookup.js. Only a
       // tenant with a real Cal.com connection gets check_availability/
@@ -5000,6 +5006,7 @@ export class CallSession {
       tenantId: this.tenantId,
       phoneNumber: this.phoneNumber,
       stripeCustomerId: this.stripeCustomerId,
+      tier: this.tier,
       ttsBackend: this.ttsBackend,
       ttsModel: this.ttsModel,
       llmModel: this.llmModel,
@@ -5040,6 +5047,7 @@ export class CallSession {
       tenantId: stashed.tenantId,
       phoneNumber: stashed.phoneNumber,
       stripeCustomerId: stashed.stripeCustomerId,
+      tier: stashed.tier ?? null,
       ttsBackend: stashed.ttsBackend,
       ttsModel: stashed.ttsModel,
       llmModel: stashed.llmModel,
@@ -5905,6 +5913,7 @@ export class CallSession {
       const finalize = updateCallLogByCallSid(this.callSid, {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
+        ...(this.tier ? { tier: this.tier } : {}),
         ...(this.sentiment ? { qa_sentiment: this.sentiment, qa_analyzed_at: this.sentimentUpdatedAt || new Date().toISOString() } : {}),
       }).catch((err) => console.error('[call-loop] call log finalize failed', err));
       const tenantId = this._tenantId;
