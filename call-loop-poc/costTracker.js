@@ -24,6 +24,11 @@ export const RATES = {
   // Matches the model server.js defaults to (MINIMAX_MODEL); the cheaper
   // speech-2.8-turbo tier is $60/M chars if that's used instead.
   minimaxPerChar: 0.1 / 1000,
+  // Carrier-leg telephony, per minute. Twilio is not priced here (unchanged behaviour: no telephony line).
+  // Telnyx: inbound $0.0032 + Voice API $0.002 + media streaming $0.0035, 60 s minimum on the carrier leg.
+  telephony: {
+    telnyx: { perMin: 0.0032 + 0.002 + 0.0035, minSeconds: 60 },
+  },
   openaiRealtimeMini: {
     // 1 token per 100ms of user speech, 1 token per 50ms of assistant speech
     inputTokPerSec: 10,
@@ -49,6 +54,17 @@ export class CallCostTracker {
     this.bookingEvents = 0;
     this.transferEvents = 0;
     this.messageEvents = 0;
+    this.carrier = 'twilio'; // see setCarrier()
+    this.telephonySeconds = 0;
+  }
+
+  // Opt-in: only a non-default carrier adds a telephony line to breakdown(); 'twilio' leaves it exactly as before.
+  setCarrier(carrier) {
+    this.carrier = carrier || 'twilio';
+  }
+
+  addTelephonySeconds(sec) {
+    this.telephonySeconds += sec;
   }
 
   addBillableEvent(kind) {
@@ -97,6 +113,21 @@ export class CallCostTracker {
     };
     const ttsRate = TTS_RATE_BY_BACKEND[this.ttsBackend] ?? RATES.kokoroPerChar;
     const ttsCost = this.ttsChars * ttsRate;
+
+    const telephonyRate = RATES.telephony[this.carrier];
+    if (telephonyRate) {
+      const billable = Math.max(this.telephonySeconds, telephonyRate.minSeconds);
+      const telephonyCost = this.telephonySeconds > 0 ? (billable / 60) * telephonyRate.perMin : 0;
+      return {
+        engine: 'cascaded',
+        ttsBackend: this.ttsBackend,
+        deepgram: sttCost,
+        claude: llmCost,
+        tts: ttsCost,
+        telephony: telephonyCost,
+        total: sttCost + llmCost + ttsCost + telephonyCost,
+      };
+    }
 
     return {
       engine: 'cascaded',

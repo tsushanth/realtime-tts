@@ -273,10 +273,17 @@ export async function fetchCallAudioAssets(tenantId) {
 export async function resolveInboundCall(toNumber, direction = 'inbound') {
   if (!toNumber) return null;
   const versionColumn = direction === 'outbound' ? 'outbound_agent_version_id' : 'inbound_agent_version_id';
-  const numbers = await pg(
-    'calldesk_phone_numbers',
-    `number=eq.${encodeURIComponent(toNumber)}&select=tenant_id,${versionColumn}`
-  );
+  // Optional per-number carrier ('twilio' default | 'telnyx'). Only requested when TELNYX_ENABLED=1, so a Twilio-only
+  // deployment issues exactly the same query as before. Same retry pattern as llm_model below: pg() returns null on ANY
+  // failed query (e.g. the carrier column does not exist yet), so retry once without it - a call must still route.
+  const phoneBaseQuery = `number=eq.${encodeURIComponent(toNumber)}&select=tenant_id,${versionColumn}`;
+  let numbers;
+  if (process.env.TELNYX_ENABLED === '1') {
+    numbers = await pg('calldesk_phone_numbers', `${phoneBaseQuery},carrier`);
+    if (numbers === null) numbers = await pg('calldesk_phone_numbers', phoneBaseQuery);
+  } else {
+    numbers = await pg('calldesk_phone_numbers', phoneBaseQuery);
+  }
   const numberRow = numbers?.[0];
   const agentVersionId = numberRow?.[versionColumn];
   if (!agentVersionId) {
@@ -316,6 +323,9 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
 
   return {
     tenantId: numberRow.tenant_id,
+    // Key present only when the number's carrier column says 'telnyx'; absent (= twilio) for column missing, null or anything else,
+    // so the Twilio path's resolved object is unchanged.
+    ...(numberRow.carrier === 'telnyx' ? { carrier: 'telnyx' } : {}),
     flow: {
       nodes,
       startNodeId: flowRow.global_settings?.startNodeId || nodes[0].id,

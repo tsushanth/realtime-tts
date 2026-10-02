@@ -19,6 +19,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
 import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
+import { TelnyxCallAdapter } from './telnyxAdapter.js';
+import { isTelnyxEnabled, createTelnyxVoiceHandler, verifyStreamParams } from './telnyx.js';
 import { CallCostTracker } from './costTracker.js';
 import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME, browserPcmForClip, loadBrowserDemoCallAudio } from './callAudio.js';
 import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
@@ -972,6 +974,10 @@ const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY 
 export const app = express();
 app.use(express.static('public'));
 
+// Telnyx webhook signatures are computed over the exact raw body, so this path keeps the raw bytes (the global
+// parser below skips a request that is already parsed). Registered only when TELNYX_ENABLED=1.
+const TELNYX_ENABLED = isTelnyxEnabled();
+if (TELNYX_ENABLED) app.use('/telnyx/voice', express.raw({ type: () => true, limit: '256kb' }));
 app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded fields (To, From, CallSid)
 
 // Per-call context resolved here (before the WS even connects) and handed
@@ -1188,6 +1194,12 @@ app.post('/twilio/voice', async (req, res) => {
     `<Response><Connect><Stream url="wss://${req.headers.host}/twilio-stream" /></Connect></Response>`;
   res.type('text/xml').send(twiml);
 });
+
+// Telnyx TeXML inbound webhook (opt-in, see TELNYX.md). Only mounted when TELNYX_ENABLED=1; serves a call only if the dialed
+// number's carrier is 'telnyx'. Never touches the Twilio routes.
+if (TELNYX_ENABLED) {
+  app.post('/telnyx/voice', createTelnyxVoiceHandler({ resolveInboundCall, pendingCallContext, contextWrittenCallSids }));
+}
 
 // Twilio calls this once a recording started via startCallRecording()
 // finishes processing — asynchronously, after the call itself has already
@@ -1686,6 +1698,7 @@ const server = http.createServer(app);
 // with manual routing on the server's single 'upgrade' event instead.
 const wss = new WebSocketServer({ noServer: true });
 const twilioWss = new WebSocketServer({ noServer: true });
+const telnyxWss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, `http://${req.headers.host}`);
@@ -1693,6 +1706,16 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   } else if (pathname === '/twilio-stream') {
     twilioWss.handleUpgrade(req, socket, head, (ws) => twilioWss.emit('connection', ws, req));
+  } else if (pathname === '/telnyx-stream' && TELNYX_ENABLED) {
+    // The signed ?cs&exp&sig written by /telnyx/voice proves this socket belongs to a call we accepted.
+    const callSid = verifyStreamParams(new URL(req.url, `http://${req.headers.host}`).searchParams);
+    if (!callSid) {
+      console.warn('[telnyx] /telnyx-stream rejected: bad or expired stream signature');
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    telnyxWss.handleUpgrade(req, socket, head, (ws) => telnyxWss.emit('connection', ws, req, callSid));
   } else {
     socket.destroy();
   }
@@ -1738,11 +1761,21 @@ twilioWss.on('connection', (twilioWs) => {
   console.log('[call-loop] Twilio call connected');
   // The adapter presents the exact same interface a browser WebSocket would
   // — the session class has no idea this is a phone call, not a browser tab.
-  const adapter = new TwilioCallAdapter(twilioWs);
+  wirePhoneAdapter(new TwilioCallAdapter(twilioWs), 'twilio');
+});
+
+telnyxWss.on('connection', (telnyxWs, _req, callSid) => {
+  console.log('[call-loop] Telnyx call connected');
+  wirePhoneAdapter(new TelnyxCallAdapter(telnyxWs, { callSid }), 'telnyx');
+});
+
+// Shared by both carriers: hands a phone-call adapter to a fresh CallSession and wires its events.
+function wirePhoneAdapter(adapter, label) {
   const session = new CallSession(adapter);
+  if (adapter.carrier) session.cost.setCarrier(adapter.carrier); // Twilio adapter has no .carrier: tracker stays at its default
   adapter.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
   adapter.on('close', () => session.close());
-  adapter.on('error', (err) => console.error('[call-loop] twilio adapter error', err));
+  adapter.on('error', (err) => console.error(`[call-loop] ${label} adapter error`, err));
   adapter.on('dtmf', (digit) => session._onDtmfDigit(digit));
   // Per-tenant routing resolved back in /twilio/voice (see tenantLookup.js)
   // — handed to the session the same way a browser client does it, via a
@@ -1868,12 +1901,14 @@ twilioWss.on('connection', (twilioWs) => {
         duration_seconds: 0,
         is_internal_test: !!resolved.isDemo,
       }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
-      if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
+      if (adapter.carrier === 'telnyx') {
+        if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) console.warn(`[call-loop] call recording is not supported on telnyx yet - call ${callSid} will not be recorded`);
+      } else if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
         startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
       }
     }
   });
-});
+}
 
 // The context message a real tenant call starts with (what the agent version resolved to at call time). `model` is the version's
 // optional language-model choice; the session honours it only if the model is registered and usable, else it keeps the default.
@@ -1891,6 +1926,13 @@ export function buildTenantContextMessage(resolved) {
     ...(resolved.calendar ? { calendar: resolved.calendar } : {}),
     ...(resolved.callAudio ? { callAudio: resolved.callAudio } : {}),
   };
+}
+
+// Telnyx v1: transfer, <Pay> detours, outbound DTMF, in-call SMS and recording are Twilio-REST/TwiML features that are
+// not implemented for Telnyx. Guards in CallSession log through this and soft-fail instead of calling Twilio with a
+// Telnyx call id (see TELNYX.md for the exact node/tool list).
+function logTelnyxUnsupported(session, feature) {
+  console.warn(`[call-loop] ${feature} is not supported on telnyx yet (call ${session.callSid || session.id}) - failing soft`);
 }
 
 export class CallSession {
@@ -4189,6 +4231,10 @@ export class CallSession {
   // system note, same as a failed function-node webhook, rather than
   // silently doing nothing — the model should know to react to it.
   async _executeSmsNode(node) {
+    if (this.clientWs?.carrier === 'telnyx') {
+      logTelnyxUnsupported(this, `sms node "${node.id}" (in-call SMS is sent via Twilio)`);
+      return;
+    }
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
       console.warn(`[call-loop] sms node "${node.id}" requires Twilio credentials — skipping`);
       return;
@@ -4540,7 +4586,15 @@ export class CallSession {
     }
   }
 
+  // Telnyx v1: transfer, <Pay> detours, outbound DTMF, in-call SMS and recording are Twilio-REST/TwiML features
+  // that are not implemented for Telnyx. Each guard below logs and soft-fails instead of calling Twilio with a
+  // Telnyx call id (see TELNYX.md for the exact node/tool list).
   async _executeTransfer(params) {
+    if (this.clientWs?.carrier === 'telnyx') {
+      logTelnyxUnsupported(this, 'transfer');
+      this.close(); // same outcome as the existing "cannot complete the transfer" branch below
+      return;
+    }
     const to = params?.transferTo;
     const callSid = this.clientWs?.callSid;
     if (!to || !callSid || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
@@ -4611,6 +4665,10 @@ export class CallSession {
   // exact redirect/reconnect and recording-suppression behavior directly
   // against Twilio, not assumed from secondary sources.
   async _redirectForDetour(redirectTwiml) {
+    if (this.clientWs?.carrier === 'telnyx') {
+      logTelnyxUnsupported(this, 'mid-call TwiML detour (<Pay>/<Play digits>)');
+      return false; // callers already treat false as "redirect failed"
+    }
     const callSid = this.clientWs?.callSid;
     if (!callSid || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
       console.warn(
@@ -4662,6 +4720,16 @@ export class CallSession {
   // description) — a real charge needs params.amount set explicitly by
   // whoever authors this flow node, not a default.
   async _executePayment(params) {
+    if (this.clientWs?.carrier === 'telnyx') {
+      logTelnyxUnsupported(this, 'payment node (<Pay>)');
+      // Report a failed payment to the flow exactly as a failed <Pay> resume would, so the node's own
+      // payment_status-aware turn tells the caller and routes onward instead of leaving the call stuck.
+      this.collectedData.payment_status = 'failed';
+      this.collectedData.payment_status_detail = 'unsupported_on_telnyx';
+      this._paymentAwaitingResume = true;
+      this._runNodeTurn(this.currentNodeId);
+      return;
+    }
     const callSid = this.clientWs?.callSid;
     if (!callSid) {
       console.warn('[call-loop] payment node requires a Twilio call (no callSid) — skipping');
@@ -4694,6 +4762,12 @@ export class CallSession {
   // async outcome to wait for, so the reconnect goes in the SAME TwiML
   // response rather than needing a separate action/webhook round-trip.
   async _executePressDigit(node) {
+    if (this.clientWs?.carrier === 'telnyx') {
+      logTelnyxUnsupported(this, 'press_digit node (send DTMF)');
+      const next = node.edges?.[0]?.target;
+      if (next) this._applyTransition({ next_node_id: next }); // keep the flow moving rather than leaving it stuck
+      return;
+    }
     const callSid = this.clientWs?.callSid;
     if (!callSid) {
       console.warn('[call-loop] press_digit node requires a Twilio call (no callSid) — skipping');
@@ -5807,6 +5881,7 @@ export class CallSession {
     // total call wall-clock is the right proxy, not summed turn lengths.
     const voiceSeconds = (Date.now() - this._callStartedAt) / 1000;
     this.cost.addSttSeconds(voiceSeconds);
+    if (this.cost.carrier === 'telnyx') this.cost.addTelephonySeconds(voiceSeconds);
     this.cost.logSummary();
     // Fire-and-forget — close() must not block hangup on a Stripe round
     // trip, and a metering failure shouldn't surface as a call failure.
