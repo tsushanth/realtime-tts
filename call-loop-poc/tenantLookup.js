@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { safeFetch } from './ssrfGuard.js';
 import { isCallAudioEnabled, encodeCallAudioForContext } from './callAudio.js';
 // Resolves a real inbound Twilio call to the tenant that owns the dialed
 // number — the gap that made every phone call get the exact same static
@@ -450,7 +451,8 @@ export async function dispatchTenantWebhook(tenantId, event, data) {
     const body = JSON.stringify({ event, created_at: new Date().toISOString(), data });
     await Promise.all(hooks.map(async (wh) => {
       try {
-        const res = await fetch(wh.url, {
+        // wh.url is tenant-controlled: ssrfGuard refuses private/internal destinations (see ssrfGuard.js).
+        const res = await safeFetch(wh.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -459,7 +461,7 @@ export async function dispatchTenantWebhook(tenantId, event, data) {
             'X-CallDesk-Signature': `sha256=${crypto.createHmac('sha256', wh.secret).update(body).digest('hex')}`,
           },
           body,
-          signal: AbortSignal.timeout(8000),
+          timeoutMs: 8000,
         });
         console.log(`[webhook] ${wh.id} ${event} -> HTTP ${res.status}`);
       } catch (err) {

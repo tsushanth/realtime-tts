@@ -29,8 +29,7 @@ import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './la
 import { validateVersionVoice } from './voiceSelection.js';
 import { normalizeTier, resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
-import dns from 'node:dns/promises';
-import net from 'node:net';
+import { safeFetch } from './ssrfGuard.js';
 
 const PORT = process.env.PORT || 8090;
 // The Deepgram+Claude+TTS pipeline — the only engine this repo runs now.
@@ -813,52 +812,13 @@ const CODE_NODE_MEMORY_LIMIT_BYTES = 16 * 1024 * 1024;
 const CODE_NODE_MAX_SOURCE_CHARS = 20000;
 const CODE_NODE_MAX_OUTPUT_CHARS = 15000;
 
-// SSRF guard for the sandboxed fetch a code node's script can call — resolves
-// the hostname and checks the RESOLVED address, not just the literal
-// hostname string, so a hostname that resolves to a private/loopback address
-// (e.g. via attacker-controlled DNS) can't bypass a string-only check.
-function isPrivateOrLocalIp(ip) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    if (a === 127 || a === 10 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    return false;
-  }
-  if (net.isIPv6(ip)) {
-    const lower = ip.toLowerCase();
-    if (lower === '::1' || lower === '::') return true;
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local fc00::/7
-    if (lower.startsWith('fe80')) return true; // link-local
-    return false;
-  }
-  return true; // unrecognized format — block rather than risk it
-}
-
+// The sandboxed fetch a code node's script can call. All tenant-controlled outbound requests go through ssrfGuard.js
+// (connect-time address check, manual redirects, size and time caps); see the notes there.
 async function sandboxSafeFetch(urlString, options) {
-  let url;
-  try {
-    url = new URL(String(urlString));
-  } catch {
-    throw new Error('Invalid URL');
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Only http:// and https:// URLs are allowed');
-  }
-  let addresses;
-  try {
-    addresses = await dns.lookup(url.hostname, { all: true });
-  } catch (err) {
-    throw new Error(`DNS lookup failed for "${url.hostname}": ${err.message}`);
-  }
-  if (addresses.length === 0 || addresses.some((a) => isPrivateOrLocalIp(a.address))) {
-    throw new Error('Requests to private/local network addresses are not allowed');
-  }
   const method = (options?.method || 'GET').toUpperCase();
   const headers = options?.headers && typeof options.headers === 'object' ? options.headers : undefined;
   const body = typeof options?.body === 'string' ? options.body : undefined;
-  const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(8000) });
+  const res = await safeFetch(urlString, { method, headers, body, timeoutMs: 8000 });
   const text = await res.text();
   return { status: res.status, ok: res.ok, body: text.slice(0, 100000) };
 }
@@ -4282,11 +4242,12 @@ export class CallSession {
       return;
     }
     try {
-      const res = await fetch(url, {
+      // url is tenant-controlled: ssrfGuard refuses private/internal destinations (see ssrfGuard.js).
+      const res = await safeFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ function: node.function, collectedData: this.collectedData }),
-        signal: AbortSignal.timeout(8000),
+        timeoutMs: 8000,
       });
       const result = await res.json().catch(() => ({}));
       console.log(`[call-loop] function node "${node.id}" (${node.function}) -> HTTP ${res.status}`);
@@ -4576,11 +4537,12 @@ export class CallSession {
   // JSON-RPC response — the connection's Content-Type header response can't
   // be parsed as JSON in that case, and shouldn't be.
   async _mcpRequest(serverUrl, headers, rpcBody, expectNoBody = false) {
-    const res = await fetch(serverUrl, {
+    // serverUrl is tenant-controlled: ssrfGuard refuses private/internal destinations (see ssrfGuard.js).
+    const res = await safeFetch(serverUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(rpcBody),
-      signal: AbortSignal.timeout(10000),
+      timeoutMs: 10000,
     });
     if (expectNoBody) return { headers: res.headers, body: null };
     if (!res.ok) {
