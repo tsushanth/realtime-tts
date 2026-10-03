@@ -25,6 +25,7 @@ import { CallCostTracker } from './costTracker.js';
 import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME, browserPcmForClip, loadBrowserDemoCallAudio } from './callAudio.js';
 import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
+import { validateVersionVoice } from './voiceSelection.js';
 import { reportCallUsage } from './stripeMeter.js';
 import { normalizeTier, resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
@@ -1175,6 +1176,8 @@ app.post('/twilio/voice', async (req, res) => {
           pendingCallContext.set(callSid, {
             ...resolved,
             ...(ttsOverride ? { ttsBackend: ttsOverride.ttsBackend, ttsModel: ttsOverride.ttsModel } : {}),
+            // The version's saved voice belongs to the version's own backend: not applied when the test override swaps it.
+            ...(ttsOverride && ttsOverride.ttsBackend !== resolved.ttsBackend ? { voiceId: undefined } : {}),
             fromNumber: req.body.From || null,
             // The tenant's OWN number (what was dialed), as distinct from the
             // caller's (fromNumber) — needed as the "From" on an in-call SMS
@@ -1920,6 +1923,7 @@ export function buildTenantContextMessage(resolved) {
     ...(resolved.llmModel ? { model: resolved.llmModel } : {}),
     ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
     ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
+    ...(resolved.voiceId ? { voiceId: resolved.voiceId } : {}),
     ...(resolved.stripeCustomerId ? { stripeCustomerId: resolved.stripeCustomerId } : {}),
     ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
     ...(resolved.fromNumber ? { phoneNumber: resolved.fromNumber } : {}),
@@ -1956,6 +1960,7 @@ export class CallSession {
     this.lang = null; // resolved language record for non-English agents (languages.js); null = English path
     this.elevenVoiceId = ELEVENLABS_VOICE_ID;
     this.elevenStability = 0.5;
+    this._versionVoice = null; // { backend, voiceId } once the agent version's voice_id was validated and applied — see _applyVersionVoice
     this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.fishReferenceId = null; // set via lang.tts.referenceId — no global default, fish is language-only today
     this.minimaxVoiceId = MINIMAX_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
@@ -2209,6 +2214,47 @@ export class CallSession {
     dg.on('close', () => console.log('[call-loop] deepgram closed'));
   }
 
+  // Applies the agent version's saved voice (calldesk_agent_versions.voice_id) for the backend this call actually uses.
+  // Precedence: explicit per-call override (sample/shopper voice, context `voice`) > this voice > language voice (only where the
+  // language pins a backend-specific voice, see _applyLanguage) > env default. A value that is not valid for the backend, or a
+  // call whose backend differs from the version's (test override, missing key fallback), keeps the default: warn, never throw.
+  _applyVersionVoice(voiceId, versionBackend, hasExplicitVoice) {
+    try {
+      const backend = this.ttsBackend;
+      if (versionBackend && versionBackend !== backend) {
+        console.warn(`[call-loop] version voice ignored: version backend ${versionBackend} is not the backend in use (${backend})`);
+        return;
+      }
+      const v = validateVersionVoice(backend, voiceId);
+      if (!v.ok) {
+        console.warn(`[call-loop] version voice_id ignored (${v.reason}) for backend ${backend} - using the default voice`);
+        return;
+      }
+      if (backend === 'kokoro') {
+        if (hasExplicitVoice) return; // an explicit per-call `voice` already set this.voice
+        this.voice = v.voiceId;
+      } else if (backend === 'elevenlabs') {
+        this.elevenVoiceId = v.voiceId;
+      } else if (backend === 'cartesia') {
+        this.cartesiaVoiceId = v.voiceId;
+      } else if (backend === 'minimax') {
+        this.minimaxVoiceId = v.voiceId;
+      } else {
+        return;
+      }
+      this._versionVoice = { backend, voiceId: v.voiceId };
+      // Switching back to English mid-call restores this snapshot: it must hold the version voice, not the env default.
+      if (this._preLangState) {
+        this._preLangState.elevenVoiceId = this.elevenVoiceId;
+        this._preLangState.cartesiaVoiceId = this.cartesiaVoiceId;
+        this._preLangState.minimaxVoiceId = this.minimaxVoiceId;
+      }
+      console.log(`[call-loop] version voice applied (${backend})`);
+    } catch (err) {
+      console.warn('[call-loop] version voice could not be applied - using the default voice', err);
+    }
+  }
+
   // Switches this session to a non-English language: STT is reconnected by the caller; here we pick
   // the TTS backend/voice (Kokoro can't speak these — see languages.js), localize the engine's own
   // fixed phrases, and warm their audio clips. The tenant's explicit elevenlabs/cartesia choice is kept.
@@ -2242,7 +2288,9 @@ export class CallSession {
       }
     }
     if (this.ttsBackend === 'elevenlabs') {
-      this.elevenVoiceId = lang.tts.elevenVoiceId;
+      // The language's ElevenLabs voice is only the generic multilingual default (languages.js), not a language-specific voice, so
+      // a validated version voice stays; with eleven_multilingual_v2 any ElevenLabs voice speaks these languages.
+      if (this._versionVoice?.backend !== 'elevenlabs') this.elevenVoiceId = lang.tts.elevenVoiceId;
       // eleven_multilingual_v2 measured ~1.3s to first byte vs ~0.3s for flash v2.5 (same 32-language
       // coverage incl. all of ours); an explicit ttsModel from the context message still wins.
       if (!this.ttsModel) this.ttsModel = LANG_ELEVEN_MODEL;
@@ -2389,6 +2437,11 @@ export class CallSession {
           this.ttsBackend = msg.ttsBackend;
           this.cost.ttsBackend = msg.ttsBackend;
         }
+      }
+      // The agent version's saved voice (context `voiceId`, from calldesk_agent_versions.voice_id). Runs before the sample/shopper
+      // voice below so an explicit per-call voice still wins, and before _applyLanguage so the language step can see it.
+      if (msg.voiceId !== undefined && msg.voiceId !== null) {
+        this._applyVersionVoice(msg.voiceId, msg.ttsBackend, typeof msg.voice === 'string' && !!msg.voice.trim());
       }
       // Expressive delivery without a flow (the mystery-shopper caller has none; flows carry this in
       // globalSettings.expressiveDelivery instead — see the `bcs` block below). Same opt-in knob, just
@@ -5011,6 +5064,7 @@ export class CallSession {
       ttsModel: this.ttsModel,
       llmModel: this.llmModel,
       voice: this.voice,
+      versionVoice: this._versionVoice,
       lang: this.lang,
       systemPrompt: this.systemPrompt,
       backchannelEnabled: this.backchannelEnabled,
@@ -5061,6 +5115,17 @@ export class CallSession {
       _pendingPressDigitTarget: stashed.pendingPressDigitTarget ?? null,
       _paymentAwaitingResume: stashed.paymentAwaitingResume ?? false,
     });
+    if (stashed.versionVoice) {
+      // A fresh session starts on the env default voices: carry the version voice over (before the language step, as at call start).
+      const vv = stashed.versionVoice;
+      if (vv.backend === 'elevenlabs') this.elevenVoiceId = vv.voiceId;
+      else if (vv.backend === 'cartesia') this.cartesiaVoiceId = vv.voiceId;
+      else if (vv.backend === 'minimax') this.minimaxVoiceId = vv.voiceId;
+      this._versionVoice = vv;
+      this._preLangState.elevenVoiceId = this.elevenVoiceId;
+      this._preLangState.cartesiaVoiceId = this.cartesiaVoiceId;
+      this._preLangState.minimaxVoiceId = this.minimaxVoiceId;
+    }
     if (stashed.lang) {
       this._applyLanguage(stashed.lang);
       this.backchannelWords = stashed.backchannelWords;

@@ -330,9 +330,23 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
   const BASE_COLS = 'voice_engine,tts_backend,flow_id,agent_id';
   // Billing tier (calldesktech: calldesk_agent_versions.tier, nullable 'lite'|'standard'|'pro'). Same pattern again: if the tier
   // column does not exist yet the query fails, so retry without it (keeping the model choice), then without the models too.
-  let versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model,tier`);
-  if (versions === null) versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS},llm_model,tts_model`);
-  if (versions === null) versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${BASE_COLS}`);
+  // voice_id (the builder's voice choice, saved by the web app on publish) is requested in the same query. Column sets are tried in
+  // order until one is accepted; each later set drops something that may not exist yet, so a call always connects:
+  //   1 everything  2 no tier (keeps models + voice)  3 base + voice (no model columns)
+  //   4 no voice_id (the pre-voice query)  5 no voice_id, no tier  6 base columns only
+  const colSets = [
+    `${BASE_COLS},llm_model,tts_model,tier,voice_id`,
+    `${BASE_COLS},llm_model,tts_model,voice_id`,
+    `${BASE_COLS},voice_id`,
+    `${BASE_COLS},llm_model,tts_model,tier`,
+    `${BASE_COLS},llm_model,tts_model`,
+    BASE_COLS,
+  ];
+  let versions = null;
+  for (const cols of colSets) {
+    versions = await pg('calldesk_agent_versions', `id=eq.${agentVersionId}&select=${cols}`);
+    if (versions !== null) break;
+  }
   const version = versions?.[0];
   const tier = normalizeTier(version?.tier);
   // 'retell' versions are handled entirely on Retell's side (this call
@@ -372,6 +386,9 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     // Optional per-version model choice (undefined = the engine defaults). The engine ignores a model it cannot use.
     llmModel: version.llm_model || undefined,
     ttsModel: version.tts_model || undefined,
+    // The builder's voice choice (calldesk_agent_versions.voice_id). Key present only when set, so a version without one resolves
+    // exactly as before. The session validates it against the backend before use (see voiceSelection.js).
+    ...(typeof version.voice_id === 'string' && version.voice_id.trim() ? { voiceId: version.voice_id.trim() } : {}),
     // Per-tenant jingle + sound effects (undefined for a tenant with none, or when the global
     // CALL_AUDIO_ASSETS_ENABLED kill switch is off) — see callAudio.js.
     callAudio,
