@@ -178,3 +178,20 @@ Deploy steps / operational rules:
 3. Rotate `TEST_CALL_SECRET` if it has ever been shared.
 4. After sample calls, check the callee number's tenant call log for stray `is_internal_test` rows and remove
    them if unwanted (the shopper leg is logged against the tenant that owns the dialed number).
+
+## Pilot cap enforcement
+
+Pilots (free trials) are capped by the web app, which sets `calldesk_tenants.pilot_blocked` (+ `pilot_blocked_reason` = `cap` | `expired` | `stopped`) from its hourly job (migration `068_pilots.sql`). The engine only reads the flag at call setup:
+
+- The flag is read in the same `calldesk_tenants` fetch every call already makes (`settings,pilot_blocked,pilot_blocked_reason,calldesk_pilots(status)`), so no extra round trip. It **fails open**: if the columns or the pilots table do not exist yet, the query errors, or it exceeds `PILOT_LOOKUP_TIMEOUT_MS` (default 1500), the call is served exactly as before. A failed query shape is not retried for 60 s (`PILOT_LOOKUP_BACKOFF_MS`), so a missing column costs one failed query a minute, not one per call.
+- Blocked inbound call (Twilio and Telnyx): the engine answers, speaks "Thanks for calling. This line is not available right now. Please try again later." through the normal TTS path in the tenant's configured voice (no flow, no LLM), and hangs up. Safety hangup after 20 s if the message never finishes. Logged as `[pilot] blocked tenant=<id> reason=<reason> call=<sid>` and recorded in `calldesk_call_logs` with `outcome='abandoned'`, `analysis={"blocked":"pilot"}` (the shape the web side ignores for usage). No webhooks, recording or post-call analysis for these calls. Outbound calls are never blocked.
+- Pilot tenants (a `calldesk_pilots` row whose status is not `converted`) get a per-call limit of `PILOT_MAX_CALL_SEC` (default 600) through the existing `maxCallDurationSec` timer (graceful end after the current sentence). A shorter existing limit is kept.
+- Non-pilot tenants resolve to exactly the same object as before.
+
+Verify live (after migration 068 is applied; use a throwaway test tenant that owns a routed number, never a customer):
+
+1. `UPDATE calldesk_tenants SET pilot_blocked = true, pilot_blocked_reason = 'cap' WHERE id = '<test tenant>';`
+2. Call its number. Expect to hear the message and be hung up. Logs (`fly logs`): `[pilot] blocked tenant=<id> reason=cap` and `[pilot] blocked tenant=<id> reason=cap call=<CallSid>`; the Calls page shows an abandoned call.
+3. `UPDATE ... SET pilot_blocked = false ...` and call again: normal agent, no `[pilot]` lines.
+4. Pre-migration, expect at most one `[tenant-lookup] calldesk_tenants query failed: HTTP 400` pair per minute and no behaviour change. A `[pilot] lookup failed ... serving normally` warning means a timeout or network error (call was served).
+5. Per-call limit: insert a `calldesk_pilots` row (status `active`) for the test tenant and call; the call ends gracefully at 10 minutes (set `PILOT_MAX_CALL_SEC` lower on a test machine to check sooner), log line `ending call: maxCallDurationSec 600s reached`.

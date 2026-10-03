@@ -11,14 +11,14 @@ import { isCallAudioEnabled, encodeCallAudioForContext } from './callAudio.js';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-async function pg(table, query) {
+async function pg(table, query, timeoutMs = 5000) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
     headers: {
       apikey: SUPABASE_SERVICE_ROLE_KEY,
       Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     },
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     console.error(`[tenant-lookup] ${table} query failed: HTTP ${res.status}`);
@@ -304,6 +304,49 @@ export function normalizeTier(value) {
   return typeof value === 'string' && VALID_TIERS.includes(value.trim().toLowerCase()) ? value.trim().toLowerCase() : undefined;
 }
 
+// ---- Pilot cap enforcement (docs/pilot-cap-enforcement.md in the web repo) ----
+// The web app's hourly job sets calldesk_tenants.pilot_blocked for a pilot that is capped, expired or stopped; the engine only
+// reads it at call setup. Everything here FAILS OPEN: a missing column/table (migration 068 not applied), a query error or a slow
+// lookup serves the call exactly as before. Both the flag and the "is this tenant a pilot" marker (for the per-call duration limit)
+// ride on the tenant row fetch the call already makes: no extra round trip, so no added latency.
+const PILOT_LOOKUP_TIMEOUT_MS = Number(process.env.PILOT_LOOKUP_TIMEOUT_MS || 1500);
+const PILOT_BACKOFF_MS = Number(process.env.PILOT_LOOKUP_BACKOFF_MS || 60_000);
+export const PILOT_MAX_CALL_SEC = Number(process.env.PILOT_MAX_CALL_SEC || 600);
+// Column sets tried in order; a failed set is skipped for PILOT_BACKOFF_MS so a missing column costs one failed query a minute, not one per call.
+const PILOT_COLSETS = [
+  'settings,pilot_blocked,pilot_blocked_reason,calldesk_pilots(status)', // flag + pilot marker (embedded via the calldesk_pilots.tenant_id FK)
+  'settings,pilot_blocked,pilot_blocked_reason', // flag only (pilots table or its relationship not visible yet)
+];
+const pilotSetSkipUntil = PILOT_COLSETS.map(() => 0);
+export function _resetPilotLookupState() { pilotSetSkipUntil.fill(0); }
+
+// Same row the call always fetched ({settings}), plus the pilot fields when available.
+// Returns { rows, pilotBlocked, reason, isPilot }; the pilot fields are false/absent on any problem.
+async function fetchTenantRow(tenantId) {
+  const id = encodeURIComponent(tenantId);
+  for (let i = 0; i < PILOT_COLSETS.length; i++) {
+    if (Date.now() < pilotSetSkipUntil[i]) continue;
+    let rows = null;
+    try {
+      rows = await pg('calldesk_tenants', `id=eq.${id}&select=${PILOT_COLSETS[i]}`, PILOT_LOOKUP_TIMEOUT_MS);
+    } catch (err) {
+      console.warn(`[pilot] lookup failed tenant=${tenantId} (${err?.name || 'error'}) - serving normally`);
+    }
+    if (rows === null) { pilotSetSkipUntil[i] = Date.now() + PILOT_BACKOFF_MS; continue; }
+    const row = rows?.[0];
+    const blocked = row?.pilot_blocked === true;
+    const pilotRel = Array.isArray(row?.calldesk_pilots) ? row.calldesk_pilots[0] : row?.calldesk_pilots;
+    return {
+      rows,
+      pilotBlocked: blocked,
+      reason: blocked && typeof row.pilot_blocked_reason === 'string' && row.pilot_blocked_reason ? row.pilot_blocked_reason : 'unknown',
+      // A pilot unless it was converted to a paying customer. A tenant without a pilots row (or a status we cannot read) is not limited.
+      isPilot: typeof pilotRel?.status === 'string' && pilotRel.status !== 'converted',
+    };
+  }
+  return { rows: await pg('calldesk_tenants', `id=eq.${id}&select=settings`), pilotBlocked: false, isPilot: false };
+}
+
 export async function resolveInboundCall(toNumber, direction = 'inbound') {
   if (!toNumber) return null;
   const versionColumn = direction === 'outbound' ? 'outbound_agent_version_id' : 'inbound_agent_version_id';
@@ -358,13 +401,30 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
     return null;
   }
 
-  const [flows, businesses, calendars, tenants, callAudio] = await Promise.all([
+  const [flows, businesses, calendars, tenantFetch, callAudio] = await Promise.all([
     pg('calldesk_conversation_flows', `id=eq.${version.flow_id}&select=nodes,global_settings`),
     pg('calldesk_businesses', `tenant_id=eq.${numberRow.tenant_id}&select=stripe_customer_id`),
     pg('calldesk_calendar_connections', `tenant_id=eq.${numberRow.tenant_id}&select=provider,api_key,event_type_id`),
-    pg('calldesk_tenants', `id=eq.${numberRow.tenant_id}&select=settings`),
+    fetchTenantRow(numberRow.tenant_id),
     fetchCallAudioAssets(numberRow.tenant_id),
   ]);
+  const tenants = tenantFetch.rows;
+  const isPilot = tenantFetch.isPilot;
+
+  // Blocked pilot (inbound only): hand back a minimal object instead of the flow; the engine speaks one short message and hangs up.
+  if (tenantFetch.pilotBlocked && direction === 'inbound') {
+    console.log(`[pilot] blocked tenant=${numberRow.tenant_id} reason=${tenantFetch.reason}`);
+    return {
+      tenantId: numberRow.tenant_id,
+      ...(numberRow.carrier === 'telnyx' ? { carrier: 'telnyx' } : {}),
+      pilotBlocked: true,
+      pilotBlockedReason: tenantFetch.reason,
+      flow: { nodes: [], startNodeId: null, globalSettings: {} },
+      ttsBackend: version.tts_backend || undefined,
+      ttsModel: version.tts_model || undefined,
+      ...(typeof version.voice_id === 'string' && version.voice_id.trim() ? { voiceId: version.voice_id.trim() } : {}),
+    };
+  }
   const flowRow = flows?.[0];
   if (!flowRow?.nodes?.length) {
     console.warn(`[tenant-lookup] flow ${version.flow_id} has no nodes — falling back`);
@@ -372,16 +432,23 @@ export async function resolveInboundCall(toNumber, direction = 'inbound') {
   }
 
   const nodes = await attachKnowledgeBaseIds(flowRow.nodes, version.agent_id);
+  // Pilot tenants: bound every call to PILOT_MAX_CALL_SEC via the existing maxCallDurationSec timer (graceful end). Non-pilots untouched.
+  let globalSettings = flowRow.global_settings || {};
+  if (isPilot) {
+    const existing = Number(globalSettings.maxCallDurationSec) || 0;
+    globalSettings = { ...globalSettings, maxCallDurationSec: existing > 0 ? Math.min(existing, PILOT_MAX_CALL_SEC) : PILOT_MAX_CALL_SEC };
+  }
 
   return {
     tenantId: numberRow.tenant_id,
+    ...(isPilot ? { isPilot: true } : {}),
     // Key present only when the number's carrier column says 'telnyx'; absent (= twilio) for column missing, null or anything else,
     // so the Twilio path's resolved object is unchanged.
     ...(numberRow.carrier === 'telnyx' ? { carrier: 'telnyx' } : {}),
     flow: {
       nodes,
       startNodeId: flowRow.global_settings?.startNodeId || nodes[0].id,
-      globalSettings: flowRow.global_settings || {},
+      globalSettings,
     },
     ttsBackend: version.tts_backend || undefined,
     // Optional per-version model choice (undefined = the engine defaults). The engine ignores a model it cannot use.

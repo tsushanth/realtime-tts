@@ -1748,7 +1748,7 @@ telnyxWss.on('connection', (telnyxWs, _req, callSid) => {
 });
 
 // Shared by both carriers: hands a phone-call adapter to a fresh CallSession and wires its events.
-function wirePhoneAdapter(adapter, label) {
+export function wirePhoneAdapter(adapter, label) {
   const session = new CallSession(adapter);
   if (adapter.carrier) session.cost.setCarrier(adapter.carrier); // Twilio adapter has no .carrier: tracker stays at its default
   adapter.on('message', (data, isBinary) => session.onClientMessage(data, isBinary));
@@ -1785,6 +1785,10 @@ function wirePhoneAdapter(adapter, label) {
     const resolved = pendingCallContext.get(callSid);
     if (!resolved) return;
     pendingCallContext.delete(callSid);
+    if (resolved.pilotBlocked) {
+      handlePilotBlockedCall(session, resolved, callSid);
+      return;
+    }
     if (resolved.isSampleCallee) {
       session._sampleTo = resolved.sampleTo; // see samplePlacedSidByTo: events are filed under the shopper leg's sid
       // Flow-less demo agent answering as a fictional business. No tenant, no call log, no webhooks.
@@ -1895,6 +1899,48 @@ function wirePhoneAdapter(adapter, label) {
       }
     }
   });
+}
+
+// A blocked pilot tenant's call (see tenantLookup.js fetchTenantRow): speak one short neutral line in the tenant's configured voice
+// (the normal TTS path, no flow/LLM), then hang up. The call is logged as outcome 'abandoned' with analysis {blocked:'pilot'} - the
+// shape the web app's usage/cap/alert code ignores (docs/pilot-cap-enforcement.md). No webhooks, recording or post-call analysis.
+export const PILOT_BLOCKED_MESSAGE = 'Thanks for calling. This line is not available right now. Please try again later.';
+const PILOT_BLOCKED_SAFETY_MS = 20_000; // hang up regardless if the message never finishes (TTS outage)
+export function handlePilotBlockedCall(session, resolved, callSid) {
+  console.log(`[pilot] blocked tenant=${resolved.tenantId} reason=${resolved.pilotBlockedReason || 'unknown'} call=${callSid}`);
+  session._pilotBlocked = true;
+  session.direction = 'inbound';
+  session._tenantId = resolved.tenantId;
+  insertCallLog({
+    tenant_id: resolved.tenantId,
+    retell_call_id: callSid,
+    caller_phone: resolved.fromNumber || 'unknown',
+    to_number: resolved.tenantNumber || null,
+    direction: 'inbound',
+    voice_engine: 'poc',
+    outcome: 'abandoned',
+    duration_seconds: 0,
+    is_internal_test: false,
+    analysis: { blocked: 'pilot' },
+  }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
+  session.onClientMessage(JSON.stringify({
+    type: 'context',
+    greeting: PILOT_BLOCKED_MESSAGE,
+    ...(resolved.tenantId ? { tenantId: resolved.tenantId } : {}),
+    ...(resolved.ttsBackend ? { ttsBackend: resolved.ttsBackend } : {}),
+    ...(resolved.ttsModel ? { ttsModel: resolved.ttsModel } : {}),
+    ...(resolved.voiceId ? { voiceId: resolved.voiceId } : {}),
+  }), false);
+  // Retiring this turn hangs up (same mechanism a flow's goodbye node uses); _closing stops any caller speech starting a new turn.
+  session._closing = true;
+  if (session.turnState) session.turnState.nodeType = 'goodbye';
+  const safety = setTimeout(() => {
+    console.log(`[pilot] blocked call ${callSid} message did not finish, hanging up`);
+    session.close();
+  }, PILOT_BLOCKED_SAFETY_MS);
+  safety.unref?.();
+  const origClose = session.close.bind(session);
+  session.close = (...a) => { clearTimeout(safety); return origClose(...a); };
 }
 
 // The context message a real tenant call starts with (what the agent version resolved to at call time). `model` is the version's
@@ -5954,6 +6000,11 @@ export class CallSession {
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         .map((m) => ({ role: m.role === 'user' && m.content.startsWith('[System note:') ? 'system_note_skipped' : m.role, content: m.content }))
         .filter((m) => m.role !== 'system_note_skipped');
+      if (this._pilotBlocked) {
+        // Blocked pilot call: keep the 'abandoned' outcome + analysis the call was logged with; only the real duration is added.
+        updateCallLogByCallSid(this.callSid, { duration_seconds: Math.round(voiceSeconds) }).catch((err) => console.error('[call-loop] call log finalize failed', err));
+        return;
+      }
       const finalize = updateCallLogByCallSid(this.callSid, {
         duration_seconds: Math.round(voiceSeconds),
         transcript,
