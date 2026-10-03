@@ -20,7 +20,15 @@ Billing for tiered calls is done by the web app's daily job, which reads
    `tier` is rejected (column not migrated), it is retried once without `tier`, so the row,
    duration and transcript are never lost.
 
-`stripeMeter.js` is unchanged: it still reports legacy usage records exactly as before.
+## Billing is cron-only
+
+The engine does not report usage to Stripe at all. The earlier `stripeMeter.js` posted legacy
+`usage_records` on subscription items; production prices are Billing-Meter-backed, so every
+call to it failed (`failed to fetch subscriptions ... HTTP 400`) and it never billed anything.
+It was removed. The only billing path is the web app's daily cron, which reads
+`calldesk_call_logs` (`duration_seconds`, `tier`) and reports to Stripe Billing Meters. The
+engine's only billing-related job is recording the tier and the call duration on the call log row.
+Hangup no longer makes any Stripe request, so no `[stripe-meter]` log lines should appear.
 
 ## Prerequisite
 

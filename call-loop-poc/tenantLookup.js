@@ -3,7 +3,7 @@ import { isCallAudioEnabled, encodeCallAudioForContext } from './callAudio.js';
 // Resolves a real inbound Twilio call to the tenant that owns the dialed
 // number — the gap that made every phone call get the exact same static
 // config regardless of which number was called, and made per-tenant
-// billing (see stripeMeter.js) impossible for real calls. Talks straight to
+// billing impossible for real calls. Talks straight to
 // Supabase's PostgREST API (same shared project calldesktech uses) rather
 // than pulling in the full supabase-js client for a handful of read-only
 // lookups.

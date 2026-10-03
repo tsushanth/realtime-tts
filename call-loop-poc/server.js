@@ -26,7 +26,6 @@ import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanit
 import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
 import { resolveLanguage, languageInstruction, detectSpokenLanguage } from './languages.js';
 import { validateVersionVoice } from './voiceSelection.js';
-import { reportCallUsage } from './stripeMeter.js';
 import { normalizeTier, resolveInboundCall, fetchKnowledgeItems, insertCallLog, updateCallLogByCallSid, updateCallLogById, findExpiredRecordings, acquireTwilioGlobalToken, findTenantIdByNumber, dispatchTenantWebhook, findTenantIdByCallSid, resolveAgentFlow } from './tenantLookup.js';
 import { newAsyncContext, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 import dns from 'node:dns/promises';
@@ -2019,8 +2018,8 @@ export class CallSession {
     this._subflowStack = [];
     // Set via the {"type":"context"} message's `stripeCustomerId` field —
     // present only when this call belongs to a real billed tenant (browser
-    // demo calls and flow-MCP test calls have none, and simply don't get
-    // metered). See stripeMeter.js.
+    // demo calls and flow-MCP test calls have none). Informational only: the
+    // engine does not bill (see TIERED-BILLING.md).
     this.stripeCustomerId = null;
     this.tier = null; // per-agent billing tier from the context message (see TIERED-BILLING.md); null = legacy billing
     this.calendar = null; // { provider, apiKey, eventTypeId } — see tenantLookup.js / onClientMessage
@@ -5956,14 +5955,8 @@ export class CallSession {
     this.cost.addSttSeconds(voiceSeconds);
     if (this.cost.carrier === 'telnyx') this.cost.addTelephonySeconds(voiceSeconds);
     this.cost.logSummary();
-    // Fire-and-forget — close() must not block hangup on a Stripe round
-    // trip, and a metering failure shouldn't surface as a call failure.
-    reportCallUsage(this.stripeCustomerId, {
-      voiceSeconds,
-      bookingEvents: this.cost.bookingEvents,
-      transferEvents: this.cost.transferEvents,
-      messageEvents: this.cost.messageEvents,
-    }).catch((err) => console.error('[call-loop] usage reporting failed', err));
+    // No usage is reported to Stripe from here: billing is done by the web app's daily job from calldesk_call_logs
+    // (duration_seconds, tier). See TIERED-BILLING.md.
 
     // Finalizes the call log row this session's 'start' handler created (see
     // insertCallLog there) — keyed by callSid rather than the possibly-not-

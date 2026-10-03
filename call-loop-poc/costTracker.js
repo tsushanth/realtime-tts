@@ -47,10 +47,9 @@ export class CallCostTracker {
     this.ttsChars = 0;
     this.s2sUserSeconds = 0;
     this.s2sAssistantSeconds = 0;
-    // Billable flow events — reported to Stripe's calldesktech_*_events
-    // meters at hangup, see stripeMeter.js. Distinct from the dollar-cost
-    // breakdown below: these are what the *customer* is billed for, not
-    // what we spend on providers.
+    // Billable flow event counts. Only counted and logged here; the engine
+    // reports nothing to Stripe (billing is the web app's daily job, see
+    // TIERED-BILLING.md). Distinct from the dollar-cost breakdown below.
     this.bookingEvents = 0;
     this.transferEvents = 0;
     this.messageEvents = 0;
