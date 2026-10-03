@@ -17,6 +17,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { SentenceChunker } from './sentenceChunker.js';
+import { piperPool, piperSynthesize, piperConfigured } from './piperTts.js';
+import { PIPER_DEFAULT_VOICE, validatePiperVoice } from './piperVoices.js';
 import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGuard.js';
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { TelnyxCallAdapter } from './telnyxAdapter.js';
@@ -54,7 +56,7 @@ const TTS_VOICE = process.env.TTS_VOICE || 'af_heart';
 // field overrides it per call (see CallSession.onClientMessage), so a
 // multi-tenant caller can pick a different backend per tenant without a
 // restart.
-const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax', 'fish'];
+const VALID_TTS_BACKENDS = ['kokoro', 'elevenlabs', 'cartesia', 'minimax', 'fish', 'piper'];
 const TTS_BACKEND = VALID_TTS_BACKENDS.includes(process.env.TTS_BACKEND) ? process.env.TTS_BACKEND : 'kokoro';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
@@ -128,6 +130,7 @@ function ttsBackendMissingKey(backend) {
   if (backend === 'cartesia') return !CARTESIA_API_KEY || !CARTESIA_VOICE_ID;
   if (backend === 'minimax') return !MINIMAX_API_KEY || !MINIMAX_GROUP_ID;
   if (backend === 'fish') return !FISH_AUDIO_API_KEY;
+  if (backend === 'piper') return !piperConfigured(); // owned Piper service: PIPER_TTS_TOKEN (see piperTts.js)
   return false; // kokoro needs no key
 }
 
@@ -1992,6 +1995,7 @@ export class CallSession {
     this._versionVoice = null; // { backend, voiceId } once the agent version's voice_id was validated and applied — see _applyVersionVoice
     this.cartesiaVoiceId = CARTESIA_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.fishReferenceId = null; // set via lang.tts.referenceId — no global default, fish is language-only today
+    this.piperVoiceId = validatePiperVoice(process.env.PIPER_VOICE).voiceId || PIPER_DEFAULT_VOICE; // see piperVoices.js
     this.minimaxVoiceId = MINIMAX_VOICE_ID; // per-language override via lang.tts.voiceId — see _applyLanguage
     this.greeting = null;
     this.ttsBackend = TTS_BACKEND;
@@ -2268,6 +2272,8 @@ export class CallSession {
         this.cartesiaVoiceId = v.voiceId;
       } else if (backend === 'minimax') {
         this.minimaxVoiceId = v.voiceId;
+      } else if (backend === 'piper') {
+        this.piperVoiceId = v.voiceId;
       } else {
         return;
       }
@@ -2289,7 +2295,7 @@ export class CallSession {
   // fixed phrases, and warm their audio clips. The tenant's explicit elevenlabs/cartesia choice is kept.
   _applyLanguage(lang) {
     this.lang = lang;
-    if (this.ttsBackend === 'kokoro' || this.ttsBackend === 'minimax') {
+    if (this.ttsBackend === 'kokoro' || this.ttsBackend === 'minimax' || this.ttsBackend === 'piper') { // piper voices are English only
       if (ELEVENLABS_API_KEY) {
         this.ttsBackend = lang.tts.backend;
         this.cost.ttsBackend = lang.tts.backend;
@@ -2465,6 +2471,7 @@ export class CallSession {
         } else {
           this.ttsBackend = msg.ttsBackend;
           this.cost.ttsBackend = msg.ttsBackend;
+          if (msg.ttsBackend === 'piper') piperPool.prewarm(this.id); // warm socket before the greeting; best effort
         }
       }
       // The agent version's saved voice (context `voiceId`, from calldesk_agent_versions.voice_id). Runs before the sample/shopper
@@ -3716,6 +3723,7 @@ export class CallSession {
       this.ttsBackend === 'cartesia' ? this.cartesiaVoiceId :
       this.ttsBackend === 'minimax' ? this.minimaxVoiceId :
       this.ttsBackend === 'fish' ? this.fishReferenceId :
+      this.ttsBackend === 'piper' ? this.piperVoiceId :
       this.voice;
     return `${this.ttsBackend}::${voice}::${text}`;
   }
@@ -5152,6 +5160,7 @@ export class CallSession {
       if (vv.backend === 'elevenlabs') this.elevenVoiceId = vv.voiceId;
       else if (vv.backend === 'cartesia') this.cartesiaVoiceId = vv.voiceId;
       else if (vv.backend === 'minimax') this.minimaxVoiceId = vv.voiceId;
+      else if (vv.backend === 'piper') this.piperVoiceId = vv.voiceId;
       this._versionVoice = vv;
       this._preLangState.elevenVoiceId = this.elevenVoiceId;
       this._preLangState.cartesiaVoiceId = this.cartesiaVoiceId;
@@ -5420,6 +5429,10 @@ export class CallSession {
       this._speakFish(text, turnId, turnStartedAt, tone);
       return;
     }
+    if (this.ttsBackend === 'piper') {
+      this._speakPiper(text, turnId, turnStartedAt, tone);
+      return;
+    }
 
     const ws = this._ensureTtsSocket();
     // Cold-start mask — see KOKORO_WARMUP_PHRASE's comment above. Only
@@ -5559,7 +5572,8 @@ export class CallSession {
     };
 
     try {
-      await fetchPcm(text, controller.signal, turnId, onChunk);
+      const used = await fetchPcm(text, controller.signal, turnId, onChunk);
+      if (typeof used === 'string') label = used; // a fetcher that fell back to another provider reports it (piper -> elevenlabs)
     } catch (err) {
       if (err.name !== 'AbortError') console.error(`[call-loop] ${label} stream error`, err);
     }
@@ -5613,7 +5627,12 @@ export class CallSession {
     const format = isTwilio ? 'mulaw8k' : 'pcm16';
     const outputFormat = isTwilio ? 'ulaw_8000' : 'pcm_24000';
     const style = tone && TONE_TO_ELEVEN_STYLE[tone] !== undefined ? TONE_TO_ELEVEN_STYLE[tone] : 0;
-    this._speakHttpTts('elevenlabs', async (text, signal, turnId, onChunk) => {
+    this._speakHttpTts('elevenlabs', (text, signal, turnId, onChunk) => this._elevenLabsFetch(text, signal, turnId, onChunk, outputFormat, style, tone),
+    text, turnId, turnStartedAt, format);
+  }
+
+  // The ElevenLabs streaming request, shared by _speakElevenLabs and the Piper fallback.
+  async _elevenLabsFetch(text, signal, turnId, onChunk, outputFormat, style, tone) {
       const res = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${this.elevenVoiceId}/stream?output_format=${outputFormat}`,
         {
@@ -5638,6 +5657,42 @@ export class CallSession {
       for await (const chunk of res.body) {
         if (this.activeTurn !== turnId) break; // barge-in mid-stream
         onChunk(Buffer.from(chunk));
+      }
+  }
+
+  // Owned Piper TTS (piperTts.js). One stream per call at a time (sentences queue behind each other: playback is serialized anyway,
+  // and it keeps load per call at one synth, see PIPER.md). A Piper failure before any audio went out falls back to this tenant's
+  // ElevenLabs voice for that sentence. Same wire formats as the ElevenLabs path: mulaw 8k for telephony, no resampling.
+  _speakPiper(text, turnId, turnStartedAt, tone = null) {
+    const isTwilio = this.clientWs instanceof TwilioCallAdapter;
+    const format = isTwilio ? 'mulaw8k' : 'pcm16';
+    const piperFormat = isTwilio ? 'mulaw_8000' : 'pcm_24000';
+    const style = tone && TONE_TO_ELEVEN_STYLE[tone] !== undefined ? TONE_TO_ELEVEN_STYLE[tone] : 0;
+    const prev = this._piperChain || Promise.resolve();
+    let release;
+    this._piperChain = new Promise((r) => { release = r; });
+    this._speakHttpTts('piper', async (text, signal, turnId, onChunk) => {
+      await prev;
+      try {
+        if (signal.aborted) return;
+        let forwarded = 0;
+        try {
+          const r = await piperSynthesize({
+            sessionKey: this.id, text, voice: this.piperVoiceId, format: piperFormat, signal,
+            onChunk: (b) => { forwarded++; onChunk(b); },
+          });
+          console.log(`[tts] piper turn ${turnId} firstAudioMs=${r.firstAudioMs} frames=${r.frames} socket=${r.reused ? 'warm' : 'new'}`);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError' || signal.aborted) return;
+          console.warn(`[tts] piper failed, falling back (${err.code || 'error'}: ${err.message})`);
+          if (forwarded > 0) { console.warn('[tts] piper failed after audio was sent - not repeating the sentence'); return; }
+        }
+        if (!ELEVENLABS_API_KEY) { console.error('[tts] piper fallback unavailable: ELEVENLABS_API_KEY not set, sentence dropped'); return; }
+        await this._elevenLabsFetch(text, signal, turnId, onChunk, isTwilio ? 'ulaw_8000' : 'pcm_24000', style, tone);
+        return 'piper-fallback-elevenlabs';
+      } finally {
+        release();
       }
     }, text, turnId, turnStartedAt, format);
   }
@@ -5957,6 +6012,7 @@ export class CallSession {
     if (this._pendingResponseTimer) { clearTimeout(this._pendingResponseTimer); this._pendingResponseTimer = null; }
     this.dgConnection?.close();
     this.ttsWs?.close();
+    piperPool.closeSession(this.id);
     // A flow's goodbye node calls this proactively to end the call — unlike
     // every other close() caller (browser tab closed, Twilio's own 'stop'
     // event), which is already reacting to the transport having closed

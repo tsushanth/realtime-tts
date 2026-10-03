@@ -14,6 +14,8 @@ export const RATES = {
     'claude-sonnet-4-6': { input: 3 / 1_000_000, output: 15 / 1_000_000 },
   },
   elevenlabsPerChar: 0.05 / 1000, // eleven_flash_v2_5
+  // Owned Piper infra: per-character rate from env PIPER_COST_PER_1K_CHARS (default 0; no vendor rate or margin lives in this repo).
+  get piperPerChar() { const n = Number(process.env.PIPER_COST_PER_1K_CHARS); return Number.isFinite(n) && n > 0 ? n / 1000 : 0; },
   kokoroPerChar: 0, // self-hosted — marginal cost ~0; GPU rental (if on) is billed separately by the hour, not per-call
   // Cartesia's Sonic pay-as-you-go rate ($50/M chars, docs.cartesia.ai/pricing)
   // — same as ElevenLabs Flash. No account exists yet to confirm an actual
@@ -109,6 +111,7 @@ export class CallCostTracker {
       cartesia: RATES.cartesiaPerChar,
       minimax: RATES.minimaxPerChar,
       kokoro: RATES.kokoroPerChar,
+      piper: RATES.piperPerChar,
     };
     const ttsRate = TTS_RATE_BY_BACKEND[this.ttsBackend] ?? RATES.kokoroPerChar;
     const ttsCost = this.ttsChars * ttsRate;
