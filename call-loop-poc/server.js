@@ -21,6 +21,7 @@ import { createDemoGuardFromEnv, clientIpFromRequest, MESSAGES } from './demoGua
 import { TwilioCallAdapter } from './twilioAdapter.js';
 import { TelnyxCallAdapter } from './telnyxAdapter.js';
 import { isTelnyxEnabled, createTelnyxVoiceHandler, verifyStreamParams } from './telnyx.js';
+import { startTelnyxRecording, logRecordingStart, resolveTelnyxAccountSid, createTelnyxRecordingStatusHandler, isTelnyxRecordingSid, deleteTelnyxRecording, proxyTelnyxRecording } from './telnyxRecording.js';
 import { CallCostTracker } from './costTracker.js';
 import { parseCallAudioContext, buildPlaySoundEffectTool, pickSoundEffect, sanitizeInlineCallAudio, SOUND_EFFECT_TOOL_NAME, browserPcmForClip, loadBrowserDemoCallAudio } from './callAudio.js';
 import { buildRegistry, isUsable, resolveDefaultModel, describeModels, auxAnthropicModel, runOpenAiCompatibleTurn, generateWithFallback } from './llmProviders.js';
@@ -481,8 +482,10 @@ async function startCallRecording(callSid) {
 // the only real way the data actually stops existing. Runs periodically via
 // setInterval below — a long-running Node process already, so no separate
 // cron infra needed.
-async function enforceRecordingRetention() {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return;
+export async function enforceRecordingRetention() {
+  const twilioCreds = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN);
+  const telnyxCreds = !!(TELNYX_ENABLED && process.env.TELNYX_API_KEY);
+  if (!twilioCreds && !telnyxCreds) return;
   const expired = await findExpiredRecordings().catch((err) => {
     console.error('[call-loop] retention sweep query failed', err);
     return [];
@@ -491,6 +494,14 @@ async function enforceRecordingRetention() {
   console.log(`[call-loop] retention sweep: deleting ${expired.length} expired recording(s)`);
   const auth64 = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
   for (const { recordingSid, callLogId } of expired) {
+    if (isTelnyxRecordingSid(recordingSid)) {
+      // Telnyx recording (recording_sid is 'telnyx:<id>'): deleted through the Telnyx API, same clear-the-reference rule.
+      if (telnyxCreds && await deleteTelnyxRecording(recordingSid)) {
+        await updateCallLogById(callLogId, { recording_url: null, recording_sid: null });
+      }
+      continue;
+    }
+    if (!twilioCreds) continue;
     try {
       const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Recordings/${recordingSid}.json`, {
         method: 'DELETE',
@@ -977,7 +988,7 @@ app.use(express.static('public'));
 // Telnyx webhook signatures are computed over the exact raw body, so this path keeps the raw bytes (the global
 // parser below skips a request that is already parsed). Registered only when TELNYX_ENABLED=1.
 const TELNYX_ENABLED = isTelnyxEnabled();
-if (TELNYX_ENABLED) app.use('/telnyx/voice', express.raw({ type: () => true, limit: '256kb' }));
+if (TELNYX_ENABLED) app.use(['/telnyx/voice', '/telnyx/recording-status'], express.raw({ type: () => true, limit: '256kb' }));
 app.use(express.urlencoded({ extended: false })); // Twilio POSTs form-encoded fields (To, From, CallSid)
 
 // Per-call context resolved here (before the WS even connects) and handed
@@ -1201,6 +1212,7 @@ app.post('/twilio/voice', async (req, res) => {
 // number's carrier is 'telnyx'. Never touches the Twilio routes.
 if (TELNYX_ENABLED) {
   app.post('/telnyx/voice', createTelnyxVoiceHandler({ resolveInboundCall, pendingCallContext, contextWrittenCallSids }));
+  app.post('/telnyx/recording-status', createTelnyxRecordingStatusHandler({ updateCallLogByCallSid }));
 }
 
 // Twilio calls this once a recording started via startCallRecording()
@@ -1276,6 +1288,10 @@ app.get('/recording-audio', async (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
   const url = req.query.url;
+  // A Telnyx recording reference (https://api.telnyx.com/v2/recordings/<id>) streams through the Telnyx key instead.
+  if (TELNYX_ENABLED && typeof url === 'string' && url.startsWith('https://api.telnyx.com/')) {
+    if (await proxyTelnyxRecording(url, res)) return;
+  }
   if (!url || typeof url !== 'string' || !url.startsWith('https://api.twilio.com/')) {
     return res.status(400).json({ error: 'url must be a real Twilio recording URL' });
   }
@@ -1905,7 +1921,15 @@ function wirePhoneAdapter(adapter, label) {
         ...(resolved.tier ? { tier: resolved.tier } : {}),
       }).then((id) => { session._callLogId = id; }).catch((err) => console.error('[call-loop] call log insert failed', err));
       if (adapter.carrier === 'telnyx') {
-        if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) console.warn(`[call-loop] call recording is not supported on telnyx yet - call ${callSid} will not be recorded`);
+        // Same gate as Twilio (RECORD_REAL_CALLS + the tenant's recording setting); startTelnyxRecording additionally needs
+        // TELNYX_ENABLED=1, TELNYX_API_KEY and a Telnyx account id, and otherwise soft-fails with a logged reason.
+        if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
+          startTelnyxRecording({
+            callSid,
+            accountSid: resolveTelnyxAccountSid(resolved.telnyxAccountSid),
+            host: process.env.TELNYX_PUBLIC_HOST || PUBLIC_HOST,
+          }).then((r) => logRecordingStart(callSid, r)).catch((err) => console.error('[telnyx] recording start failed', err));
+        }
       } else if (RECORD_REAL_CALLS && resolved.recordingEnabled !== false) {
         startCallRecording(callSid).catch((err) => console.error('[call-loop] recording start failed', err));
       }

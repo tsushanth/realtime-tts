@@ -18,6 +18,12 @@ describe('Telnyx disabled (default)', () => {
     expect(res.status).toBe(404);
   });
 
+  it('/telnyx/recording-status is not mounted and /recording-audio does not proxy Telnyx urls', async () => {
+    expect((await request(app).post('/telnyx/recording-status?key=x').send('CallSid=x')).status).toBe(404);
+    const res = await request(app).get('/recording-audio').query({ url: 'https://api.telnyx.com/v2/recordings/abcdefgh' });
+    expect([400, 401]).toContain(res.status); // never reaches a Telnyx fetch; same rejection as any non-Twilio url
+  });
+
   it('phone-number query is the original one (no carrier column) and a stray carrier value is ignored', async () => {
     const urls = [];
     const real = globalThis.fetch;

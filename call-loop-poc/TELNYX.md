@@ -31,7 +31,9 @@ does not look at `carrier`.
 | `TELNYX_PUBLIC_KEY` | Base64 Ed25519 public key from the Telnyx portal. When set, `/telnyx/voice` requires a valid `telnyx-signature-ed25519` over `${telnyx-timestamp}|${raw body}` (5 min tolerance). |
 | `TELNYX_WEBHOOK_SECRET` | Shared secret appended to the webhook URL as `?key=...`; compared in constant time. When both this and the public key are set, both must pass. |
 | `TELNYX_STREAM_SECRET` | HMAC secret for the signed websocket URL (falls back to `TELNYX_WEBHOOK_SECRET`, then to a random per-process secret, which only works on a single machine; set it if you run more than one). |
-| `TELNYX_PUBLIC_HOST` | Host to put in the `wss://` URL (defaults to the request `Host` header). |
+| `TELNYX_PUBLIC_HOST` | Host to put in the `wss://` URL (defaults to the request `Host` header). Also the host of the recording callback (falls back to `PUBLIC_HOST`). |
+| `TELNYX_API_KEY` | Telnyx v2 API key (Bearer). Needed to start, play back and delete recordings. Never sent to the browser or to non-api.telnyx.com hosts. Unset = recording soft-fails. |
+| `TELNYX_ACCOUNT_SID` | Optional override for the account id used in the TeXML REST path; default is the `AccountSid` Telnyx sends with the voice webhook. |
 
 At least one of `TELNYX_PUBLIC_KEY` / `TELNYX_WEBHOOK_SECRET` must be set or `/telnyx/voice` answers 503 (fail closed).
 Telnyx documents Ed25519 signing for its webhooks but I could not confirm that TeXML application webhooks carry those
@@ -62,6 +64,42 @@ alter table calldesk_phone_numbers
 3. Assign the Telnyx number to that TeXML application (Numbers > the number > Voice settings).
 4. Set the Fly/host env vars above, set the number's `carrier` to `telnyx`, then place one real test call (see next steps).
 
+## Call recording
+
+Gate (identical to Twilio): `RECORD_REAL_CALLS` is not `false` and the tenant's `recording_enabled` setting is not `'false'`;
+plus `TELNYX_ENABLED=1`, `TELNYX_API_KEY`, a Telnyx account id and webhook auth configured. Otherwise nothing is sent to Telnyx.
+
+- Start (at stream start, non-blocking): `POST https://api.telnyx.com/v2/texml/Accounts/{AccountSid}/Calls/{CallSid}/Recordings.json`
+  form-encoded with `RecordingChannels=dual`, `RecordingTrack=both`, `PlayBeep=false` (Telnyx's default is a beep; Twilio is silent),
+  `RecordingStatusCallback=https://<host>/telnyx/recording-status?key=<TELNYX_WEBHOOK_SECRET>`, event `completed`. 5 s timeout,
+  up to 3 attempts on network errors / 429 / 5xx (not on timeouts, which may already have started a recording, and not on 4xx).
+  Any failure only logs; the call is never affected.
+- Completed webhook: `POST /telnyx/recording-status` uses the same auth as `/telnyx/voice` (Ed25519 and/or `?key=`). Writes
+  `recording_url = https://api.telnyx.com/v2/recordings/<RecordingSid>` and `recording_sid = telnyx:<RecordingSid>` on the call log row
+  (same columns as Twilio). Telnyx's own download link is deliberately not stored: it expires (10 minutes). A repeated delivery
+  is acknowledged without a second write; a DB write error returns 500 so Telnyx can retry.
+- Playback: `GET /recording-audio?url=<recording_url>` (same admin bearer as today). A `https://api.telnyx.com/v2/recordings/<id>` url
+  is resolved server-side via `GET /v2/recordings/{id}` to a fresh `download_urls.mp3` and streamed; the API key is only sent to api.telnyx.com.
+- Retention: the existing 6-hourly sweep deletes `telnyx:` rows with `DELETE /v2/recordings/{id}` (404 = already gone) and then clears
+  `recording_url` / `recording_sid`, exactly like Twilio. A failed delete keeps the reference for the next sweep.
+- Still not supported on Telnyx: nothing recording-related is left unsupported except the no-key / no-account-id / no-webhook-auth
+  cases above (soft-fail, logged). Recording of Twilio-placed calls, outbound Telnyx calls and transfers is out of scope (no Telnyx outbound).
+
+Portal setup: nothing extra. The callback URL is supplied per recording in the start request, so no recording webhook needs to be
+configured in the portal. Create an API key (Mission Control > Keys & Credentials > API Keys) and set it as `TELNYX_API_KEY`.
+Optionally set the account's recording storage in the portal (default: Telnyx-managed storage).
+
+### Live test plan (one real call)
+
+1. Env on the host: `TELNYX_ENABLED=1`, `TELNYX_API_KEY`, `TELNYX_WEBHOOK_SECRET`, `TELNYX_PUBLIC_HOST` (public host), the usual Telnyx number setup; tenant recording setting on and a `recording_retention_days` of your choice.
+2. Call the Telnyx number; talk for 15-20 s on both sides (say distinct words, let the agent answer), hang up.
+3. Logs, during the call: expect `[telnyx] recording started for <CallSid>`. A line `recording not started ... http_NNN` means the start failed: 404 suggests the account id or call id in the path is wrong, 401/403 the key, 422 a parameter.
+4. Logs, within about a minute after hangup: no `/telnyx/recording-status rejected` line. If absent entirely, the callback never arrived (check the `?key=` and public host).
+5. DB: the `calldesk_call_logs` row for that CallSid has `recording_url = https://api.telnyx.com/v2/recordings/<uuid>` and `recording_sid = telnyx:<uuid>`.
+6. Playback: `curl -H "Authorization: Bearer $TEST_CALL_SECRET" "https://<host>/recording-audio?url=<recording_url>" -o r.mp3`; open it: confirm it is a 2-channel file (caller on one channel, agent on the other), no beep at the start, audio complete. If the proxy returns 404 while the callback arrived, `RecordingSid` is not the v2 recording id (see Not verified #10).
+7. Dashboard: the call's recording plays in the Calls page.
+8. Retention: set `recording_retention_days` to 1, backdate that row's `created_at` by 2 days, restart (the sweep runs at boot) and confirm the row's recording columns are cleared and `GET /v2/recordings/<uuid>` returns 404 in Telnyx.
+
 ## What the TeXML returns
 
 ```xml
@@ -82,7 +120,7 @@ alter table calldesk_phone_numbers
 | `payment` node (`<Pay>`) | yes | **no** | logs; sets `payment_status=failed`, `payment_status_detail=unsupported_on_telnyx` and re-runs the node turn so the flow can tell the caller and route on |
 | `press_digit` node (send DTMF to another system) | yes | **no** | logs; skips tones and advances along the node's first edge |
 | `sms` node and `sms` subagent tool | yes (Twilio Messages API) | **no** | logs and skips |
-| Call recording / retention | yes | **no** | logs "not supported on telnyx yet"; call is not recorded |
+| Call recording / retention | yes | **yes, when `TELNYX_API_KEY` is set** (not live-tested) | same per-tenant setting and `RECORD_REAL_CALLS` as Twilio; dual channel, no beep; see "Call recording" below. Without `TELNYX_API_KEY` (or with no Telnyx account id) it logs "recording not started for <call>: <reason> - call continues unrecorded" and the call is unaffected |
 | `_redirectForDetour` / session resume | yes | **no** | returns false |
 | Outbound calls, batch calling, test calls, shopper/demo/sample-callee modes, number purchase | yes | **no** (inbound only; those routes are Twilio-only and untouched) | n/a |
 | Stripe usage metering, call log, post-call analysis, webhooks | yes | yes (call id = TeXML `CallSid`; the call log row does not record the carrier) | |
@@ -109,6 +147,10 @@ after the minimum is an assumption.
 - https://developers.telnyx.com/docs/development/api-fundamentals/webhooks/receiving-webhooks (Ed25519 headers, `timestamp|body`,
   public key in the portal, "TeXML callbacks can be form-encoded")
 - https://developers.telnyx.com/docs/voice/programmable-voice/voice-api-webhooks
+- https://developers.telnyx.com/api-reference/texml-rest-commands/request-recording-for-a-call (start recording on a live call: params, defaults, `sid`)
+- https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/record (format mp3|wav, channels, "Recording URLs are valid for 10 minutes", callback fields)
+- https://developers.telnyx.com/api-reference/call-recordings/retrieve-a-call-recording and .../delete-a-call-recording (GET/DELETE /recordings/{id}, `download_urls`)
+- https://telnyx.com/pricing/voice-api (recording $0.002/min, storage $0)
 - Measured 2026-10-02 (inbound test, not from docs): start event shape, 20 ms / 160 B PCMU inbound media at about 49 frames/s,
   raw base64 PCMU 160 B outbound frames accepted without error.
 
@@ -138,7 +180,12 @@ after the minimum is an assumption.
 8. Telnyx billing figures in `costTracker.js` were supplied by the requester, not re-verified against Telnyx's pricing page.
 9. Multi-machine deployments need `TELNYX_STREAM_SECRET` set (the random fallback differs per process).
 
+10. Recording (all from developers.telnyx.com text, none exercised): (a) that the TeXML callback `RecordingSid` equals the v2 `/recordings/{id}` id used for playback and delete is an assumption; (b) that `CallSid` in the voice webhook is accepted as `{call_sid}` in the TeXML REST path and that `AccountSid` is present in the voice webhook; (c) whether the recording callback carries Ed25519 headers (the `?key=` secret is what protects it); (d) the exact callback payload (form-encoded fields `CallSid, RecordingSid, RecordingUrl, RecordingStatus, RecordingDuration, RecordingChannels` come from a search summary of the Record verb page, not the REST page); (e) the retrieve endpoint's `download_urls.mp3` shape and that its links expire is only documented for the Record verb (10 minutes); (f) whether recording a stream-connected (`<Connect><Stream>`) call captures both parties; (g) whether `PlayBeep=false` is honoured; (h) rate: Telnyx lists call recording at $0.002/min with $0 storage on telnyx.com/pricing/voice-api (not wired into `costTracker.js`, so call cost does not include it).
+11. The sweep's delete query is limited to 500 rows oldest-first, shared between carriers (existing behaviour).
+
 ## Tests
+
+- `test/telnyxRecording.test.js`: start request shape, soft failure/retry rules, webhook auth + idempotency + call-log write, retention routing/deletion, playback proxy, Twilio proxy unchanged.
 
 - `test/telnyxAdapter.test.js`: fake-websocket adapter tests (decode, 160 B/20 ms pacing, clear, backpressure, dtmf, mark, stop, malformed frames, drain-before-close).
 - `test/telnyxRouting.test.js`: routing (telnyx only when enabled + carrier=telnyx, twilio/null/missing column refused), webhook auth, Ed25519 verification, signed stream URL.

@@ -118,7 +118,7 @@ export function buildTelnyxStreamTexml({ host, callSid, env = process.env }) {
 
 // ---------- /telnyx/voice ----------
 
-function parseBody(req, rawBody) {
+export function parseBody(req, rawBody) {
   const type = String(req.headers['content-type'] || '');
   const text = rawBody ? rawBody.toString('utf8') : '';
   try {
@@ -170,6 +170,7 @@ export function createTelnyxVoiceHandler(deps, env = process.env) {
         ...resolved,
         fromNumber: from,
         tenantNumber: to,
+        telnyxAccountSid: body.AccountSid || body.account_sid || null,
         direction: 'inbound',
         createdAt: Date.now(),
       });
