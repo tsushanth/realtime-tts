@@ -5,6 +5,8 @@
 // utterance of the call fail at the provider, so anything that does not look right is rejected and the caller keeps the default.
 // Never throws.
 
+import { validatePiperVoice } from './piperVoices.js';
+
 // Kokoro voices the realtime-tts worker can load. The worker hard-codes KPipeline(lang_code='a'), so only the American English
 // set (af_* / am_*) works; any other name raises inside the worker. Update this list when the worker's voice set changes.
 export const KOKORO_VOICES = new Set([
@@ -32,5 +34,6 @@ export function validateVersionVoice(backend, value) {
     const re = backend === 'elevenlabs' ? ELEVENLABS_ID : backend === 'cartesia' ? CARTESIA_ID : MINIMAX_ID;
     return re.test(id) ? { ok: true, voiceId: id } : { ok: false, reason: `not a valid ${backend} voice id` };
   }
+  if (backend === 'piper') return validatePiperVoice(id);
   return { ok: false, reason: `per-version voice is not supported for backend ${backend}` };
 }
