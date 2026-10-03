@@ -790,6 +790,20 @@ const SFX_MIN_REPEAT_MS = 10_000;
 // wasn't enough; this is deliberately small so a model that's genuinely
 // stuck doesn't nudge indefinitely before falling back.
 const MAX_NUDGE_ATTEMPTS = 2;
+
+// Speak-first rule for extraction nodes (2026-10-03 latency finding). Claude Haiku often answers a caller's field
+// with ONLY a record_field tool_use block and no text; Anthropic ends the message at the tool call, so the turn is
+// mute and _maybeRetireTurn must run a SECOND sequential model call (the nudge) to ask for what is missing, adding
+// 1-2 s to the first reply. Text has to come BEFORE the tool call in the same response, so say so explicitly, in the
+// tool description (read at the moment of the tool decision) and as the LAST line of the node prompt (recency).
+export const EXTRACTION_SPEAK_FIRST_HINT =
+  'Reply order, every time: write ONE short natural spoken sentence to the caller FIRST (acknowledge what you just heard and, ' +
+  'if any field is still missing, ask for the next one), and ONLY THEN call record_field in that same response. A response that ' +
+  'starts with a tool call and has no spoken sentence is never allowed.';
+export const RECORD_FIELD_TOOL_DESCRIPTION =
+  'Call this whenever the caller provides one of this step\'s fields, even if you are not ready to transition yet. ' +
+  'Safe to call multiple times. ALWAYS write your spoken sentence to the caller BEFORE calling this tool, in the same response; ' +
+  'never call it as the first thing in a response with no text.';
 // How long to wait after the last keypad digit before treating a DTMF
 // entry as complete (see CallSession._onDtmfDigit) — long enough that a
 // caller dialing a multi-digit code at a normal pace doesn't get cut off
@@ -3246,9 +3260,7 @@ export class CallSession {
     if (node && node.extract) {
       tools.push({
         name: 'record_field',
-        description:
-          'Call this immediately whenever the caller provides one of this step\'s fields, even ' +
-          'if you are not ready to transition yet. Safe to call multiple times.',
+        description: RECORD_FIELD_TOOL_DESCRIPTION,
         input_schema: {
           type: 'object',
           properties: { field: { type: 'string', enum: Object.keys(node.extract) }, value: { type: 'string' } },
@@ -4039,6 +4051,7 @@ export class CallSession {
       'the digits individually, grouped naturally (e.g. "four two five, six two eight, four ' +
       'eight eight seven") — never as one large number ("four billion..."); the same goes for ' +
       'any other long digit string like a confirmation code.';
+    if (node.extract) prompt += `\n${EXTRACTION_SPEAK_FIRST_HINT}`;
     return this._applyVariables(prompt);
   }
 
