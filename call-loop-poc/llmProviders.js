@@ -35,11 +35,11 @@ const BUILTIN_MODELS = [
   // gemini-2.5-flash-lite was removed: Google returns 404 "no longer available to new users" (checked 2026-10-02).
   {
     id: 'gemini-3.1-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
-    keyEnv: 'GEMINI_API_KEY', price: { in: 0.25, out: 1.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true },
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.25, out: 1.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true, streamUsage: true },
   },
   {
     id: 'gemini-3.5-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
-    keyEnv: 'GEMINI_API_KEY', price: { in: 0.3, out: 2.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true },
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.3, out: 2.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true, streamUsage: true },
   },
 ];
 
