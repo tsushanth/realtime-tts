@@ -268,6 +268,32 @@ describe('extra_content / thought_signature (Gemini 3)', () => {
     expect('extra_content' in tcs[1]).toBe(false);
   });
 
+  it('Gemini parallel calls that all stream at index 0 become separate calls (not glued arguments)', async () => {
+    const f = fakeFetch([sse([
+      delta({ tool_calls: [{ index: 0, id: 'a', extra_content: SIG, function: { name: 'record_field', arguments: '{"field":"name","value":"M"}' } }] }),
+      delta({ tool_calls: [{ index: 0, id: 'b', function: { name: 'record_field', arguments: '{"field":"phone","value":"415"}' } }] }),
+      delta({ tool_calls: [{ index: 0, function: { name: 'record_field', arguments: '{"field":"time","value":"9"}' } }] }),
+    ])], [sse([delta({ content: 'ok' })])]);
+    const r = await run(gem(), f);
+    const uses = r.content.filter((b) => b.type === 'tool_use');
+    expect(uses.map((u) => u.input.field)).toEqual(['name', 'phone', 'time']);
+    const tcs = f.calls[1].body.messages.at(-4).tool_calls;
+    expect(tcs).toHaveLength(3);
+    expect(new Set(tcs.map((t) => t.id)).size).toBe(3);
+    expect(tcs[0].extra_content).toEqual(SIG);
+    expect('extra_content' in tcs[1]).toBe(false);
+    expect(f.calls[1].body.messages.filter((m) => m.role === 'tool')).toHaveLength(3);
+  });
+
+  it('without the quirk (other providers) same-index deltas still merge into one call, as before', async () => {
+    const f = fakeFetch([sse([
+      delta({ tool_calls: [{ index: 0, id: 'a', function: { name: 'record_field', arguments: '{"field":"name",' } }] }),
+      delta({ tool_calls: [{ index: 0, function: { name: 'record_field', arguments: '"value":"M"}' } }] }),
+    ])], [sse([delta({ content: 'ok' })])]);
+    const r = await run(luna(), f);
+    expect(r.content.filter((b) => b.type === 'tool_use')).toEqual([{ type: 'tool_use', name: 'record_field', input: { field: 'name', value: 'M' } }]);
+  });
+
   it('extra_content split across deltas is merged', async () => {
     const f = fakeFetch([sse([
       delta({ tool_calls: [{ index: 0, id: 'a', function: { name: 'record_field', arguments: '{"field"' } }] }),

@@ -54,7 +54,7 @@ LLM_EXTRA_MODELS='[{"id":"grok-fast","provider":"xai","endpoint":"https://api.x.
 
 Fields: `id`, `provider`, `endpoint` (https; http only for localhost), `keyEnv`, `price` (USD per million tokens, used by the cost tracker),
 optional `status:"untested"`, and `quirks`: `maxTokensParam` (`max_tokens` | `max_completion_tokens`), `reasoningEffort`, `streamUsage`
-(ask the provider to report token usage in the stream; without it the cost tracker sees 0 tokens), `preserveExtraContent` (echo each tool call's `extra_content` back on the follow-up request; required by Gemini 3, whose `thought_signature` otherwise causes a 400) and `extraBody` (extra request fields).
+(ask the provider to report token usage in the stream; without it the cost tracker sees 0 tokens), `reuseToolCallIndex` (Gemini streams parallel tool calls all at index 0: a repeated name starts a new call) and `preserveExtraContent` (echo each tool call's `extra_content` back on the follow-up request; required by Gemini 3, whose `thought_signature` otherwise causes a 400) and `extraBody` (extra request fields).
 Bad entries are skipped with a warning.
 
 Things to know before putting a non-Anthropic model on real calls:

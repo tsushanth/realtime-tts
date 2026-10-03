@@ -35,11 +35,11 @@ const BUILTIN_MODELS = [
   // gemini-2.5-flash-lite was removed: Google returns 404 "no longer available to new users" (checked 2026-10-02).
   {
     id: 'gemini-3.1-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
-    keyEnv: 'GEMINI_API_KEY', price: { in: 0.25, out: 1.5 }, status: 'untested', quirks: { preserveExtraContent: true },
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.25, out: 1.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true },
   },
   {
     id: 'gemini-3.5-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
-    keyEnv: 'GEMINI_API_KEY', price: { in: 0.3, out: 2.5 }, status: 'untested', quirks: { preserveExtraContent: true },
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.3, out: 2.5 }, status: 'untested', quirks: { preserveExtraContent: true, reuseToolCallIndex: true },
   },
 ];
 
@@ -83,6 +83,7 @@ export function normalizeSpec(raw) {
     spec.quirks.reasoningEffort = q.reasoningEffort;
   }
   if (q.streamUsage !== undefined) spec.quirks.streamUsage = q.streamUsage === true;
+  if (q.reuseToolCallIndex !== undefined) spec.quirks.reuseToolCallIndex = q.reuseToolCallIndex === true;
   if (q.preserveExtraContent !== undefined) spec.quirks.preserveExtraContent = q.preserveExtraContent === true;
   if (q.extraBody !== undefined) {
     if (!q.extraBody || typeof q.extraBody !== 'object' || Array.isArray(q.extraBody)) return { error: 'quirks.extraBody must be an object' };
@@ -195,7 +196,8 @@ export async function streamChatCompletion({ spec, apiKey, messages, tools, onTe
     throw err;
   }
   let text = '';
-  const calls = new Map(); // index -> {id, name, argsText}
+  const calls = new Map(); // key -> {id, name, argsText}
+  const current = new Map(); // delta index -> key of the call that index is currently filling
   let usage = null;
   let buffer = '';
   for await (const chunk of res.body) {
@@ -215,8 +217,16 @@ export async function streamChatCompletion({ spec, apiKey, messages, tools, onTe
       if (delta.content) { text += delta.content; onText(delta.content); }
       for (const tc of delta.tool_calls || []) {
         const idx = tc.index ?? 0;
-        if (!calls.has(idx)) calls.set(idx, { id: tc.id || `call_${idx}`, name: '', argsText: '' });
-        const entry = calls.get(idx);
+        let key = current.get(idx) ?? idx;
+        // Gemini streams PARALLEL tool calls as separate deltas that all carry index 0 (each with its own name), so merging by
+        // index glued their arguments into '{..}{..}' (unparseable, and a 400 on the follow-up). OpenAI sends a name only once
+        // per index, so under this quirk a second name on an already-named index starts a NEW call.
+        if (spec.quirks?.reuseToolCallIndex && tc.function?.name && calls.get(key)?.name) {
+          key = `${idx}#${calls.size}`;
+          current.set(idx, key);
+        }
+        if (!calls.has(key)) calls.set(key, { id: tc.id || (typeof key === 'number' ? `call_${idx}` : `call_${key.replace('#', '_')}`), name: '', argsText: '' });
+        const entry = calls.get(key);
         if (tc.id) entry.id = tc.id;
         if (tc.function?.name) entry.name = tc.function.name;
         if (tc.function?.arguments) entry.argsText += tc.function.arguments;
