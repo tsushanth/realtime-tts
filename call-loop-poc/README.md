@@ -43,7 +43,7 @@ A model is selectable only when its key env var is set (Anthropic needs `ANTHROP
 chosen. If a non-Anthropic provider errors **before it has spoken**, the turn is retried on Haiku and the call carries on; after speech
 has started the error is surfaced (a half-spoken turn cannot be restarted). The startup log lists every model and whether it is available.
 
-Built in: `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `gpt-6-luna` (`OPENAI_API_KEY`), `gemini-2.5-flash-lite` (`GEMINI_API_KEY`, **untested**).
+Built in: `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `gpt-6-luna` (`OPENAI_API_KEY`), `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` (`GEMINI_API_KEY`, **untested**; `gemini-2.5-flash-lite` was removed, Google 404s it for new users).
 
 Adding a model without a code change (example: xAI):
 
@@ -54,7 +54,7 @@ LLM_EXTRA_MODELS='[{"id":"grok-fast","provider":"xai","endpoint":"https://api.x.
 
 Fields: `id`, `provider`, `endpoint` (https; http only for localhost), `keyEnv`, `price` (USD per million tokens, used by the cost tracker),
 optional `status:"untested"`, and `quirks`: `maxTokensParam` (`max_tokens` | `max_completion_tokens`), `reasoningEffort`, `streamUsage`
-(ask the provider to report token usage in the stream; without it the cost tracker sees 0 tokens) and `extraBody` (extra request fields).
+(ask the provider to report token usage in the stream; without it the cost tracker sees 0 tokens), `preserveExtraContent` (echo each tool call's `extra_content` back on the follow-up request; required by Gemini 3, whose `thought_signature` otherwise causes a 400) and `extraBody` (extra request fields).
 Bad entries are skipped with a warning.
 
 Things to know before putting a non-Anthropic model on real calls:

@@ -17,6 +17,8 @@
 
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+
 // Prices are USD per million tokens, from the providers' own pricing pages (retrieved 2026-10-01/02); re-verify before relying on them.
 const BUILTIN_MODELS = [
   { id: 'claude-haiku-4-5-20251001', provider: 'anthropic', price: { in: 1, out: 5 } },
@@ -28,10 +30,16 @@ const BUILTIN_MODELS = [
     // Completions and is the only voice-safe latency setting.
     quirks: { maxTokensParam: 'max_completion_tokens', reasoningEffort: 'none', streamUsage: true },
   },
+  // Gemini 3.x: tool calls carry extra_content.google.thought_signature, which MUST be echoed back on the assistant message
+  // of the follow-up request or Google answers 400 "Function call is missing a thought_signature" (quirks.preserveExtraContent).
+  // gemini-2.5-flash-lite was removed: Google returns 404 "no longer available to new users" (checked 2026-10-02).
   {
-    // UNTESTED in our flows (cost-lab bake-off pending). Registered so it can be tried by setting GEMINI_API_KEY.
-    id: 'gemini-2.5-flash-lite', provider: 'gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-    keyEnv: 'GEMINI_API_KEY', price: { in: 0.1, out: 0.4 }, status: 'untested', quirks: {},
+    id: 'gemini-3.1-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.25, out: 1.5 }, status: 'untested', quirks: { preserveExtraContent: true },
+  },
+  {
+    id: 'gemini-3.5-flash-lite', provider: 'gemini', endpoint: GEMINI_ENDPOINT,
+    keyEnv: 'GEMINI_API_KEY', price: { in: 0.3, out: 2.5 }, status: 'untested', quirks: { preserveExtraContent: true },
   },
 ];
 
@@ -75,6 +83,7 @@ export function normalizeSpec(raw) {
     spec.quirks.reasoningEffort = q.reasoningEffort;
   }
   if (q.streamUsage !== undefined) spec.quirks.streamUsage = q.streamUsage === true;
+  if (q.preserveExtraContent !== undefined) spec.quirks.preserveExtraContent = q.preserveExtraContent === true;
   if (q.extraBody !== undefined) {
     if (!q.extraBody || typeof q.extraBody !== 'object' || Array.isArray(q.extraBody)) return { error: 'quirks.extraBody must be an object' };
     if (JSON.stringify(q.extraBody).length > EXTRA_BODY_MAX_BYTES) return { error: 'quirks.extraBody too large' };
@@ -160,6 +169,14 @@ export function buildChatBody(spec, { messages, tools = [], maxTokens = 300 }) {
 }
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const EXTRA_CONTENT_MAX_BYTES = 16_000;
+
+// Provider-opaque per-tool-call data (Gemini's thought_signature). Only a plain JSON object of sane size is kept; anything
+// else (string, array, null, oversized) is ignored so a malformed value can never break the follow-up request.
+function sanitizeExtraContent(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  try { return JSON.stringify(v).length <= EXTRA_CONTENT_MAX_BYTES ? v : undefined; } catch { return undefined; }
+}
 
 // One streaming chat-completion request. Calls onText(delta) as text arrives. Returns { text, toolCalls, usage }.
 export async function streamChatCompletion({ spec, apiKey, messages, tools, onText = () => {}, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) {
@@ -203,6 +220,10 @@ export async function streamChatCompletion({ spec, apiKey, messages, tools, onTe
         if (tc.id) entry.id = tc.id;
         if (tc.function?.name) entry.name = tc.function.name;
         if (tc.function?.arguments) entry.argsText += tc.function.arguments;
+        if (spec.quirks?.preserveExtraContent) {
+          const extra = sanitizeExtraContent(tc.extra_content);
+          if (extra) entry.extra_content = { ...(entry.extra_content || {}), ...extra };
+        }
       }
     }
   }
@@ -221,10 +242,11 @@ export async function runOpenAiCompatibleTurn({ spec, apiKey, system, messages, 
   const first = await streamChatCompletion({ spec, apiKey, messages: baseMessages, tools, onText, fetchImpl });
 
   const content = [];
-  for (const { name, argsText } of first.toolCalls) {
+  for (const { name, argsText, extra_content } of first.toolCalls) {
     let input = {};
     try { input = argsText ? JSON.parse(argsText) : {}; } catch { input = {}; }
-    content.push({ type: 'tool_use', name, input });
+    // extra_content is provider-opaque (Gemini thought_signature); Anthropic-shaped consumers ignore the extra field.
+    content.push({ type: 'tool_use', name, input, ...(extra_content ? { extra_content } : {}) });
   }
   if (first.text) {
     content.unshift({ type: 'text', text: first.text });
@@ -234,7 +256,11 @@ export async function runOpenAiCompatibleTurn({ spec, apiKey, system, messages, 
 
   const followUp = [
     ...baseMessages,
-    { role: 'assistant', content: null, tool_calls: first.toolCalls.map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.argsText } })) },
+    { role: 'assistant', content: null, tool_calls: first.toolCalls.map((tc) => ({
+      id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.argsText },
+      // Gemini 3 400s without its thought_signature echoed back verbatim; parallel calls may have it on the first only.
+      ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
+    })) },
     ...first.toolCalls.map((tc) => ({ role: 'tool', tool_call_id: tc.id, content: 'recorded' })),
   ];
   const second = await streamChatCompletion({ spec, apiKey, messages: followUp, tools: [], onText, fetchImpl });
